@@ -14,6 +14,7 @@ import { acceptRosterSnapshot, mergeRosterReceipt, type Receipt } from '../roste
 import Link from 'next/link';
 import { request } from './api';
 import type { Tournament } from './types';
+import styles from './tournament-workspace.module.css';
 export function TournamentWorkspace({ id }: { id: string }) {
   const { text, locale } = useLanguage();
   const [t, setT] = useState<Tournament | null>(null),
@@ -159,16 +160,14 @@ export function TournamentWorkspace({ id }: { id: string }) {
       <Link className="back-link" href="/tournaments">
         ← {text('Все турниры', 'Барлық турнирлер')}
       </Link>
-      <div className="page-heading">
-        <div>
+      <div className={styles.heading}>
+        <div className={styles.details}>
           <p className="kicker">{text('РАБОЧАЯ ОБЛАСТЬ ТУРНИРА', 'ТУРНИРДІҢ ЖҰМЫС КЕҢІСТІГІ')}</p>
           <h1>{t.name}</h1>
-          <p>
+          <p className={styles.location}>
             {t.city} · {t.venue} · {t.startDate} — {t.endDate}
           </p>
-        </div>
-        <div className="form-actions">
-          <p className="field-note">
+          <p className={styles.rules}>
             {text('Регламент', 'Ереже')}: {t.rulesSnapshot?.version ?? '—'} ·{' '}
             {t.rulesSnapshot?.approvedAt
               ? text('Версия зафиксирована при запуске', 'Нұсқа басталған кезде бекітілді')
@@ -178,6 +177,8 @@ export function TournamentWorkspace({ id }: { id: string }) {
               ? text('При равенстве — дополнительные встречи', 'Тең болса — қосымша белдесулер')
               : text('Правила прежней версии', 'Алдыңғы нұсқа ережелері')}
           </p>
+        </div>
+        <div className={styles.actions}>
           {t.status === 'DRAFT' ? (
             <button className="solid-button" disabled={busy || rosterPending} onClick={start}>
               {text('Запустить турнир', 'Турнирді бастау')} →
@@ -190,11 +191,11 @@ export function TournamentWorkspace({ id }: { id: string }) {
             </span>
           )}
           {t.publishedAt ? (
-            <Link className="solid-link" href={`/public/tournaments/${id}`}>
+            <Link className={styles.publish} href={`/public/tournaments/${id}`}>
               {text('Страница для зрителей ↗', 'Көрермендер беті ↗')}
             </Link>
           ) : (
-            <button className="solid-button" disabled={busy || rosterPending} onClick={publish}>
+            <button className={styles.publish} disabled={busy || rosterPending} onClick={publish}>
               {text('Опубликовать турнир', 'Турнирді жариялау')}
             </button>
           )}

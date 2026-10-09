@@ -62,7 +62,7 @@ export function RosterEditor({
               {text('Спортсмен', 'Спортшы')} {index + 1}
             </legend>
             <div className="roster-row-fields">
-              <label>
+              <label className="roster-field-name">
                 {text('Фамилия', 'Тегі')}
                 <input
                   maxLength={80}
@@ -70,7 +70,7 @@ export function RosterEditor({
                   onChange={(event) => update(row, { lastName: event.target.value })}
                 />
               </label>
-              <label>
+              <label className="roster-field-name">
                 {text('Имя', 'Аты')}
                 <input
                   maxLength={80}
@@ -78,7 +78,7 @@ export function RosterEditor({
                   onChange={(event) => update(row, { firstName: event.target.value })}
                 />
               </label>
-              <label>
+              <label className="roster-field-year">
                 {text('Год рождения', 'Туған жылы')}
                 <input
                   inputMode="numeric"
@@ -87,7 +87,7 @@ export function RosterEditor({
                   onChange={(event) => update(row, { birthYear: event.target.value })}
                 />
               </label>
-              <label>
+              <label className="roster-field-gender">
                 {text('Пол', 'Жынысы')}
                 <select
                   value={row.gender}
@@ -100,7 +100,7 @@ export function RosterEditor({
                   <option value="FEMALE">{text('Женский', 'Әйел')}</option>
                 </select>
               </label>
-              <label>
+              <label className="roster-field-category">
                 {text('Категория', 'Санат')}
                 <select
                   value={row.categoryId}
@@ -126,7 +126,7 @@ export function RosterEditor({
                 onClick={() => onChange(rows.filter((current) => current.localId !== row.localId))}
                 aria-label={`${text('Удалить строку', 'Жолды жою')} ${index + 1}`}
               >
-                ×
+                <span aria-hidden="true">×</span>
               </button>
             </div>
             {!row.categoryId && (

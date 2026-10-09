@@ -1,173 +1,452 @@
 .club-roster {
   display: grid;
   gap: 24px;
+  min-width: 0;
 }
-.roster-setup h2 {
-  margin-top: 0;
+.club-roster .roster-card {
+  min-width: 0;
+  overflow: hidden;
 }
-.roster-setup-fields {
+.club-roster .roster-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+  border-bottom: 1px solid var(--line, #e1e6ef);
+}
+.club-roster .roster-card-header > div,
+.club-roster .roster-card-header h2 {
+  min-width: 0;
+}
+.club-roster .roster-card-header h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.4;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.club-roster .roster-card-header .field-note {
+  max-width: 900px;
+  margin: 8px 0 0;
+  line-height: 1.65;
+}
+.club-roster .roster-card-body {
+  container: roster-card / inline-size;
+  min-width: 0;
+  padding: 24px;
+}
+.club-roster .roster-setup .roster-card-body {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(300px, 1.3fr);
+  gap: 20px;
+}
+.club-roster .roster-count {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 4px 11px;
+  border-radius: 7px;
+  background: #edf2f8;
+  color: #435672;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.club-roster .roster-setup-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
   gap: 24px;
   align-items: end;
 }
 .club-roster label {
   display: grid;
+  min-width: 0;
   gap: 8px;
-  font-weight: 650;
-  font-size: 14px;
+  margin: 0;
+  color: #43536c;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
 }
-.club-roster input,
-.club-roster select,
+.club-roster input:not([type='checkbox']),
+.club-roster .roster-card select,
 .club-roster textarea {
+  display: block;
   min-width: 0;
   width: 100%;
-  padding: 12px;
-  border: 1px solid var(--line, #d5dae1);
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #d5deea;
   border-radius: 8px;
-  background: white;
-  color: var(--ink, #142238);
+  background-color: var(--surface, #fff);
+  color: var(--ink, #18243b);
   font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  box-shadow: 0 1px 2px #18243b03;
 }
-.club-roster input:disabled,
-.club-roster select:disabled,
+.club-roster input:not([type='checkbox']),
+.club-roster .roster-card select {
+  height: 48px;
+  min-height: 48px;
+}
+.club-roster .roster-card select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 42px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18' fill='none'%3E%3Cpath d='m5 7 4 4 4-4' stroke='%2352637c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 18px;
+  text-overflow: ellipsis;
+}
+.club-roster textarea {
+  min-height: 160px;
+  resize: vertical;
+}
+.club-roster input:not([type='checkbox']):disabled,
+.club-roster .roster-card select:disabled,
 .club-roster textarea:disabled {
-  background: #f4f5f7;
+  background-color: #f4f6f9;
+  color: #66748a;
+  cursor: not-allowed;
 }
-.roster-new-club {
+.club-roster input:focus-visible,
+.club-roster .roster-card select:focus-visible,
+.club-roster textarea:focus-visible {
+  outline: 3px solid #c96e00;
+  outline-offset: 2px;
+  border-color: #90a7c6;
+}
+.club-roster .roster-new-club {
   display: grid;
+  min-width: 0;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: end;
+  margin: 0;
 }
 .club-roster button {
-  min-height: 44px;
+  min-height: 48px;
+  max-width: 100%;
+  margin: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 20px;
 }
-.roster-editor {
+.club-roster .roster-new-club button {
+  height: 48px;
+  padding: 10px 18px;
+  background: #f6f8fb;
+  color: #2f496b;
+}
+.club-roster .roster-editor {
   display: grid;
+  min-width: 0;
   gap: 16px;
 }
-.roster-row {
+.club-roster .roster-row {
   min-width: 0;
-  border: 1px solid var(--line, #d5dae1);
+  border: 1px solid #dce4ef;
   border-radius: 10px;
   margin: 0;
-  padding: 16px;
+  padding: 20px;
+  background: #fbfcfe;
 }
-.roster-row legend {
+.club-roster .roster-row legend {
+  padding: 0 8px;
+  color: #435672;
   font-size: 13px;
-  font-weight: 700;
-  padding: 0 6px;
+  font-weight: 650;
 }
-.roster-row-fields {
+.club-roster .roster-row-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr 100px 120px minmax(170px, 1.3fr) 44px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 106px 126px minmax(0, 1.4fr) 48px;
   gap: 12px;
   align-items: end;
 }
-.roster-remove {
-  font-size: 24px;
+.club-roster .roster-remove {
+  width: 48px;
+  height: 48px;
   padding: 0;
+  font-size: 24px;
+  font-weight: 400;
+  color: #61718a;
+  background: white;
 }
-.roster-actions {
+.club-roster .roster-row .field-note {
+  margin: 12px 0 0;
+}
+.club-roster .roster-card-body > .field-note:first-child {
+  margin: 0 0 20px;
+}
+.club-roster .roster-actions {
   display: flex;
+  align-items: stretch;
   gap: 12px;
   flex-wrap: wrap;
   margin: 20px 0;
 }
-.roster-errors {
+.club-roster .roster-actions .solid-button {
+  margin-left: auto;
+}
+.club-roster .roster-errors {
+  margin: 12px 0 0;
+  padding-left: 20px;
   color: #a32626;
   font-size: 14px;
-  margin: 12px 0;
-  padding-left: 20px;
+  overflow-wrap: anywhere;
 }
-.roster-errors li + li {
+.club-roster .roster-errors li + li {
   margin-top: 6px;
 }
-.roster-duplicates {
+.club-roster .roster-duplicates {
   background: #fff7e8;
   color: #493715;
-  padding: 14px;
+  padding: 16px;
   border-radius: 8px;
-  margin-top: 12px;
+  margin-top: 16px;
   font-size: 14px;
+  overflow-wrap: anywhere;
 }
-.roster-duplicates ul {
+.club-roster .roster-duplicates ul {
   padding-left: 20px;
 }
 .club-roster .roster-checkbox {
-  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: start;
+  gap: 10px;
+  color: inherit;
   font-weight: 500;
 }
 .club-roster .roster-checkbox input {
   width: 18px;
   height: 18px;
-  margin: 1px 0;
+  min-height: 18px;
+  padding: 0;
+  margin: 1px 0 0;
+  accent-color: #315781;
 }
-.roster-pending {
+.club-roster .roster-pending {
   border: 1px solid #d1a85b;
   background: #fff7e8;
   border-radius: 8px;
   padding: 16px;
-  margin-top: 16px;
+  margin: 0;
 }
-.roster-pending p {
-  margin-top: 0;
+.club-roster .roster-pending p {
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
 }
-.roster-paste {
-  border-top: 1px solid var(--line, #d5dae1);
-  padding-top: 18px;
+.club-roster .info-note {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid #dce5f0;
+  border-radius: 8px;
+  color: #435672;
+  background: #f4f7fb;
+  line-height: 1.65;
 }
-.roster-paste summary {
+.club-roster .error-box {
+  margin: 0;
+}
+.club-roster .roster-paste {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.club-roster .roster-paste summary {
   cursor: pointer;
-  font-weight: 650;
+  color: #354d6d;
+  font-weight: 600;
+  line-height: 24px;
+  overflow-wrap: anywhere;
 }
-.roster-paste button {
-  margin-top: 12px;
+.club-roster .roster-paste summary:focus-visible {
+  outline: 3px solid #c96e00;
+  outline-offset: 4px;
+  border-radius: 4px;
 }
-.roster-browse-controls {
-  display: flex;
+.club-roster .roster-paste .field-note {
+  margin: 14px 0;
+}
+.club-roster .roster-paste button {
+  margin-top: 14px;
+}
+.club-roster .roster-browse-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+  max-width: 680px;
   gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+  align-items: end;
+  margin-bottom: 20px;
 }
-.roster-browse-controls label {
-  min-width: 180px;
-}
-.roster-clubs {
+.club-roster .roster-clubs {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
-.roster-clubs button.active {
-  background: #e6f0fb;
-  border-color: #91b3df;
+.club-roster .roster-clubs button {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  text-align: left;
+  color: #435672;
+  background: white;
+}
+.club-roster .roster-clubs button > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.club-roster .roster-clubs button.active {
+  background: #edf3fb;
+  border-color: #90a9ca;
+  color: #254671;
+}
+.club-roster .roster-club-count {
+  min-width: 24px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: #edf1f6;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+}
+.club-roster .roster-clubs button.active .roster-club-count {
+  background: #dce8f7;
+}
+.club-roster .roster-browse-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 20px 0 16px;
+}
+.club-roster .roster-browse-note strong {
+  color: #43536c;
+  font-weight: 600;
+}
+.club-roster .roster-empty {
+  display: grid;
+  min-height: 160px;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  border: 1px dashed #d6dfeb;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #667992;
+  text-align: center;
+}
+.club-roster .roster-empty p {
+  margin: 0;
+  color: #52627a;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.club-roster .roster-saved .table-wrap {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--line, #e1e6ef);
+  border-radius: 8px;
+}
+.club-roster .roster-saved table {
+  min-width: 620px;
+}
+.club-roster .roster-saved td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.club-roster .roster-saved th,
+.club-roster .roster-saved td:nth-child(2),
+.club-roster .roster-saved td:nth-child(3) {
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 @media (max-width: 1100px) {
-  .roster-row-fields {
-    grid-template-columns: 1fr 1fr;
+  .club-roster .roster-row-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .roster-remove {
-    width: 44px;
+  .club-roster .roster-field-category {
+    grid-column: 1;
+  }
+  .club-roster .roster-remove {
     justify-self: end;
   }
 }
-@media (max-width: 700px) {
-  .roster-setup-fields,
-  .roster-new-club {
-    grid-template-columns: 1fr;
+@media (max-width: 1000px) {
+  .club-roster .roster-setup-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
   }
-  .roster-row-fields {
-    grid-template-columns: 1fr;
+}
+@media (max-width: 640px) {
+  .club-roster .roster-card-header,
+  .club-roster .roster-card-body {
+    padding: 20px;
   }
-  .roster-actions {
+  .club-roster .roster-card-header {
+    gap: 12px;
+  }
+  .club-roster .roster-card-header h2 {
+    font-size: 17px;
+  }
+  .club-roster .roster-new-club,
+  .club-roster .roster-row-fields,
+  .club-roster .roster-browse-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .club-roster .roster-new-club button {
+    width: 100%;
+  }
+  .club-roster .roster-row {
+    padding: 16px;
+  }
+  .club-roster .roster-actions {
     display: grid;
   }
-  .roster-browse-controls {
-    display: grid;
+  .club-roster .roster-actions .solid-button {
+    margin-left: 0;
   }
-  .roster-row {
-    padding: 12px;
+  .club-roster .roster-paste {
+    padding: 16px;
+  }
+  .club-roster .roster-count {
+    font-size: 11px;
+  }
+}
+@container roster-card (max-width: 860px) {
+  .club-roster .roster-row-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .club-roster .roster-field-category {
+    grid-column: 1;
+  }
+  .club-roster .roster-remove {
+    justify-self: end;
+  }
+}
+@container roster-card (max-width: 700px) {
+  .club-roster .roster-setup-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+}
+@container roster-card (max-width: 460px) {
+  .club-roster .roster-row-fields,
+  .club-roster .roster-browse-controls,
+  .club-roster .roster-new-club {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .club-roster .roster-new-club button {
+    width: 100%;
   }
 }

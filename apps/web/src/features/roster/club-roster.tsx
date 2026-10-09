@@ -317,210 +317,218 @@ export function ClubRoster({
 
   return (
     <div className="club-roster">
-      <section className="panel roster-setup">
-        <div>
-          <h2>{text('Участники по клубам', 'Клубтар бойынша қатысушылар')}</h2>
-          <p className="field-note">
-            {text(
-              'Выберите клуб один раз и внесите всю команду. Категорию каждого спортсмена укажите явно. Вносите уже прошедших взвешивание участников.',
-              'Клубты бір рет таңдап, бүкіл команданы енгізіңіз. Әр спортшының санатын нақты көрсетіңіз. Өлшеуден өткен қатысушыларды енгізіңіз.',
-            )}
-          </p>
-        </div>
-        {!tournament.categories.length && !locked && (
-          <p className="info-note">
-            {text(
-              'Сначала добавьте категории в разделе «Категории», затем выберите их для спортсменов.',
-              'Алдымен «Санаттар» бөлімінде санаттарды қосыңыз, содан кейін спортшылар үшін таңдаңыз.',
-            )}
-          </p>
-        )}
-        <div className="roster-setup-fields">
-          <label>
-            {text('Клуб турнира', 'Турнир клубы')}
-            <select
-              value={selectedClubId}
-              disabled={!ready || busy || !!pending || storageBlocked}
-              onChange={(event) => selectClub(event.target.value)}
-            >
-              <option value="">{text('Выберите клуб', 'Клубты таңдаңыз')}</option>
-              {selectedClubId && !selectedClub && (
-                <option value={selectedClubId} disabled>
-                  {text('Клуб недоступен', 'Клуб қолжетімсіз')}
-                </option>
-              )}
-              {tournament.clubs.map((club) => (
-                <option key={club.id} value={club.id}>
-                  {club.name} · {club._count.entries}
-                </option>
-              ))}
-            </select>
-          </label>
-          <form className="roster-new-club" onSubmit={createClub}>
-            <label>
-              {text('Новый клуб', 'Жаңа клуб')}
-              <input
-                value={clubName}
-                required
-                minLength={2}
-                maxLength={120}
-                disabled={disabled}
-                placeholder={text('Точное название клуба', 'Клубтың нақты атауы')}
-                onChange={(event) => setClubName(event.target.value)}
-              />
-            </label>
-            <button type="submit" disabled={disabled || clubName.trim().length < 2}>
-              {text('Создать клуб', 'Клуб құру')}
-            </button>
-          </form>
-        </div>
-        {locked && (
-          <p className="info-note">
-            {rosterMessage('ROSTER_LOCKED', locale === 'kk')}{' '}
-            {text('Сохранённые составы доступны ниже.', 'Сақталған құрамдар төменде қолжетімді.')}
-          </p>
-        )}
-        {error && (
-          <p className="error-box" role="alert">
-            {error}
-          </p>
-        )}
-        {notice && (
-          <p className="info-note" role="status">
-            {notice}
-          </p>
-        )}
-        {pending && (
-          <div className="roster-pending" role="status">
-            <p>
+      <section className="panel roster-card roster-setup">
+        <div className="roster-card-header">
+          <div>
+            <h2>{text('Участники по клубам', 'Клубтар бойынша қатысушылар')}</h2>
+            <p className="field-note">
               {text(
-                'Есть сохранённая команда с неизвестным результатом. Пока она не проверена, новый состав или клуб не отправляется.',
-                'Нәтижесі белгісіз сақталған команда бар. Ол тексерілмейінше жаңа құрам не клуб жіберілмейді.',
+                'Выберите клуб один раз и внесите всю команду. Категорию каждого спортсмена укажите явно. Вносите уже прошедших взвешивание участников.',
+                'Клубты бір рет таңдап, бүкіл команданы енгізіңіз. Әр спортшының санатын нақты көрсетіңіз. Өлшеуден өткен қатысушыларды енгізіңіз.',
               )}
             </p>
-            <button
-              className="solid-button"
-              type="button"
-              disabled={busy || storageBlocked}
-              onClick={() => void deliver(pending)}
-            >
-              {busy
-                ? text('Проверяем…', 'Тексерілуде…')
-                : text('Повторить сохранённую команду', 'Сақталған команданы қайталау')}
-            </button>
           </div>
-        )}
-        {storageBlocked && (
-          <button type="button" onClick={() => window.location.reload()}>
-            {text('Повторно открыть сохранённые данные', 'Сақталған деректерді қайта ашу')}
-          </button>
-        )}
+        </div>
+        <div className="roster-card-body">
+          {!tournament.categories.length && !locked && (
+            <p className="info-note">
+              {text(
+                'Сначала добавьте категории в разделе «Категории», затем выберите их для спортсменов.',
+                'Алдымен «Санаттар» бөлімінде санаттарды қосыңыз, содан кейін спортшылар үшін таңдаңыз.',
+              )}
+            </p>
+          )}
+          <div className="roster-setup-fields">
+            <label>
+              {text('Клуб турнира', 'Турнир клубы')}
+              <select
+                value={selectedClubId}
+                disabled={!ready || busy || !!pending || storageBlocked}
+                onChange={(event) => selectClub(event.target.value)}
+              >
+                <option value="">{text('Выберите клуб', 'Клубты таңдаңыз')}</option>
+                {selectedClubId && !selectedClub && (
+                  <option value={selectedClubId} disabled>
+                    {text('Клуб недоступен', 'Клуб қолжетімсіз')}
+                  </option>
+                )}
+                {tournament.clubs.map((club) => (
+                  <option key={club.id} value={club.id}>
+                    {club.name} · {club._count.entries}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <form className="roster-new-club" onSubmit={createClub}>
+              <label>
+                {text('Новый клуб', 'Жаңа клуб')}
+                <input
+                  value={clubName}
+                  required
+                  minLength={2}
+                  maxLength={120}
+                  disabled={disabled}
+                  placeholder={text('Точное название клуба', 'Клубтың нақты атауы')}
+                  onChange={(event) => setClubName(event.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={disabled || clubName.trim().length < 2}>
+                {text('Создать клуб', 'Клуб құру')}
+              </button>
+            </form>
+          </div>
+          {locked && (
+            <p className="info-note">
+              {rosterMessage('ROSTER_LOCKED', locale === 'kk')}{' '}
+              {text('Сохранённые составы доступны ниже.', 'Сақталған құрамдар төменде қолжетімді.')}
+            </p>
+          )}
+          {error && (
+            <p className="error-box" role="alert">
+              {error}
+            </p>
+          )}
+          {notice && (
+            <p className="info-note" role="status">
+              {notice}
+            </p>
+          )}
+          {pending && (
+            <div className="roster-pending" role="status">
+              <p>
+                {text(
+                  'Есть сохранённая команда с неизвестным результатом. Пока она не проверена, новый состав или клуб не отправляется.',
+                  'Нәтижесі белгісіз сақталған команда бар. Ол тексерілмейінше жаңа құрам не клуб жіберілмейді.',
+                )}
+              </p>
+              <button
+                className="solid-button"
+                type="button"
+                disabled={busy || storageBlocked}
+                onClick={() => void deliver(pending)}
+              >
+                {busy
+                  ? text('Проверяем…', 'Тексерілуде…')
+                  : text('Повторить сохранённую команду', 'Сақталған команданы қайталау')}
+              </button>
+            </div>
+          )}
+          {storageBlocked && (
+            <button type="button" onClick={() => window.location.reload()}>
+              {text('Повторно открыть сохранённые данные', 'Сақталған деректерді қайта ашу')}
+            </button>
+          )}
+        </div>
       </section>
       {selectedClub && (
-        <section className="panel roster-draft">
-          <div className="panel-heading">
+        <section className="panel roster-card roster-draft">
+          <div className="roster-card-header">
             <h2>
               {text('Добавить в состав', 'Құрамға қосу')}: {selectedClub.name}
             </h2>
-            <span>{rows.length}</span>
+            <span className="roster-count">
+              {text('Строк', 'Жол')}: {rows.length}
+            </span>
           </div>
-          <p className="field-note">
-            {text(
-              'Черновик хранится в этой вкладке браузера и восстанавливается после перезагрузки. Сохранённые участники остаются в списке ниже.',
-              'Жоба браузердің осы қойындысында сақталып, қайта жүктегенде қалпына келеді. Сақталған қатысушылар төмендегі тізімде қалады.',
-            )}
-          </p>
-          <RosterEditor
-            rows={rows}
-            categories={tournament.categories}
-            checked={checked}
-            disabled={disabled}
-            showValidation={showValidation}
-            onChange={editRows}
-          />
-          <div className="roster-actions">
-            <button
-              type="button"
-              disabled={disabled || rows.length >= 500}
-              onClick={() => editRows([...rows, blankRow()])}
-            >
-              + {text('Добавить строку', 'Жол қосу')}
-            </button>
-            <button
-              type="button"
-              disabled={disabled || !rows.length}
-              onClick={() => void checkRoster()}
-            >
-              {busy
-                ? text('Проверяем…', 'Тексерілуде…')
-                : text('Проверить заявку', 'Өтінімді тексеру')}
-            </button>
-            <button
-              className="solid-button"
-              type="button"
-              disabled={disabled || !checked?.data.canSave || !previewCurrent}
-              onClick={saveRoster}
-            >
-              {text('Сохранить проверенный состав', 'Тексерілген құрамды сақтау')}
-            </button>
-          </div>
-          {checked && (
-            <p
-              className={checked.data.canSave && previewCurrent ? 'info-note' : 'field-note'}
-              role="status"
-            >
-              {!previewCurrent
-                ? text(
-                    'После изменения строк или состава турнира нужна повторная проверка.',
-                    'Жолдар не турнир құрамы өзгергеннен кейін қайта тексеру қажет.',
-                  )
-                : checked.data.canSave
-                  ? text(
-                      'Все строки проверены. Подтвердите сохранение состава кнопкой выше.',
-                      'Барлық жол тексерілді. Жоғарыдағы батырмамен құрамды сақтауды растаңыз.',
-                    )
-                  : text(
-                      'Исправьте ошибки или подтвердите отдельного спортсмена при совпадении, затем повторите проверку.',
-                      'Қателерді түзетіңіз не сәйкестік болғанда бөлек спортшы екенін растаңыз, содан кейін қайта тексеріңіз.',
-                    )}
-            </p>
-          )}
-          <details className="roster-paste">
-            <summary>
-              {text(
-                'Вставить текстовый список (необязательно)',
-                'Мәтіндік тізімді енгізу (міндетті емес)',
-              )}
-            </summary>
+          <div className="roster-card-body">
             <p className="field-note">
               {text(
-                'Одна строка — один спортсмен. Формат: фамилия;имя;год рождения;пол;точное название категории. Пол: М / Ж или MALE / FEMALE. Вместо ; можно использовать табуляцию. Заголовок необязателен. Без кавычек.',
-                'Бір жол — бір спортшы. Пішімі: тегі;аты;туған жылы;жынысы;санаттың нақты атауы. Жынысы: ЕР / ӘЙЕЛ немесе MALE / FEMALE. ; орнына табуляция қолдануға болады. Тақырып міндетті емес. Тырнақшасыз.',
+                'Черновик хранится в этой вкладке браузера и восстанавливается после перезагрузки. Сохранённые участники остаются в списке ниже.',
+                'Жоба браузердің осы қойындысында сақталып, қайта жүктегенде қалпына келеді. Сақталған қатысушылар төмендегі тізімде қалады.',
               )}
             </p>
-            <label>
-              {text('Текст заявки', 'Өтінім мәтіні')}
-              <textarea
-                rows={6}
-                disabled={disabled}
-                value={paste}
-                onChange={(event) => editPaste(event.target.value)}
-              />
-            </label>
-            <button type="button" disabled={disabled || !paste.trim()} onClick={appendText}>
-              {text('Добавить в редактируемый черновик', 'Өңделетін жобаға қосу')}
-            </button>
-            {!!pasteIssues.length && (
-              <ul className="roster-errors" role="alert">
-                {pasteIssues.map((issue, index) => (
-                  <li key={index}>
-                    {issue.line ? `${text('Строка', 'Жол')} ${issue.line}: ` : ''}
-                    {rosterMessage(issue.code, locale === 'kk')}
-                  </li>
-                ))}
-              </ul>
+            <RosterEditor
+              rows={rows}
+              categories={tournament.categories}
+              checked={checked}
+              disabled={disabled}
+              showValidation={showValidation}
+              onChange={editRows}
+            />
+            <div className="roster-actions">
+              <button
+                type="button"
+                disabled={disabled || rows.length >= 500}
+                onClick={() => editRows([...rows, blankRow()])}
+              >
+                + {text('Добавить строку', 'Жол қосу')}
+              </button>
+              <button
+                type="button"
+                disabled={disabled || !rows.length}
+                onClick={() => void checkRoster()}
+              >
+                {busy
+                  ? text('Проверяем…', 'Тексерілуде…')
+                  : text('Проверить заявку', 'Өтінімді тексеру')}
+              </button>
+              <button
+                className="solid-button"
+                type="button"
+                disabled={disabled || !checked?.data.canSave || !previewCurrent}
+                onClick={saveRoster}
+              >
+                {text('Сохранить проверенный состав', 'Тексерілген құрамды сақтау')}
+              </button>
+            </div>
+            {checked && (
+              <p
+                className={checked.data.canSave && previewCurrent ? 'info-note' : 'field-note'}
+                role="status"
+              >
+                {!previewCurrent
+                  ? text(
+                      'После изменения строк или состава турнира нужна повторная проверка.',
+                      'Жолдар не турнир құрамы өзгергеннен кейін қайта тексеру қажет.',
+                    )
+                  : checked.data.canSave
+                    ? text(
+                        'Все строки проверены. Подтвердите сохранение состава кнопкой выше.',
+                        'Барлық жол тексерілді. Жоғарыдағы батырмамен құрамды сақтауды растаңыз.',
+                      )
+                    : text(
+                        'Исправьте ошибки или подтвердите отдельного спортсмена при совпадении, затем повторите проверку.',
+                        'Қателерді түзетіңіз не сәйкестік болғанда бөлек спортшы екенін растаңыз, содан кейін қайта тексеріңіз.',
+                      )}
+              </p>
             )}
-          </details>
+            <details className="roster-paste">
+              <summary>
+                {text(
+                  'Вставить текстовый список (необязательно)',
+                  'Мәтіндік тізімді енгізу (міндетті емес)',
+                )}
+              </summary>
+              <p className="field-note">
+                {text(
+                  'Одна строка — один спортсмен. Формат: фамилия;имя;год рождения;пол;точное название категории. Пол: М / Ж или MALE / FEMALE. Вместо ; можно использовать табуляцию. Заголовок необязателен. Без кавычек.',
+                  'Бір жол — бір спортшы. Пішімі: тегі;аты;туған жылы;жынысы;санаттың нақты атауы. Жынысы: ЕР / ӘЙЕЛ немесе MALE / FEMALE. ; орнына табуляция қолдануға болады. Тақырып міндетті емес. Тырнақшасыз.',
+                )}
+              </p>
+              <label>
+                {text('Текст заявки', 'Өтінім мәтіні')}
+                <textarea
+                  rows={6}
+                  disabled={disabled}
+                  value={paste}
+                  onChange={(event) => editPaste(event.target.value)}
+                />
+              </label>
+              <button type="button" disabled={disabled || !paste.trim()} onClick={appendText}>
+                {text('Добавить в редактируемый черновик', 'Өңделетін жобаға қосу')}
+              </button>
+              {!!pasteIssues.length && (
+                <ul className="roster-errors" role="alert">
+                  {pasteIssues.map((issue, index) => (
+                    <li key={index}>
+                      {issue.line ? `${text('Строка', 'Жол')} ${issue.line}: ` : ''}
+                      {rosterMessage(issue.code, locale === 'kk')}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          </div>
         </section>
       )}
       <SavedRoster
