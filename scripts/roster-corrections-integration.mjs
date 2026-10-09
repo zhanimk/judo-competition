@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { inflateSync } from 'node:zlib';
 import { PrismaClient } from '@prisma/client';
-import { createTestUser } from './test-user.mjs';
+import { createTestUser, createTestEntries } from './test-user.mjs';
 
 // All writes belong to a disposable rehearsal schema and this suite's own tournaments.
 const connection = new URL(process.env.DATABASE_URL);
@@ -704,30 +704,28 @@ try {
 
   const capacityClub = await club(capacity, 'Capacity corrections club');
   const capacityArchiveId = randomUUID();
-  await db.entry.createMany({
-    data: [
-      ...Array.from({ length: 127 }, (_, i) => ({
-        categoryId: capacityCategory.id,
-        firstName: 'Capacity',
-        lastName: `Active ${i}`,
-        birthYear: 2012,
-        gender: 'MALE',
-        clubId: capacityClub.id,
-        club: capacityClub.name,
-      })),
-      {
-        id: capacityArchiveId,
-        categoryId: capacityCategory.id,
-        firstName: 'Capacity',
-        lastName: 'Archived capacity',
-        birthYear: 2012,
-        gender: 'MALE',
-        clubId: capacityClub.id,
-        club: capacityClub.name,
-        archivedAt: new Date(),
-      },
-    ],
-  });
+  await createTestEntries(db, [
+    ...Array.from({ length: 127 }, (_, i) => ({
+      categoryId: capacityCategory.id,
+      firstName: 'Capacity',
+      lastName: `Active ${i}`,
+      birthYear: 2012,
+      gender: 'MALE',
+      clubId: capacityClub.id,
+      club: capacityClub.name,
+    })),
+    {
+      id: capacityArchiveId,
+      categoryId: capacityCategory.id,
+      firstName: 'Capacity',
+      lastName: 'Archived capacity',
+      birthYear: 2012,
+      gender: 'MALE',
+      clubId: capacityClub.id,
+      club: capacityClub.name,
+      archivedAt: new Date(),
+    },
+  ]);
   const capacityLast = await add(capacity, capacityClub.id, [
     entrant(capacityCategory.id, 'Active number 128'),
   ]);

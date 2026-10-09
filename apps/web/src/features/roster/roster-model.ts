@@ -8,6 +8,17 @@ export type DraftRow = {
   gender: '' | 'MALE' | 'FEMALE';
   categoryId: string;
   duplicateConfirmed?: boolean;
+  athleteId?: string;
+  athleteDisplay?: AthleteDisplay;
+};
+export type AthleteDisplay = {
+  entryId: string;
+  tournamentId: string;
+  firstName: string;
+  lastName: string;
+  birthYear: number | null;
+  gender: 'MALE' | 'FEMALE';
+  club: string;
 };
 export type RosterEntryInput = {
   lastName: string;
@@ -16,6 +27,7 @@ export type RosterEntryInput = {
   gender: 'MALE' | 'FEMALE';
   categoryId: string;
   duplicateConfirmed?: boolean;
+  athleteId?: string;
 };
 export type Duplicate = {
   entryId: string;
@@ -66,6 +78,7 @@ export function validSavedEntry(value: unknown): value is SavedEntry {
   const entry = value as SavedEntry;
   return (
     isUuid(entry.id) &&
+    (entry.athleteId === undefined || isUuid(entry.athleteId)) &&
     isUuid(entry.categoryId) &&
     (entry.clubId === null || isUuid(entry.clubId)) &&
     typeof entry.firstName === 'string' &&
@@ -145,6 +158,7 @@ export function entryInputs(rows: DraftRow[]): RosterEntryInput[] {
     birthYear: Number(row.birthYear),
     gender: row.gender as 'MALE' | 'FEMALE',
     categoryId: row.categoryId,
+    ...(row.athleteId ? { athleteId: row.athleteId } : {}),
     ...(row.duplicateConfirmed ? { duplicateConfirmed: true } : {}),
   }));
 }
@@ -172,7 +186,8 @@ export function samePersonInput(left: DraftRow, right: DraftRow): boolean {
     left.lastName === right.lastName &&
     left.birthYear === right.birthYear &&
     left.gender === right.gender &&
-    left.categoryId === right.categoryId
+    left.categoryId === right.categoryId &&
+    left.athleteId === right.athleteId
   );
 }
 export function acceptRosterSnapshot(

@@ -1,6 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
+import { chooseAthlete, newAthlete } from './athlete-model';
+import { AthleteDetails, AthletePicker } from './athlete-picker';
 import type { Category } from '../tournaments/types';
 import { rosterMessage } from './messages';
 import {
@@ -21,6 +24,7 @@ export function RosterEditor({
   onChange,
   allowRemove = true,
   readonlyFields = false,
+  tournamentId,
 }: {
   rows: DraftRow[];
   categories: Category[];
@@ -30,8 +34,10 @@ export function RosterEditor({
   onChange: (rows: DraftRow[]) => void;
   allowRemove?: boolean;
   readonlyFields?: boolean;
+  tournamentId?: string;
 }) {
   const { text, locale } = useLanguage();
+  const [selectingRow, setSelectingRow] = useState<string | null>(null);
   const update = (row: DraftRow, values: Partial<DraftRow>) =>
     onChange(
       rows.map((current) =>
@@ -142,6 +148,74 @@ export function RosterEditor({
                 </button>
               )}
             </div>
+            {tournamentId && (
+              <div className="roster-athlete-choice">
+                {row.athleteId ? (
+                  <>
+                    <strong>
+                      {text('Выбран существующий спортсмен', 'Бұрынғы спортшы таңдалған')}
+                    </strong>
+                    {row.athleteDisplay && <AthleteDetails display={row.athleteDisplay} />}
+                    <p className="field-note">
+                      {text(
+                        'Поля этой заявки можно изменить; прежние заявки сохраняют свои данные.',
+                        'Осы өтінімнің өрістерін өзгертуге болады; бұрынғы өтінімдер өз деректерін сақтайды.',
+                      )}
+                    </p>
+                  </>
+                ) : (
+                  <span>{text('Новая запись спортсмена', 'Спортшының жаңа жазбасы')}</span>
+                )}
+                <div className="roster-entry-actions">
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setSelectingRow(row.localId)}
+                  >
+                    {text('Выбрать из истории', 'Тарихтан таңдау')}
+                  </button>
+                  {row.athleteId && (
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => {
+                        onChange(
+                          rows.map((value) =>
+                            value.localId === row.localId ? newAthlete(row) : value,
+                          ),
+                        );
+                        setSelectingRow(null);
+                      }}
+                    >
+                      {text(
+                        'Это другой спортсмен — новая запись',
+                        'Бұл басқа спортшы — жаңа жазба',
+                      )}
+                    </button>
+                  )}
+                </div>
+                {selectingRow === row.localId && (
+                  <AthletePicker
+                    tournamentId={tournamentId}
+                    categories={categories}
+                    disabled={disabled}
+                    selectedId={row.athleteId}
+                    unavailableIds={rows
+                      .filter((value) => value.localId !== row.localId)
+                      .flatMap((value) => (value.athleteId ? [value.athleteId] : []))}
+                    onClose={() => setSelectingRow(null)}
+                    onSelect={(athlete) => {
+                      onChange(
+                        rows.map((value) =>
+                          value.localId === row.localId ? chooseAthlete(row, athlete) : value,
+                        ),
+                      );
+                      setSelectingRow(null);
+                    }}
+                  />
+                )}
+              </div>
+            )}
             {!row.categoryId && (
               <p className="field-note">
                 {text(

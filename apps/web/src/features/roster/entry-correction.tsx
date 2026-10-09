@@ -22,9 +22,9 @@ import {
   type SavedEntry,
 } from './roster-model';
 
-type CorrectionCommand = Extract<PendingRosterCommand, { entryId: string }>;
+type CorrectionCommand = Extract<PendingRosterCommand, { kind: 'update' | 'archive' | 'restore' }>;
 
-function EntryDetails({ entry, tournament }: { entry: SavedEntry; tournament: Tournament }) {
+export function EntryDetails({ entry, tournament }: { entry: SavedEntry; tournament: Tournament }) {
   const { text } = useLanguage();
   const category = tournament.categories.find((value) => value.id === entry.categoryId);
   const gender = entry.gender ?? category?.gender;

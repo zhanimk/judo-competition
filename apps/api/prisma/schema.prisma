@@ -47,6 +47,8 @@ model Category {
 }
 model Entry {
  id String @id @default(uuid())
+ athleteId String
+ athlete Athlete @relation(fields:[athleteId],references:[id],onDelete:Restrict)
  categoryId String
  category Category @relation(fields:[categoryId],references:[id],onDelete:Restrict)
  firstName String
@@ -62,6 +64,15 @@ model Entry {
  @@index([clubId])
  @@index([categoryId,archivedAt])
  @@index([clubId,archivedAt])
+ @@index([athleteId])
+}
+model Athlete {
+ id String @id @default(uuid())
+ ownerId String?
+ owner User? @relation(fields:[ownerId],references:[id],onDelete:SetNull)
+ createdAt DateTime @default(now())
+ entries Entry[]
+ @@index([ownerId])
 }
 model Club {
  id String @id @default(uuid())
@@ -104,6 +115,7 @@ model User {
  createdAt DateTime @default(now())
  tournaments Tournament[]
  sessions Session[]
+ athletes Athlete[]
 }
 model Session {
  id String @id @default(uuid())

@@ -10,6 +10,7 @@ type ExistingEntry = {
   lastName: string;
   birthYear: number;
   club: string;
+  athleteId?: string;
   archivedAt?: Date | string | null;
 };
 export type RosterSnapshot = {
@@ -45,6 +46,7 @@ export function validateRoster(
   clubName: string,
   entries: RosterEntryDto[],
   excludeEntryId?: string,
+  availableAthleteIds?: ReadonlySet<string>,
 ) {
   const categories = new Map(
     snapshot.categories.map((category) => [
@@ -74,8 +76,16 @@ export function validateRoster(
       existing.set(key, matches);
     }
   const batch = new Map<string, { index: number; duplicate: PossibleDuplicate }[]>();
+  const registeredAthletes = new Set(
+    [...categories.values()].flatMap((category) =>
+      category.entries.flatMap((entry) => (entry.athleteId ? [entry.athleteId] : [])),
+    ),
+  );
+  const batchAthletes = new Map<string, number>();
   const counts = new Map<string, number>();
   entries.forEach((entry, index) => {
+    if (entry.athleteId)
+      batchAthletes.set(entry.athleteId, (batchAthletes.get(entry.athleteId) ?? 0) + 1);
     counts.set(entry.categoryId, (counts.get(entry.categoryId) ?? 0) + 1);
     const key = identity(entry);
     const matches = batch.get(key) ?? [];
@@ -95,6 +105,12 @@ export function validateRoster(
   const rows: RosterRowResult[] = entries.map((entry, index) => {
     const errors: string[] = [];
     if (!cleanName(entry.firstName) || !cleanName(entry.lastName)) errors.push('NAME_REQUIRED');
+    if (entry.athleteId) {
+      if (availableAthleteIds && !availableAthleteIds.has(entry.athleteId))
+        errors.push('ATHLETE_NOT_FOUND');
+      if (registeredAthletes.has(entry.athleteId) || batchAthletes.get(entry.athleteId)! > 1)
+        errors.push('ATHLETE_ALREADY_REGISTERED');
+    }
     if (snapshot.status !== 'DRAFT') errors.push('ROSTER_LOCKED');
     const category = categories.get(entry.categoryId);
     if (!category) errors.push('CATEGORY_NOT_FOUND');

@@ -19,7 +19,7 @@ export function SavedRoster({
   selectedClubId: string;
   disabled: boolean;
   onClub: (id: string) => void;
-  onCorrect: (entry: SavedEntry, mode: CorrectionMode) => void;
+  onCorrect: (entry: SavedEntry, mode: CorrectionMode | 'identity') => void;
   onUpdate: () => Promise<void>;
 }) {
   const { text } = useLanguage();
@@ -143,6 +143,14 @@ export function SavedRoster({
                           {entry.lastName} {entry.firstName}
                         </strong>
                         <div className="roster-entry-actions">
+                          <button
+                            type="button"
+                            disabled={correctionDisabled || !record?.athleteId}
+                            onClick={() => record && onCorrect(record, 'identity')}
+                            aria-label={`${text('Исправить связь со спортсменом', 'Спортшымен байланысты түзету')}: ${entry.lastName} ${entry.firstName}`}
+                          >
+                            {text('Связь спортсмена', 'Спортшы байланысы')}
+                          </button>
                           <button
                             type="button"
                             disabled={correctionDisabled}

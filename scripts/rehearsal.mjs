@@ -93,6 +93,7 @@ try {
     'formats-integration',
     'rematches-integration',
     'live-integration',
+    'athlete-identity-integration',
     'protocol-integration',
   ]) {
     if (suite === 'live-integration') {

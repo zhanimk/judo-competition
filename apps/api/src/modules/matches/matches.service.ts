@@ -20,6 +20,7 @@ import type { Principal } from '../auth/auth.types.js';
 import { LiveService } from './live.service.js';
 import { MatchCommandDto } from './matches.dto.js';
 import { assertUnusedCommandIds } from './command-ids.js';
+import { lockContestAthletes, requireAvailableAthletes } from './athlete-guards.js';
 const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
 const now = () => Number(process.hrtime.bigint() / 1000000n);
 const commandResult = (row: Contest) => ({
@@ -216,10 +217,11 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
   }
   async command(tatamiId: string, id: string, dto: MatchCommandDto, user: Principal) {
     const access = await this.auth.control(user, tatamiId);
-    // Serialize all starts/results in a tournament; row lock also serializes timer snapshots.
+    // Tournament/mat/contest locks precede shared Athlete locks. Lock this
+    // tournament's mats now so result propagation never takes a late mat lock.
     const result = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${access.tournamentId} FOR UPDATE`;
-      await tx.$queryRaw`SELECT id FROM "Tatami" WHERE id=${tatamiId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM "Tatami" WHERE "tournamentId"=${access.tournamentId} ORDER BY id FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM "Contest" WHERE id=${id} FOR UPDATE`;
       const row = await tx.contest.findUnique({
         where: { id },
@@ -269,6 +271,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       const events = offline ? (dto.events ?? []) : [];
       const ids = [dto.id, ...events.map((event) => event.id)];
       await assertUnusedCommandIds(tx, ids, row.state as unknown as MatchState | null);
+      const athletes = await lockContestAthletes(tx, row);
       const at = now();
       let state: MatchState;
       if (!row.state) {
@@ -289,33 +292,11 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
           throw new ConflictException('PREVIOUS_ROUND_PENDING');
         const first = (await readyQueue(tx, tatamiId))[0];
         if (first?.id !== id) throw new ConflictException('QUEUE_ORDER');
-        if (
-          await tx.contest.findFirst({
-            where: {
-              status: 'ACTIVE',
-              OR: [
-                { tatamiId },
-                { whiteEntryId: { in: [row.whiteEntryId, row.blueEntryId] } },
-                { blueEntryId: { in: [row.whiteEntryId, row.blueEntryId] } },
-              ],
-            },
-          })
-        )
-          throw new ConflictException('TATAMI_OR_ATHLETE_BUSY');
-        // Current custom profile: 10 minutes between bouts for the same entry.
-        if (
-          await tx.contest.findFirst({
-            where: {
-              status: 'CONFIRMED',
-              confirmedAt: { gt: new Date(Date.now() - profile(tournament.rulesSnapshot).restMs) },
-              OR: [
-                { whiteEntryId: { in: [row.whiteEntryId, row.blueEntryId] } },
-                { blueEntryId: { in: [row.whiteEntryId, row.blueEntryId] } },
-              ],
-            },
-          })
-        )
-          throw new ConflictException('REST_REQUIRED');
+        // Still counted from confirmedAt; the target tournament's saved profile
+        // applies to all aliases of these athletes, including other tournaments.
+        await requireAvailableAthletes(tx, row, athletes, {
+          restMs: profile(tournament.rulesSnapshot).restMs,
+        });
         state = createMatch(
           matchRules(
             tournament.rulesSnapshot,
@@ -324,6 +305,10 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
           ),
         );
       } else {
+        if (row.status !== 'ACTIVE') throw new ConflictException('MATCH_NOT_READY');
+        // Pauses, provisional results, offline leases and recovery retain ACTIVE
+        // reservation. Resuming that reservation does not impose rest again.
+        await requireAvailableAthletes(tx, row, athletes);
         state = row.offlineSessionId
           ? (structuredClone(row.state) as unknown as MatchState)
           : this.advance(row, at);
@@ -413,8 +398,6 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         const homeTatamiId = row.draw.category.homeTatamiId ?? tatamiId;
         if (!row.draw.category.homeTatamiId)
           await tx.category.update({ where: { id: row.draw.categoryId }, data: { homeTatamiId } });
-        if (homeTatamiId !== tatamiId)
-          await tx.$queryRaw`SELECT id FROM "Tatami" WHERE id=${homeTatamiId} FOR UPDATE`;
         let all = await tx.contest.findMany({ where: { drawId: row.drawId } });
         const winners = Object.fromEntries(
           all

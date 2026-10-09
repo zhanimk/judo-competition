@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync } from 'node:crypto';
+import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
 export async function createTestUser(db, role = 'ORGANIZER') {
   const password = randomBytes(24).toString('base64url');
   const salt = randomBytes(16).toString('hex');
@@ -19,4 +19,27 @@ export async function useLegacyRules(db, tournamentId) {
   const rules = { ...t.rulesSnapshot, version: 'custom-2026-v2' };
   delete rules.drawPolicy;
   await db.tournament.update({ where: { id: tournamentId }, data: { rulesSnapshot: rules } });
+}
+
+/** Raw synthetic registrations still need real, separate identities. Never merge by names. */
+export async function createTestEntries(db, entries) {
+  return db.$transaction(async (tx) => {
+    const categories = await tx.category.findMany({
+      where: { id: { in: [...new Set(entries.map((entry) => entry.categoryId))] } },
+      select: { id: true, tournament: { select: { ownerId: true } } },
+    });
+    const owners = new Map(
+      categories.map((category) => [category.id, category.tournament.ownerId]),
+    );
+    const identities = [];
+    const data = entries.map((entry) => {
+      if (!owners.has(entry.categoryId)) throw new Error('TEST_ENTRY_CATEGORY_MISSING');
+      if (entry.athleteId) return entry;
+      const athleteId = randomUUID();
+      identities.push({ id: athleteId, ownerId: owners.get(entry.categoryId) });
+      return { ...entry, athleteId };
+    });
+    if (identities.length) await tx.athlete.createMany({ data: identities });
+    return tx.entry.createMany({ data });
+  });
 }

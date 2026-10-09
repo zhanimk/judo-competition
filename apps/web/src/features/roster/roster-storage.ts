@@ -1,4 +1,5 @@
-import { blankRow, type DraftRow } from './roster-model.ts';
+import { blankRow, isUuid, type DraftRow } from './roster-model.ts';
+import { validAthleteDisplay } from './athlete-model.ts';
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export const draftKey = (tournamentId: string, clubId: string) =>
@@ -27,6 +28,9 @@ export function validDraftRows(value: unknown): value is DraftRow[] {
         (key) => typeof row[key] === 'string',
       ) &&
       ['', 'MALE', 'FEMALE'].includes(row.gender) &&
+      (row.athleteId === undefined || isUuid(row.athleteId)) &&
+      (row.athleteDisplay === undefined ||
+        (row.athleteId && validAthleteDisplay(row.athleteDisplay))) &&
       (row.duplicateConfirmed === undefined || typeof row.duplicateConfirmed === 'boolean')
     );
   });

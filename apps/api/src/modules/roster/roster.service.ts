@@ -19,8 +19,19 @@ import type {
   EntryPreviewDto,
   EntryRestoreDto,
   EntryUpdateDto,
+  EntryIdentityPreviewDto,
+  EntryIdentityBindDto,
+  AthleteDirectoryQueryDto,
 } from './roster.dto.js';
 import { invalidatePreviewDraws } from './draw-invalidation.js';
+import {
+  athleteScope,
+  lockAthleteIds,
+  lockIdentityDraws,
+  scopedAthleteIds,
+  searchAthleteIds,
+  type AthleteDirectoryItem,
+} from './athlete-identity.js';
 
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const snapshotInclude = {
@@ -37,6 +48,73 @@ export class RosterService {
     private readonly auth: AuthService,
     private readonly live: LiveService,
   ) {}
+
+  private async identityCatalog(
+    tx: Prisma.TransactionClient,
+    tournamentId: string,
+    ownerId: string | null,
+    athleteIds: string[],
+  ): Promise<AthleteDirectoryItem[]> {
+    if (athleteIds.length === 0) return [];
+    const athletes = await tx.athlete.findMany({
+      where: { ...athleteScope(tournamentId, ownerId), id: { in: athleteIds } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      include: {
+        entries: {
+          where:
+            ownerId === null
+              ? { category: { tournamentId } }
+              : { category: { tournament: { ownerId } } },
+          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+          take: 1,
+          include: { category: { select: { tournamentId: true, gender: true } } },
+        },
+      },
+    });
+    const activeEntries = await tx.entry.findMany({
+      where: { athleteId: { in: athleteIds }, archivedAt: null, category: { tournamentId } },
+      select: { id: true, athleteId: true, categoryId: true },
+    });
+    return athletes.flatMap((athlete) => {
+      const latest = athlete.entries[0];
+      if (!latest) return [];
+      const active = activeEntries.find((entry) => entry.athleteId === athlete.id);
+      return [
+        {
+          id: athlete.id,
+          display: {
+            entryId: latest.id,
+            tournamentId: latest.category.tournamentId,
+            firstName: latest.firstName,
+            lastName: latest.lastName,
+            birthYear: latest.birthYear,
+            gender: latest.gender ?? latest.category.gender,
+            club: latest.club,
+          },
+          activeEntry: active ? { entryId: active.id, categoryId: active.categoryId } : null,
+        },
+      ];
+    });
+  }
+
+  async athletes(id: string, dto: AthleteDirectoryQueryDto, user: Principal) {
+    await this.auth.owner(user, id);
+    return this.db.$transaction(
+      async (tx) => {
+        const tournament = await tx.tournament.findUnique({ where: { id } });
+        if (!tournament) throw new NotFoundException('TOURNAMENT_NOT_FOUND');
+        const words = normalizedName(dto.query ?? '')
+          .split(' ')
+          .filter(Boolean);
+        const ids = await searchAthleteIds(tx, id, tournament.ownerId, words, dto.limit);
+        const catalogue = await this.identityCatalog(tx, id, tournament.ownerId, ids);
+        return {
+          athletes: catalogue,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
 
   async clubs(id: string, user: Principal) {
     await this.auth.owner(user, id);
@@ -164,7 +242,13 @@ export class RosterService {
         if (!tournament) throw new NotFoundException('TOURNAMENT_NOT_FOUND');
         const club = await tx.club.findFirst({ where: { id: dto.clubId, tournamentId: id } });
         if (!club) throw new NotFoundException('CLUB_NOT_FOUND');
-        return validateRoster(tournament, club.name, dto.entries);
+        const available = await scopedAthleteIds(
+          tx,
+          id,
+          tournament.ownerId,
+          dto.entries.flatMap((entry) => (entry.athleteId ? [entry.athleteId] : [])),
+        );
+        return validateRoster(tournament, club.name, dto.entries, undefined, available);
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
@@ -181,22 +265,34 @@ export class RosterService {
           if (saved !== null) return saved;
           await this.current(tx, id, dto.expectedRevision);
           await assertUnusedCommandIds(tx, [dto.id], null);
-          for (const categoryId of [
-            ...new Set(dto.entries.map((entry) => entry.categoryId)),
-          ].sort())
+          const categoryIds = [...new Set(dto.entries.map((entry) => entry.categoryId))].sort();
+          for (const categoryId of categoryIds)
             await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${categoryId} AND "tournamentId"=${id} FOR UPDATE`;
+          await lockIdentityDraws(tx, categoryIds);
+          const selectedIds = dto.entries.flatMap((entry) =>
+            entry.athleteId ? [entry.athleteId] : [],
+          );
+          await lockAthleteIds(tx, selectedIds);
           const tournament = await tx.tournament.findUniqueOrThrow({
             where: { id },
             include: snapshotInclude,
           });
           const club = await tx.club.findFirst({ where: { id: dto.clubId, tournamentId: id } });
           if (!club) throw new NotFoundException('CLUB_NOT_FOUND');
-          const validation = validateRoster(tournament, club.name, dto.entries);
+          const available = await scopedAthleteIds(tx, id, tournament.ownerId, selectedIds);
+          const validation = validateRoster(
+            tournament,
+            club.name,
+            dto.entries,
+            undefined,
+            available,
+          );
           if (!validation.canSave)
             throw new BadRequestException({ message: 'ROSTER_VALIDATION_FAILED', ...validation });
           const createdAt = new Date();
           const rows = dto.entries.map((entry) => ({
             id: randomUUID(),
+            athleteId: entry.athleteId ?? randomUUID(),
             createdAt,
             categoryId: entry.categoryId,
             firstName: cleanName(entry.firstName),
@@ -206,6 +302,10 @@ export class RosterService {
             clubId: club.id,
             club: club.name,
           }));
+          const newAthletes = rows
+            .filter((_, index) => !dto.entries[index]!.athleteId)
+            .map((entry) => ({ id: entry.athleteId, ownerId: tournament.ownerId, createdAt }));
+          if (newAthletes.length) await tx.athlete.createMany({ data: newAthletes });
           await tx.entry.createMany({ data: rows });
           const savedEntries = await tx.entry.findMany({
             where: { id: { in: rows.map((row) => row.id) }, archivedAt: null },
@@ -289,6 +389,7 @@ export class RosterService {
     entryId: string,
     dto: EntryPreviewDto,
   ) {
+    if ('athleteId' in dto) throw new BadRequestException('IDENTITY_CHANGE_REQUIRES_BIND');
     const entry = await this.savedEntry(tx, id, entryId);
     const tournament = await tx.tournament.findUniqueOrThrow({
       where: { id },
@@ -314,7 +415,12 @@ export class RosterService {
           club: dto.clubId === entry.clubId ? entry.club : club.name,
           archivedAt: null,
         };
-    const validation = validateRoster(tournament, club.name, [dto], entryId);
+    const validation = validateRoster(
+      tournament,
+      club.name,
+      [{ ...dto, athleteId: entry.athleteId }],
+      entryId,
+    );
     const errors = validation.rows[0]!.errors;
     if (source.draw?.status === 'CONFIRMED' && !errors.includes('DRAW_LOCKED'))
       errors.push('DRAW_LOCKED');
@@ -356,6 +462,125 @@ export class RosterService {
     });
   }
 
+  private async identityValidation(
+    tx: Prisma.TransactionClient,
+    id: string,
+    entryId: string,
+    dto: EntryIdentityPreviewDto,
+  ) {
+    const before = await this.savedEntry(tx, id, entryId);
+    const tournament = await tx.tournament.findUniqueOrThrow({ where: { id } });
+    const source = await tx.category.findFirst({
+      where: { id: before.categoryId, tournamentId: id },
+      include: { draw: true },
+    });
+    const selected = (await this.identityCatalog(tx, id, tournament.ownerId, [dto.athleteId]))[0];
+    if (!selected) throw new NotFoundException('ATHLETE_NOT_FOUND');
+    const { activeEntry: _, ...athlete } = selected;
+    const errors: string[] = [];
+    if (tournament.status !== 'DRAFT') errors.push('ROSTER_LOCKED');
+    if (before.archivedAt) errors.push('ENTRY_ARCHIVED');
+    if (before.athleteId === dto.athleteId) errors.push('IDENTITY_UNCHANGED');
+    if (source?.draw?.status === 'CONFIRMED') errors.push('DRAW_LOCKED');
+    if (await this.hasContest(tx, entryId)) errors.push('ENTRY_IN_DRAW');
+    if (
+      await tx.entry.findFirst({
+        where: {
+          athleteId: dto.athleteId,
+          id: { not: entryId },
+          archivedAt: null,
+          category: { tournamentId: id },
+        },
+        select: { id: true },
+      })
+    )
+      errors.push('ATHLETE_ALREADY_REGISTERED');
+    return {
+      revision: tournament.rosterRevision,
+      before,
+      proposed: { ...before, athleteId: dto.athleteId },
+      athlete,
+      errors,
+      canSave: errors.length === 0,
+      affectedCategoryIds: [before.categoryId],
+      invalidatedCategoryIds: source?.draw?.status === 'PREVIEW' ? [before.categoryId] : [],
+    };
+  }
+
+  async previewIdentity(
+    id: string,
+    entryId: string,
+    dto: EntryIdentityPreviewDto,
+    user: Principal,
+  ) {
+    await this.auth.owner(user, id);
+    return this.db.$transaction((tx) => this.identityValidation(tx, id, entryId, dto), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    });
+  }
+
+  async bindIdentity(id: string, entryId: string, dto: EntryIdentityBindDto, user: Principal) {
+    await this.auth.owner(user, id);
+    const command = { ...dto, entryId };
+    let result: Prisma.JsonValue | Prisma.InputJsonValue;
+    try {
+      result = await this.db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
+        const saved = await this.receipt(tx, id, 'ENTRY_IDENTITY_BOUND', command);
+        if (saved !== null) return saved;
+        const reason = typeof dto.reason === 'string' ? dto.reason.trim() : '';
+        if ([...reason].length < 3 || [...reason].length > 500)
+          throw new BadRequestException('REASON_REQUIRED');
+        await this.current(tx, id, dto.expectedRevision);
+        await assertUnusedCommandIds(tx, [dto.id], null);
+        const before = await this.savedEntry(tx, id, entryId);
+        await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${before.categoryId} AND "tournamentId"=${id} FOR UPDATE`;
+        await lockIdentityDraws(tx, [before.categoryId]);
+        await lockAthleteIds(tx, [before.athleteId, dto.athleteId]);
+        const validation = await this.identityValidation(tx, id, entryId, dto);
+        if (!validation.canSave) throw new ConflictException(validation.errors[0]);
+        const entry = await tx.entry.update({
+          where: { id: entryId },
+          data: { athlete: { connect: { id: dto.athleteId } } },
+        });
+        const source = await tx.category.findFirst({
+          where: { id: entry.categoryId, tournamentId: id },
+        });
+        const updated = await tx.tournament.update({
+          where: { id },
+          data: { rosterRevision: { increment: 1 } },
+        });
+        const invalidatedCategoryIds = await invalidatePreviewDraws(
+          tx,
+          id,
+          [entry.categoryId],
+          user.id,
+          {
+            type: 'ENTRY_IDENTITY_BOUND',
+            commandId: dto.id,
+          },
+        );
+        const response = json({
+          revision: updated.rosterRevision,
+          entry: { ...entry, gender: entry.gender ?? source!.gender },
+          invalidatedCategoryIds,
+        });
+        await this.record(tx, id, user, 'ENTRY_IDENTITY_BOUND', command, response, entryId, {
+          reason,
+          before: json(before),
+          after: json(entry),
+        });
+        return response;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw new ConflictException('COMMAND_ID_REUSED');
+      throw error;
+    }
+    this.live.notify({ kind: 'result', tournamentId: id });
+    return result;
+  }
+
   private async changeEntry(
     id: string,
     entryId: string,
@@ -387,6 +612,8 @@ export class RosterService {
           const categoryIds = [...new Set([before.categoryId, targetId])].sort();
           for (const categoryId of categoryIds)
             await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${categoryId} AND "tournamentId"=${id} FOR UPDATE`;
+          await lockIdentityDraws(tx, categoryIds);
+          await lockAthleteIds(tx, [before.athleteId]);
           if (await this.hasContest(tx, entryId)) throw new ConflictException('ENTRY_IN_DRAW');
           let data: Prisma.EntryUpdateInput;
           if (type === 'ENTRY_ARCHIVED') {
@@ -405,7 +632,10 @@ export class RosterService {
                 where: { id: before.categoryId, tournamentId: id },
               });
               proposedDto = {
-                ...before,
+                firstName: before.firstName,
+                lastName: before.lastName,
+                birthYear: before.birthYear,
+                categoryId: before.categoryId,
                 clubId: before.clubId!,
                 gender: (before.gender ?? source!.gender) as 'MALE' | 'FEMALE',
                 duplicateConfirmed: (dto as EntryRestoreDto).duplicateConfirmed,

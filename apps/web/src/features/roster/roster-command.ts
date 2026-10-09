@@ -6,9 +6,11 @@ import type {
   RosterEntryInput,
   RosterReceipt,
   SavedEntry,
+  AthleteDisplay,
 } from './roster-model';
 import { entryInputs, isUuid, validSavedEntry, validCategoryIds } from './roster-model.ts';
 import { validDraftRows } from './roster-storage.ts';
+import { validAthleteDisplay } from './athlete-model.ts';
 type Base = { tournamentId: string };
 export type PendingRosterCommand =
   | (Base & { kind: 'club'; payload: { id: string; expectedRevision: number; name: string } })
@@ -21,6 +23,13 @@ export type PendingRosterCommand =
         clubId: string;
         entries: RosterEntryInput[];
       };
+    })
+  | (Base & {
+      kind: 'identity';
+      entryId: string;
+      entrySnapshot: SavedEntry;
+      athleteSnapshot: { id: string; display: AthleteDisplay };
+      payload: { id: string; expectedRevision: number; athleteId: string; reason: string };
     })
   | (Base & {
       kind: 'update';
@@ -58,7 +67,7 @@ export function readPendingRoster(store: Store, tournamentId: string): PendingRo
   if (
     !value ||
     value.tournamentId !== tournamentId ||
-    !['club', 'roster', 'update', 'archive', 'restore'].includes(value.kind) ||
+    !['club', 'roster', 'update', 'archive', 'restore', 'identity'].includes(value.kind) ||
     !value.payload ||
     typeof value.payload.id !== 'string' ||
     !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value.payload.id) ||
@@ -72,7 +81,10 @@ export function readPendingRoster(store: Store, tournamentId: string): PendingRo
         typeof value.payload.clubId !== 'string' ||
         !validDraftRows(value.draftRows) ||
         value.draftRows.length !== value.payload.entries.length)) ||
-    ((value.kind === 'update' || value.kind === 'archive' || value.kind === 'restore') &&
+    ((value.kind === 'update' ||
+      value.kind === 'archive' ||
+      value.kind === 'restore' ||
+      value.kind === 'identity') &&
       (!isUuid(value.entryId) ||
         !validSavedEntry(value.entrySnapshot) ||
         value.entrySnapshot.id !== value.entryId ||
@@ -83,6 +95,12 @@ export function readPendingRoster(store: Store, tournamentId: string): PendingRo
           ? value.entrySnapshot.archivedAt === null
           : value.entrySnapshot.archivedAt !== null) ||
         (value.kind === 'update' && !validCorrectionInput(value.payload)) ||
+        (value.kind === 'identity' &&
+          (!isUuid(value.payload.athleteId) ||
+            !isUuid(value.entrySnapshot.athleteId) ||
+            value.entrySnapshot.athleteId === value.payload.athleteId ||
+            value.athleteSnapshot?.id !== value.payload.athleteId ||
+            !validAthleteDisplay(value.athleteSnapshot?.display))) ||
         ('duplicateConfirmed' in value.payload &&
           value.payload.duplicateConfirmed !== undefined &&
           typeof value.payload.duplicateConfirmed !== 'boolean')))
@@ -97,6 +115,7 @@ export function readPendingRoster(store: Store, tournamentId: string): PendingRo
 }
 function validCorrectionInput(value: RosterEntryInput & { clubId: string }): boolean {
   return (
+    value.athleteId === undefined &&
     isUuid(value.clubId) &&
     isUuid(value.categoryId) &&
     [value.firstName, value.lastName].every(
@@ -121,6 +140,23 @@ function validCorrectionReceipt(
   )
     return false;
   const entry = receipt.entry;
+  if (command.kind === 'identity')
+    return (
+      entry.athleteId === command.payload.athleteId &&
+      entry.archivedAt === null &&
+      entry.categoryId === command.entrySnapshot.categoryId &&
+      entry.clubId === command.entrySnapshot.clubId &&
+      entry.club === command.entrySnapshot.club &&
+      entry.birthYear === command.entrySnapshot.birthYear &&
+      entry.firstName === command.entrySnapshot.firstName &&
+      entry.lastName === command.entrySnapshot.lastName &&
+      (command.entrySnapshot.gender === null || entry.gender === command.entrySnapshot.gender)
+    );
+  if (
+    command.entrySnapshot.athleteId !== undefined &&
+    entry.athleteId !== command.entrySnapshot.athleteId
+  )
+    return false;
   if (command.kind === 'update')
     return (
       entry.archivedAt === null &&
@@ -177,6 +213,9 @@ export async function deliverRosterCommand(
             receipt.entries.some(
               (entry, index) =>
                 !entry?.id ||
+                (entry.athleteId !== undefined && !isUuid(entry.athleteId)) ||
+                (command.payload.entries[index].athleteId !== undefined &&
+                  entry.athleteId !== command.payload.entries[index].athleteId) ||
                 entry.clubId !== command.payload.clubId ||
                 entry.categoryId !== command.payload.entries[index].categoryId ||
                 entry.gender !== command.payload.entries[index].gender,

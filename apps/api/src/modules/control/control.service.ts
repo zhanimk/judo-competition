@@ -17,6 +17,8 @@ import { LiveService } from '../matches/live.service.js';
 import { tatamiQueue } from '../tatamis/queue.js';
 import { ControlCommandDto } from './control.dto.js';
 import { assertUnusedCommandIds } from '../matches/command-ids.js';
+import { lockContestAthletes, requireAvailableAthletes } from '../matches/athlete-guards.js';
+import { profile } from '../rules/profile.js';
 const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
 function plan(draw: Draw, row: Contest, all: Contest[]) {
   const ids = dependentMatches(draw, row.key);
@@ -158,6 +160,7 @@ export class ControlService {
       const current = row.state as unknown as MatchState | null;
       if (dto.type === 'RELEASE_OFFLINE') {
         if (!row.offlineSessionId || !current) throw new ConflictException('OFFLINE_NOT_ACTIVE');
+        await lockContestAthletes(tx, row, { requirePair: false });
         data = {
           ...data,
           offlineSessionId: null,
@@ -185,6 +188,11 @@ export class ControlService {
           }))
         )
           throw new ConflictException('TATAMI_BUSY');
+        const athletes = await lockContestAthletes(tx, row, {
+          requirePair: row.status === 'ACTIVE',
+        });
+        if (row.status === 'ACTIVE')
+          await requireAvailableAthletes(tx, row, athletes, { tatamiId: null });
         const category = await tx.category.findUniqueOrThrow({
           where: { id: row.draw.categoryId },
         });
@@ -204,9 +212,11 @@ export class ControlService {
         };
       } else if (dto.type === 'REMOVE') {
         if (row.status !== 'READY') throw new ConflictException('RESET_FIRST');
+        await lockContestAthletes(tx, row, { requirePair: false });
         data = { ...data, tatami: { disconnect: true }, queueOrder: null };
       } else if (dto.type === 'RESET') {
         if (!['ACTIVE', 'READY'].includes(row.status)) throw new ConflictException('REOPEN_FIRST');
+        await lockContestAthletes(tx, row, { requirePair: false });
         const last = row.tatamiId
           ? await tx.contest.aggregate({
               where: { tatamiId: row.tatamiId },
@@ -228,19 +238,11 @@ export class ControlService {
         if (row.status !== 'CONFIRMED' || !current || !row.tatamiId)
           throw new ConflictException('RESULT_NOT_CONFIRMED');
         if (impact.blocked) throw new ConflictException('DEPENDENT_CONTESTS_STARTED');
-        if (
-          await tx.contest.findFirst({
-            where: {
-              status: 'ACTIVE',
-              OR: [
-                { tatamiId: row.tatamiId },
-                { whiteEntryId: { in: [row.whiteEntryId!, row.blueEntryId!] } },
-                { blueEntryId: { in: [row.whiteEntryId!, row.blueEntryId!] } },
-              ],
-            },
-          })
-        )
-          throw new ConflictException('TATAMI_OR_ATHLETE_BUSY');
+        const athletes = await lockContestAthletes(tx, row);
+        const tournament = await tx.tournament.findUniqueOrThrow({ where: { id } });
+        await requireAvailableAthletes(tx, row, athletes, {
+          restMs: profile(tournament.rulesSnapshot).restMs,
+        });
         // Invalidate only unstarted dependencies. Full old states stay in the audit log.
         for (const c of impact.dependent)
           await tx.contest.update({

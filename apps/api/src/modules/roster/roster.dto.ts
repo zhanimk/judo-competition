@@ -16,13 +16,16 @@ import {
   registerDecorator,
 } from 'class-validator';
 
-export class RosterEntryDto {
+export class EntryFieldsDto {
   @IsString() @Length(1, 80) firstName!: string;
   @IsString() @Length(1, 80) lastName!: string;
   @IsInt() @Min(1900) @Max(2100) birthYear!: number;
   @IsIn(['MALE', 'FEMALE']) gender!: 'MALE' | 'FEMALE';
   @IsUUID() categoryId!: string;
   @IsOptional() @IsBoolean() duplicateConfirmed?: boolean;
+}
+export class RosterEntryDto extends EntryFieldsDto {
+  @IsOptional() @IsUUID() athleteId?: string;
 }
 export class RosterPreviewDto {
   @IsUUID() clubId!: string;
@@ -58,7 +61,7 @@ function TrimmedReason() {
       },
     });
 }
-export class EntryPreviewDto extends RosterEntryDto {
+export class EntryPreviewDto extends EntryFieldsDto {
   @IsUUID() clubId!: string;
 }
 export class EntryUpdateDto extends EntryPreviewDto {
@@ -73,4 +76,14 @@ export class EntryArchiveDto {
 }
 export class EntryRestoreDto extends EntryArchiveDto {
   @IsOptional() @IsBoolean() duplicateConfirmed?: boolean;
+}
+export class EntryIdentityPreviewDto {
+  @IsUUID() athleteId!: string;
+}
+export class EntryIdentityBindDto extends EntryArchiveDto {
+  @IsUUID() athleteId!: string;
+}
+export class AthleteDirectoryQueryDto {
+  @IsOptional() @IsString() @Length(0, 160) query?: string;
+  @Type(() => Number) @IsInt() @Min(1) @Max(50) limit = 20;
 }

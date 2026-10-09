@@ -17,6 +17,9 @@ const {
   EntryUpdateDto,
   EntryArchiveDto,
   EntryRestoreDto,
+  EntryIdentityPreviewDto,
+  EntryIdentityBindDto,
+  AthleteDirectoryQueryDto,
 } = await apiModule('roster/roster.dto');
 const { TournamentsService } = await apiModule('tournaments/tournaments.service');
 const { DrawsService, entryFingerprint } = await apiModule('draws/draws.service');
@@ -47,6 +50,7 @@ function harness({
   failAudit = false,
   collision = false,
   failEntryWrite = false,
+  failAthleteWrite = false,
   matchEvents = [],
 } = {}) {
   let saved = {
@@ -73,6 +77,8 @@ function harness({
       { id: clubId, tournamentId, name: 'Жас Қыран', normalizedName: 'жас қыран', createdAt },
     ],
     entries: [],
+    athletes: [],
+    otherTournaments: [],
     receipts: [],
     audits: [],
     matchEvents: structuredClone(matchEvents),
@@ -80,14 +86,31 @@ function harness({
   };
   const notices = [];
   const locks = [];
+  const athleteReads = [];
   let chain = Promise.resolve();
+  const findTournament = (data, id) =>
+    id === tournamentId
+      ? data.tournament
+      : data.otherTournaments.find((tournament) => tournament.id === id);
   const entryMatches = (data, entry, where = {}) =>
     (!where.id ||
-      (typeof where.id === 'string' ? entry.id === where.id : where.id.in.includes(entry.id))) &&
+      (typeof where.id === 'string'
+        ? entry.id === where.id
+        : (!where.id.in || where.id.in.includes(entry.id)) && entry.id !== where.id.not)) &&
+    (!where.athleteId ||
+      (typeof where.athleteId === 'string'
+        ? entry.athleteId === where.athleteId
+        : where.athleteId.in.includes(entry.athleteId))) &&
     (!where.categoryId || entry.categoryId === where.categoryId) &&
     (!where.category ||
-      data.categories.find((category) => category.id === entry.categoryId)?.tournamentId ===
-        where.category.tournamentId) &&
+      ((!where.category.tournamentId ||
+        data.categories.find((category) => category.id === entry.categoryId)?.tournamentId ===
+          where.category.tournamentId) &&
+        (!where.category.tournament ||
+          findTournament(
+            data,
+            data.categories.find((category) => category.id === entry.categoryId)?.tournamentId,
+          )?.ownerId === where.category.tournament.ownerId))) &&
     (where.archivedAt !== null || entry.archivedAt == null) &&
     (where.archivedAt?.not !== null || entry.archivedAt != null);
   const viewTournament = (data, options) => {
@@ -112,14 +135,16 @@ function harness({
       ...data.tournament,
       clubs,
       tatamis: [],
-      categories: data.categories.map((category) => ({
-        ...category,
-        entries: data.entries.filter(
-          (entry) =>
-            entry.categoryId === category.id &&
-            entryMatches(data, entry, options.include?.categories?.include?.entries?.where),
-        ),
-      })),
+      categories: data.categories
+        .filter((category) => category.tournamentId === tournamentId)
+        .map((category) => ({
+          ...category,
+          entries: data.entries.filter(
+            (entry) =>
+              entry.categoryId === category.id &&
+              entryMatches(data, entry, options.include?.categories?.include?.entries?.where),
+          ),
+        })),
     });
   };
   const category = (data, where) =>
@@ -133,6 +158,18 @@ function harness({
     data.clubs.push(club);
     return structuredClone(club);
   };
+  const athleteMatches = (data, athlete, where = {}) =>
+    (!where.id ||
+      (typeof where.id === 'string'
+        ? athlete.id === where.id
+        : where.id.in.includes(athlete.id))) &&
+    (where.ownerId === undefined || athlete.ownerId === where.ownerId) &&
+    (!where.entries ||
+      data.entries.some(
+        (entry) => entry.athleteId === athlete.id && entryMatches(data, entry, where.entries.some),
+      ));
+  const byNewest = (a, b) =>
+    new Date(b.createdAt) - new Date(a.createdAt) || a.id.localeCompare(b.id);
   const db = {
     tournament: {
       findFirst: async ({ where }) =>
@@ -145,6 +182,36 @@ function harness({
         const tx = {
           $queryRaw: async (strings, ...values) => {
             locks.push({ sql: strings.join('?'), values });
+            if (strings.join('').includes('SELECT a."id" FROM "Athlete" a')) {
+              const [scopeOwner, authorized, search, limit] = values;
+              const words = search.values;
+              return staged.athletes
+                .filter(
+                  (athlete) =>
+                    athlete.ownerId === scopeOwner &&
+                    staged.entries.some((entry) => {
+                      const current = category(staged, { id: entry.categoryId });
+                      const permitted =
+                        scopeOwner === null
+                          ? current.tournamentId === authorized.values[0]
+                          : findTournament(staged, current.tournamentId)?.ownerId === scopeOwner;
+                      const text =
+                        `${entry.lastName} ${entry.firstName} ${entry.birthYear} ${entry.club}`
+                          .normalize('NFKC')
+                          .trim()
+                          .replace(/\s+/g, ' ')
+                          .toLocaleLowerCase('ru');
+                      return (
+                        permitted &&
+                        entry.athleteId === athlete.id &&
+                        words.every((word) => text.includes(word))
+                      );
+                    }),
+                )
+                .sort(byNewest)
+                .slice(0, limit)
+                .map(({ id }) => ({ id }));
+            }
             return [];
           },
           tournament: {
@@ -224,6 +291,48 @@ function harness({
               );
             },
           },
+          athlete: {
+            findMany: async (options) => {
+              athleteReads.push(structuredClone(options));
+              return structuredClone(
+                staged.athletes
+                  .filter((athlete) => athleteMatches(staged, athlete, options.where))
+                  .sort(byNewest)
+                  .map((athlete) =>
+                    options.include?.entries
+                      ? {
+                          ...athlete,
+                          entries: staged.entries
+                            .filter(
+                              (entry) =>
+                                entry.athleteId === athlete.id &&
+                                entryMatches(staged, entry, options.include.entries.where),
+                            )
+                            .sort(byNewest)
+                            .slice(0, options.include.entries.take)
+                            .map((entry) => ({
+                              ...entry,
+                              category: category(staged, { id: entry.categoryId }),
+                            })),
+                        }
+                      : athlete,
+                  ),
+              );
+            },
+            create: async ({ data }) => {
+              const athlete = { id: randomUUID(), createdAt, ...structuredClone(data) };
+              staged.athletes.push(athlete);
+              return structuredClone(athlete);
+            },
+            createMany: async ({ data }) => {
+              if (failAthleteWrite) {
+                staged.athletes.push(structuredClone(data[0]));
+                throw new Error('identity storage unavailable');
+              }
+              staged.athletes.push(...structuredClone(data));
+              return { count: data.length };
+            },
+          },
           entry: {
             count: async ({ where }) =>
               staged.entries.filter((entry) => entryMatches(staged, entry, where)).length,
@@ -240,7 +349,7 @@ function harness({
                     include?.category
                       ? {
                           ...entry,
-                          category: { gender: category(staged, { id: entry.categoryId }).gender },
+                          category: category(staged, { id: entry.categoryId }),
                         }
                       : entry,
                   ),
@@ -248,10 +357,11 @@ function harness({
             update: async ({ where, data }) => {
               const entry = staged.entries.find((entry) => entry.id === where.id);
               if (failEntryWrite) throw new Error('entry storage unavailable');
-              const { category, clubRecord, ...values } = data;
+              const { category, clubRecord, athlete, ...values } = data;
               Object.assign(entry, structuredClone(values));
               if (category) entry.categoryId = category.connect.id;
               if (clubRecord) entry.clubId = clubRecord.connect.id;
+              if (athlete) entry.athleteId = athlete.connect.id;
               return structuredClone(entry);
             },
             create: async ({ data }) => {
@@ -332,8 +442,22 @@ function harness({
   return {
     notices,
     locks,
+    athleteReads,
     snapshot: () => structuredClone(saved),
-    mutate: (fn) => fn(saved),
+    mutate: (fn) => {
+      fn(saved);
+      for (const entry of saved.entries) {
+        entry.athleteId ??= entry.id;
+        if (!saved.athletes.some((athlete) => athlete.id === entry.athleteId))
+          saved.athletes.push({
+            id: entry.athleteId,
+            ownerId:
+              findTournament(saved, category(saved, { id: entry.categoryId }).tournamentId)
+                ?.ownerId ?? null,
+            createdAt,
+          });
+      }
+    },
     dto: (entries = [row()], extra = {}) => ({
       id: randomUUID(),
       expectedRevision: saved.tournament.rosterRevision,
@@ -363,6 +487,12 @@ function harness({
     previewEntry: (entryId, dto, user = owner) =>
       service.previewEntry(tournamentId, entryId, dto, user),
     archived: (user = owner) => service.archived(tournamentId, user),
+    athletes: (query = '', limit = 20, user = owner) =>
+      service.athletes(tournamentId, { query, limit }, user),
+    previewIdentity: (entryId, athleteId, user = owner) =>
+      service.previewIdentity(tournamentId, entryId, { athleteId }, user),
+    bind: (entryId, dto, user = owner, id = tournamentId) =>
+      service.bindIdentity(id, entryId, dto, user),
     restart: () => {
       service = new RosterService(db, auth, live);
     },
@@ -790,7 +920,12 @@ test('draw fingerprints preserve original Entry column order and ignore new club
     },
   ];
   const oldHash = createHash('sha256').update(JSON.stringify(original)).digest('hex');
-  const upgraded = original.map((entry) => ({ gender: 'MALE', clubId, ...entry }));
+  const upgraded = original.map((entry) => ({
+    gender: 'MALE',
+    clubId,
+    athleteId: randomUUID(),
+    ...entry,
+  }));
   assert.equal(entryFingerprint(upgraded), oldHash);
   assert.notEqual(entryFingerprint([...upgraded, { ...upgraded[0], id: randomUUID() }]), oldHash);
   assert.notEqual(
@@ -1218,4 +1353,463 @@ test('STALE draw confirmation rejects even if restoring entries returns the prev
     httpError(409, 'DRAW_ENTRIES_CHANGED'),
   );
   assert.equal(entryReads, 0);
+});
+
+function history(h, extra = {}, historyOwner = owner.id) {
+  const pastTournamentId = randomUUID();
+  const pastCategoryId = randomUUID();
+  const entry = savedEntry({
+    categoryId: pastCategoryId,
+    archivedAt: new Date(createdAt),
+    ...extra,
+  });
+  h.mutate((state) => {
+    state.otherTournaments.push({
+      id: pastTournamentId,
+      ownerId: historyOwner,
+      status: 'FINISHED',
+    });
+    state.categories.push({
+      id: pastCategoryId,
+      tournamentId: pastTournamentId,
+      gender: 'MALE',
+      draw: null,
+    });
+    state.entries.push(entry);
+  });
+  return entry;
+}
+
+test('identity DTOs keep batch selection explicit and ordinary entry edits reject athleteId', async () => {
+  const athleteId = randomUUID();
+  const command = {
+    id: randomUUID(),
+    expectedRevision: 0,
+    reason: 'Выбран существующий спортсмен',
+    athleteId,
+  };
+  for (const [Dto, value] of [
+    [EntryIdentityPreviewDto, { athleteId }],
+    [EntryIdentityBindDto, command],
+    [
+      RosterCommitDto,
+      { id: randomUUID(), expectedRevision: 0, clubId, entries: [row({ athleteId })] },
+    ],
+    [AthleteDirectoryQueryDto, { query: 'Әлихан', limit: '20' }],
+  ])
+    assert.equal((await validate(plainToInstance(Dto, value))).length, 0);
+  for (const value of [
+    { ...command, athleteId: 'wrong' },
+    { ...command, expectedRevision: -1 },
+    { ...command, reason: ' x ' },
+    { ...command, id: undefined },
+  ])
+    assert.ok((await validate(plainToInstance(EntryIdentityBindDto, value))).length > 0);
+  for (const limit of [0, 51, 1.5])
+    assert.ok((await validate(plainToInstance(AthleteDirectoryQueryDto, { limit }))).length > 0);
+  assert.ok(
+    (
+      await validate(
+        plainToInstance(EntryUpdateDto, { ...command, ...previewEntry(savedEntry()) }),
+        {
+          whitelist: true,
+          forbidNonWhitelisted: true,
+        },
+      )
+    ).some((error) => error.property === 'athleteId'),
+  );
+  const { h, entry } = seeded();
+  const before = h.snapshot();
+  await assert.rejects(
+    h.update(entry.id, { ...h.correction(), ...previewEntry(entry), athleteId }),
+    httpError(400, 'IDENTITY_CHANGE_REQUIRES_BIND'),
+  );
+  assert.deepEqual(h.snapshot(), before);
+});
+
+test('new admissions never merge equal names and preserve independent identity metadata', async () => {
+  const h = harness();
+  const result = await h.commit(
+    h.dto([row({ duplicateConfirmed: true }), row({ duplicateConfirmed: true })]),
+  );
+  assert.notEqual(result.entries[0].athleteId, result.entries[1].athleteId);
+  assert.equal(h.snapshot().athletes.length, 2);
+  for (const athlete of h.snapshot().athletes)
+    assert.deepEqual(Object.keys(athlete).sort(), ['createdAt', 'id', 'ownerId']);
+  const dto = h.correction();
+  await h.update(result.entries[0].id, {
+    ...dto,
+    ...previewEntry(result.entries[0], { lastName: 'Новая фамилия', duplicateConfirmed: true }),
+  });
+  assert.equal(h.snapshot().entries[1].lastName, 'Серік');
+  assert.equal(h.snapshot().entries[0].athleteId, result.entries[0].athleteId);
+  assert.equal(h.snapshot().athletes.length, 2);
+});
+
+test('owner history selection reuses one identity without rewriting historical snapshots', async () => {
+  const h = harness();
+  const past = history(h, { gender: null, club: 'Historical snapshot', lastName: 'Old name' });
+  const before = h.snapshot().entries[0];
+  const result = await h.commit(h.dto([row({ athleteId: past.athleteId })]));
+  assert.equal(result.entries[0].athleteId, past.athleteId);
+  assert.notEqual(result.entries[0].id, past.id);
+  assert.deepEqual(
+    h.snapshot().entries.find((entry) => entry.id === past.id),
+    before,
+  );
+  assert.equal(h.snapshot().athletes.length, 1);
+});
+
+test('one active admission per identity spans clubs and categories and batch duplicates cannot override it', async () => {
+  const h = harness();
+  const first = (await h.commit(h.dto())).entries[0];
+  const before = h.snapshot();
+  const attempted = row({
+    firstName: 'Different',
+    lastName: 'Name',
+    gender: 'FEMALE',
+    categoryId: femaleCategoryId,
+    athleteId: first.athleteId,
+    duplicateConfirmed: true,
+  });
+  assert.ok((await h.preview([attempted])).rows[0].errors.includes('ATHLETE_ALREADY_REGISTERED'));
+  await assert.rejects(h.commit(h.dto([attempted])), rowError('ATHLETE_ALREADY_REGISTERED'));
+  assert.deepEqual(h.snapshot(), before);
+  const past = history(h);
+  const batch = [
+    row({ athleteId: past.athleteId, lastName: 'А' }),
+    row({
+      athleteId: past.athleteId,
+      lastName: 'Б',
+      categoryId: femaleCategoryId,
+      gender: 'FEMALE',
+    }),
+  ];
+  assert.ok(
+    (await h.preview(batch)).rows.every((row) => row.errors.includes('ATHLETE_ALREADY_REGISTERED')),
+  );
+  await assert.rejects(h.commit(h.dto(batch)), rowError('ATHLETE_ALREADY_REGISTERED'));
+});
+
+test('foreign owner identities are unavailable even to a superadmin operating the target tournament', async () => {
+  const { h, entry } = seeded();
+  const foreign = history(h, {}, randomUUID());
+  const before = h.snapshot();
+  await assert.rejects(
+    h.commit(h.dto([row({ athleteId: foreign.athleteId })]), { role: 'SUPER_ADMIN' }),
+    rowError('ATHLETE_NOT_FOUND'),
+  );
+  await assert.rejects(
+    h.previewIdentity(entry.id, foreign.athleteId, { role: 'SUPER_ADMIN' }),
+    httpError(404, 'ATHLETE_NOT_FOUND'),
+  );
+  await assert.rejects(
+    h.bind(entry.id, h.correction({ athleteId: foreign.athleteId }), { role: 'SUPER_ADMIN' }),
+    httpError(404, 'ATHLETE_NOT_FOUND'),
+  );
+  assert.deepEqual(h.snapshot(), before);
+  assert.ok(
+    !(await h.athletes('', 20, { role: 'SUPER_ADMIN' })).athletes.some(
+      (athlete) => athlete.id === foreign.athleteId,
+    ),
+  );
+});
+
+test('directory filters authorized historical Unicode snapshots before a bounded latest-display read', async () => {
+  const h = harness();
+  const old = history(h, { lastName: '  Ｓｅｒｉｋ\uFEFFҚЫРАН ', gender: null });
+  const latest = history(h, {
+    athleteId: old.athleteId,
+    lastName: 'Changed family',
+    createdAt: new Date('2026-10-10T08:00:00.000Z'),
+  });
+  history(h, { lastName: 'ҚЫРАН' }, randomUUID());
+  const before = h.snapshot();
+  const result = await h.athletes('serik қыран', 1);
+  assert.equal(result.athletes.length, 1);
+  assert.equal(result.athletes[0].id, old.athleteId);
+  assert.equal(result.athletes[0].display.entryId, latest.id);
+  assert.equal(result.athletes[0].display.gender, 'MALE');
+  assert.equal(result.athletes[0].activeEntry, null);
+  assert.ok(h.athleteReads.every((read) => !read.include || read.include.entries.take === 1));
+  const query = h.locks.find((lock) => lock.sql.includes('SELECT a."id" FROM "Athlete" a'));
+  assert.ok(query.sql.includes('LIMIT'));
+  assert.equal(query.values.at(-1), 1);
+  assert.deepEqual(h.snapshot(), before);
+  assert.equal(h.notices.length, 0);
+  assert.equal((await h.athletes('%')).athletes.length, 0);
+});
+
+test('orphan identities never cross null-owner tournament boundaries', async () => {
+  const { h, entry } = seeded();
+  const otherOrphan = history(h, {}, null);
+  h.mutate((state) => {
+    state.tournament.ownerId = null;
+    state.athletes.find((athlete) => athlete.id === entry.athleteId).ownerId = null;
+  });
+  const admin = { role: 'SUPER_ADMIN' };
+  const directory = await h.athletes('', 20, admin);
+  assert.deepEqual(
+    directory.athletes.map((athlete) => athlete.id),
+    [entry.athleteId],
+  );
+  await assert.rejects(
+    h.previewIdentity(entry.id, otherOrphan.athleteId, admin),
+    httpError(404, 'ATHLETE_NOT_FOUND'),
+  );
+  await assert.rejects(
+    h.commit(h.dto([row({ athleteId: otherOrphan.athleteId })]), admin),
+    rowError('ATHLETE_NOT_FOUND'),
+  );
+});
+
+test('identity preview is read-only and bind preserves raw snapshot while invalidating preview with history', async () => {
+  const { h, entry } = seeded({}, { gender: null, club: '  Original club snapshot ' });
+  const past = history(h, { firstName: 'Reference', lastName: 'Different' });
+  h.mutate((state) => {
+    state.categories[0].draw = {
+      id: randomUUID(),
+      status: 'PREVIEW',
+      version: 2,
+      fingerprint: 'old hash',
+      snapshot: { entryId: entry.id },
+    };
+  });
+  const before = h.snapshot();
+  const preview = await h.previewIdentity(entry.id, past.athleteId);
+  assert.equal(preview.canSave, true);
+  assert.equal(preview.before.gender, null);
+  assert.equal(preview.proposed.gender, null);
+  assert.deepEqual(preview.proposed, { ...preview.before, athleteId: past.athleteId });
+  assert.deepEqual(h.snapshot(), before);
+  const command = h.correction({
+    athleteId: past.athleteId,
+    reason: '  Та же личность, подтверждено администратором  ',
+  });
+  const receipt = await h.bind(entry.id, command);
+  assert.equal(receipt.entry.id, entry.id);
+  assert.equal(receipt.entry.gender, 'MALE');
+  assert.equal(receipt.entry.athleteId, past.athleteId);
+  const after = h.snapshot();
+  assert.deepEqual(
+    after.entries.find((saved) => saved.id === entry.id),
+    { ...before.entries.find((saved) => saved.id === entry.id), athleteId: past.athleteId },
+  );
+  assert.deepEqual(
+    after.entries.find((saved) => saved.id === past.id),
+    before.entries.find((saved) => saved.id === past.id),
+  );
+  assert.deepEqual(after.athletes, before.athletes);
+  assert.equal(after.categories[0].draw.status, 'STALE');
+  assert.equal(after.categories[0].draw.version, 3);
+  assert.deepEqual(after.categories[0].draw.snapshot, before.categories[0].draw.snapshot);
+  const audit = after.audits.find((audit) => audit.action === 'ENTRY_IDENTITY_BOUND');
+  assert.equal(audit.payload.before.athleteId, entry.athleteId);
+  assert.equal(audit.payload.after.athleteId, past.athleteId);
+  assert.equal(audit.payload.reason, command.reason.trim());
+  assert.deepEqual(
+    after.audits.find((audit) => audit.action === 'DRAW_INVALIDATED').payload.invalidatedDraws[0]
+      .snapshot,
+    before.categories[0].draw.snapshot,
+  );
+  const athleteLocks = h.locks.filter((lock) => lock.sql.includes('FROM "Athlete" WHERE'));
+  assert.deepEqual(
+    athleteLocks.map((lock) => lock.values[0]),
+    [entry.athleteId, past.athleteId].sort(),
+  );
+});
+
+test('identity bind exact receipt survives restart/current changes and anchors tournament and entry paths', async () => {
+  const { h, entry } = seeded();
+  const past = history(h);
+  const command = h.correction({ athleteId: past.athleteId });
+  const receipt = await h.bind(entry.id, command);
+  h.mutate((state) => {
+    state.tournament.status = 'RUNNING';
+    state.tournament.rosterRevision = 90;
+    state.categories[0].draw = { status: 'CONFIRMED' };
+  });
+  h.restart();
+  const before = h.snapshot();
+  assert.deepEqual(await h.bind(entry.id, command), receipt);
+  assert.deepEqual(h.snapshot(), before);
+  await assert.rejects(h.bind(randomUUID(), command), httpError(409, 'COMMAND_ID_REUSED'));
+  await assert.rejects(
+    h.bind(entry.id, command, { role: 'SUPER_ADMIN' }, randomUUID()),
+    httpError(409, 'COMMAND_ID_REUSED'),
+  );
+  await assert.rejects(
+    h.bind(entry.id, { ...command, reason: 'Другая причина' }),
+    httpError(409, 'COMMAND_ID_REUSED'),
+  );
+  assert.equal(before.receipts.length, 1);
+  assert.equal(before.audits.length, 1);
+});
+
+test('binding guards owner permissions, reason/version, current identity and archived/confirmed/contest state', async () => {
+  const { h, entry } = seeded();
+  const past = history(h);
+  for (const user of [
+    { id: randomUUID(), role: 'ORGANIZER' },
+    { id: owner.id, role: 'OPERATOR' },
+  ]) {
+    await assert.rejects(h.previewIdentity(entry.id, past.athleteId, user), httpError(403));
+    await assert.rejects(
+      h.bind(entry.id, h.correction({ athleteId: past.athleteId }), user),
+      httpError(403),
+    );
+    await assert.rejects(h.athletes('', 20, user), httpError(403));
+  }
+  await assert.rejects(
+    h.bind(entry.id, h.correction({ athleteId: past.athleteId, reason: ' x ' })),
+    httpError(400, 'REASON_REQUIRED'),
+  );
+  await assert.rejects(
+    h.bind(entry.id, h.correction({ athleteId: past.athleteId, expectedRevision: 99 })),
+    httpError(409, 'VERSION_CONFLICT'),
+  );
+  await assert.rejects(
+    h.bind(entry.id, h.correction({ athleteId: entry.athleteId })),
+    httpError(409, 'IDENTITY_UNCHANGED'),
+  );
+  for (const [prepare, code] of [
+    [
+      (state) => {
+        state.entries[0].archivedAt = createdAt;
+      },
+      'ENTRY_ARCHIVED',
+    ],
+    [
+      (state) => {
+        state.categories[0].draw = { status: 'CONFIRMED' };
+      },
+      'DRAW_LOCKED',
+    ],
+    [
+      (state) => {
+        state.contests.push({ winnerEntryId: entry.id });
+      },
+      'ENTRY_IN_DRAW',
+    ],
+    [
+      (state) => {
+        state.tournament.status = 'RUNNING';
+      },
+      'ROSTER_LOCKED',
+    ],
+  ]) {
+    h.mutate((state) => {
+      state.entries[0].archivedAt = null;
+      state.categories[0].draw = null;
+      state.contests = [];
+      state.tournament.status = 'DRAFT';
+      prepare(state);
+    });
+    const before = h.snapshot();
+    assert.ok((await h.previewIdentity(entry.id, past.athleteId)).errors.includes(code));
+    await assert.rejects(
+      h.bind(entry.id, h.correction({ athleteId: past.athleteId })),
+      httpError(409, code),
+    );
+    assert.deepEqual(h.snapshot(), before);
+  }
+});
+
+test('binding an identity already active elsewhere in the same tournament is always rejected', async () => {
+  const h = harness();
+  const entries = (
+    await h.commit(
+      h.dto([
+        row({ lastName: 'А' }),
+        row({ lastName: 'Б', categoryId: femaleCategoryId, gender: 'FEMALE' }),
+      ]),
+    )
+  ).entries;
+  const before = h.snapshot();
+  assert.ok(
+    (await h.previewIdentity(entries[0].id, entries[1].athleteId)).errors.includes(
+      'ATHLETE_ALREADY_REGISTERED',
+    ),
+  );
+  await assert.rejects(
+    h.bind(entries[0].id, h.correction({ athleteId: entries[1].athleteId })),
+    httpError(409, 'ATHLETE_ALREADY_REGISTERED'),
+  );
+  assert.deepEqual(h.snapshot(), before);
+});
+
+test('archiving frees tournament registration but restore preserves identity and rejects a replacement active admission', async () => {
+  const h = harness();
+  const original = (await h.commit(h.dto())).entries[0];
+  await h.archive(original.id, h.correction());
+  const second = (
+    await h.commit(h.dto([row({ athleteId: original.athleteId, lastName: 'New registration' })]))
+  ).entries[0];
+  const before = h.snapshot();
+  const preview = await h.previewEntry(
+    original.id,
+    previewEntry(original, { duplicateConfirmed: true }),
+  );
+  assert.ok(preview.rows[0].errors.includes('ATHLETE_ALREADY_REGISTERED'));
+  await assert.rejects(
+    h.restore(original.id, h.correction({ duplicateConfirmed: true })),
+    rowError('ATHLETE_ALREADY_REGISTERED'),
+  );
+  assert.deepEqual(h.snapshot(), before);
+  await h.archive(second.id, h.correction());
+  const restored = await h.restore(original.id, h.correction());
+  assert.equal(restored.entry.athleteId, original.athleteId);
+  assert.equal(h.snapshot().athletes.length, 1);
+});
+
+test('identity creation and binding storage/audit failures roll back identities, snapshots and revision', async () => {
+  const h = harness({ failAthleteWrite: true });
+  const before = h.snapshot();
+  await assert.rejects(h.commit(h.dto()), /identity storage unavailable/);
+  assert.deepEqual(h.snapshot(), before);
+  for (const options of [{ failAudit: true }, { collision: true }, { failEntryWrite: true }]) {
+    const { h, entry } = seeded(options);
+    const past = history(h);
+    h.mutate((state) => {
+      state.categories[0].draw = {
+        status: 'PREVIEW',
+        version: 1,
+        fingerprint: 'old',
+        snapshot: { entryId: entry.id },
+      };
+    });
+    const before = h.snapshot();
+    await assert.rejects(h.bind(entry.id, h.correction({ athleteId: past.athleteId })));
+    assert.deepEqual(h.snapshot(), before);
+    assert.equal(h.notices.length, 0);
+  }
+});
+
+test('competing bind and batch-registration commands admit only one current identity decision', async () => {
+  const { h, entry } = seeded();
+  const past = history(h);
+  const results = await Promise.allSettled([
+    h.bind(entry.id, h.correction({ athleteId: past.athleteId })),
+    h.commit(
+      h.dto([row({ athleteId: past.athleteId, lastName: 'Other', duplicateConfirmed: true })]),
+    ),
+  ]);
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.ok(
+    httpError(
+      409,
+      'VERSION_CONFLICT',
+    )(results.find((result) => result.status === 'rejected').reason),
+  );
+  assert.equal(
+    h
+      .snapshot()
+      .entries.filter(
+        (entry) =>
+          entry.athleteId === past.athleteId &&
+          !entry.archivedAt &&
+          entry.categoryId === categoryId,
+      ).length,
+    1,
+  );
 });

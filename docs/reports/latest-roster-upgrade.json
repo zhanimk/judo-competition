@@ -1,18 +1,18 @@
 {
-  "startedAt": "2026-10-09T08:22:51.872Z",
+  "startedAt": "2026-10-09T14:28:13.597Z",
   "passed": true,
-  "output": "tmp/roster-upgrade/verified-2026-10-09T08-22-51.870Z-81418040",
-  "dumpPath": "tmp/roster-upgrade/verified-2026-10-09T08-22-51.870Z-81418040/database.dump",
+  "output": "tmp/roster-upgrade/verified-2026-10-09T14-28-13.595Z-729505ab",
+  "dumpPath": "tmp/roster-upgrade/verified-2026-10-09T14-28-13.595Z-729505ab/database.dump",
   "schema": "public",
-  "verificationDatabase": "qa_restore_61ad9bf345ef490ca103552b4ca1170d",
+  "verificationDatabase": "qa_restore_8c52f0f31c3b40c297e9dc8bfe14e9e2",
   "verificationDatabaseRemoved": true,
   "versions": {
     "server": "180003",
     "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
     "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
   },
-  "dumpBytes": 84906,
-  "dumpSha256": "c2c2c9d3cb13e1dd5fc751700e5d937c6cf5fca198b95d3cc5fa51c41762f243",
+  "dumpBytes": 85730,
+  "dumpSha256": "4b80d99a74c787511818fc4cc1fc4f22edc41284771069b4cb0e1afd17a77b2c",
   "tables": [
     {
       "name": "AuditEvent",
@@ -81,7 +81,7 @@
     },
     {
       "name": "_prisma_migrations",
-      "rows": 12,
+      "rows": 13,
       "matched": true
     }
   ],
@@ -95,7 +95,11 @@
     "clubNormalizationVerified": true,
     "legacyGenderCompatible": true,
     "unicodeFixtureEntries": 0,
-    "migrationsAppliedTwice": true
+    "migrationsAppliedTwice": true,
+    "athleteIdentityLinksVerified": true,
+    "athleteOwnerScopeVerified": true,
+    "athleteIdentityRequired": true,
+    "historicalAthletesNotMerged": true
   },
-  "finishedAt": "2026-10-09T08:22:55.211Z"
+  "finishedAt": "2026-10-09T14:28:15.828Z"
 }

@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "checkedAt": "2026-10-09T14:46:18.920Z",
+  "migration": "20261009030000_athlete_identity",
+  "oldTablesPreserved": 14,
+  "oldColumnValuesPreserved": true,
+  "oldEntryAndDrawIdsPreserved": true,
+  "existingEntriesActive": 34,
+  "archivedEntries": 0,
+  "clubs": 4,
+  "athleteIdentities": 34,
+  "historicalIdentitiesNotMerged": true,
+  "athleteOwnerScopeVerified": true
+}

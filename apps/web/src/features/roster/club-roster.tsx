@@ -5,6 +5,7 @@ import { useLanguage } from '../../shared/i18n/provider';
 import { ApiError, request } from '../tournaments/api';
 import type { Tournament } from '../tournaments/types';
 import { EntryCorrection } from './entry-correction';
+import { EntryIdentity } from './entry-identity';
 import type { CorrectionMode } from './entry-correction-model';
 import { rosterMessage } from './messages';
 import {
@@ -56,16 +57,21 @@ export function ClubRoster({
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [checked, setChecked] = useState<CheckedDraft | null>(null);
   const [pending, setPending] = useState<PendingRosterCommand | null>(null);
-  const [correction, setCorrection] = useState<{ entry: SavedEntry; mode: CorrectionMode } | null>(
-    null,
-  );
+  const [correction, setCorrection] = useState<{
+    entry: SavedEntry;
+    mode: CorrectionMode | 'identity';
+  } | null>(null);
   const [correctionAttempt, setCorrectionAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [storageBlocked, setStorageBlocked] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState<{
+    kind: PendingRosterCommand['kind'];
+    count: number;
+    invalidated: boolean;
+  } | null>(null);
   const [paste, setPaste] = useState('');
   const [pasteIssues, setPasteIssues] = useState<{ line: number; code: string }[]>([]);
   const busyRef = useRef(false);
@@ -76,6 +82,34 @@ export function ClubRoster({
   const selectedClub = tournament.clubs.find((club) => club.id === selectedClubId);
   const previewCurrent = previewMatchesDraft(checked, rows, tournament.rosterRevision);
   const sayError = (code: string) => setError(rosterMessage(code, locale === 'kk'));
+  const noticeText = notice
+    ? {
+        club: text('Клуб создан. Теперь внесите состав.', 'Клуб құрылды. Енді құрамын енгізіңіз.'),
+        roster: text(
+          `Состав сохранён: ${notice.count} спортсменов. Можно добавить следующих.`,
+          `Құрам сақталды: ${notice.count} спортшы. Келесілерін қосуға болады.`,
+        ),
+        update: text('Исправление заявки сохранено.', 'Өтінім түзетуі сақталды.'),
+        identity: text(
+          'Связь заявки со спортсменом исправлена; данные заявки сохранены.',
+          'Өтінімнің спортшымен байланысы түзетілді; өтінім деректері сақталды.',
+        ),
+        archive: text(
+          'Участник исключён из состава. Заявка доступна в архиве для восстановления.',
+          'Қатысушы құрамнан шығарылды. Өтінімді мұрағаттан қалпына келтіруге болады.',
+        ),
+        restore: text(
+          'Исходная заявка восстановлена в составе.',
+          'Бастапқы өтінім құрамда қалпына келтірілді.',
+        ),
+      }[notice.kind] +
+      (notice.invalidated
+        ? text(
+            ' Предварительные сетки затронутых категорий нужно сформировать заново.',
+            ' Тиісті санаттардың алдын ала торларын қайта құру қажет.',
+          )
+        : '')
+    : '';
 
   useEffect(() => {
     mounted.current = true;
@@ -148,7 +182,7 @@ export function ClubRoster({
       setPaste(id ? readRosterPaste(sessionStorage, tournament.id, id) : '');
       setPasteIssues([]);
       setError('');
-      setNotice('');
+      setNotice(null);
     } catch (error) {
       storageFailure(error);
     }
@@ -159,7 +193,7 @@ export function ClubRoster({
       saveRosterDraft(sessionStorage, tournament.id, selectedClubId, next);
       setRows(next);
       setError('');
-      setNotice('');
+      setNotice(null);
       return true;
     } catch (error) {
       storageFailure(error);
@@ -186,11 +220,11 @@ export function ClubRoster({
       if (mounted.current) sayError('REFRESH_FAILED');
     }
   }
-  function openCorrection(entry: SavedEntry, mode: CorrectionMode) {
+  function openCorrection(entry: SavedEntry, mode: CorrectionMode | 'identity') {
     if (disabled) return;
     setCorrection({ entry: structuredClone(entry), mode });
     setError('');
-    setNotice('');
+    setNotice(null);
   }
 
   async function deliver(command: PendingRosterCommand) {
@@ -206,7 +240,7 @@ export function ClubRoster({
     busyRef.current = true;
     setBusy(true);
     setError('');
-    setNotice('');
+    setNotice(null);
     try {
       const result = await deliverRosterCommand(command, (path, payload) =>
         request<Receipt>(path, payload),
@@ -238,35 +272,13 @@ export function ClubRoster({
           setPasteIssues([]);
           setShowValidation(false);
           if ('entryId' in command) setCorrection(null);
-          const completed =
-            command.kind === 'club'
-              ? text('Клуб создан. Теперь внесите состав.', 'Клуб құрылды. Енді құрамын енгізіңіз.')
-              : command.kind === 'roster'
-                ? text(
-                    `Состав сохранён: ${command.payload.entries.length} спортсменов. Можно добавить следующих.`,
-                    `Құрам сақталды: ${command.payload.entries.length} спортшы. Келесілерін қосуға болады.`,
-                  )
-                : command.kind === 'update'
-                  ? text('Исправление заявки сохранено.', 'Өтінім түзетуі сақталды.')
-                  : command.kind === 'archive'
-                    ? text(
-                        'Участник исключён из состава. Заявка доступна в архиве для восстановления.',
-                        'Қатысушы құрамнан шығарылды. Өтінімді мұрағаттан қалпына келтіруге болады.',
-                      )
-                    : text(
-                        'Исходная заявка восстановлена в составе.',
-                        'Бастапқы өтінім құрамда қалпына келтірілді.',
-                      );
-          setNotice(
-            completed +
-              ('invalidatedCategoryIds' in result.receipt &&
-              result.receipt.invalidatedCategoryIds?.length
-                ? text(
-                    ' Предварительные сетки затронутых категорий нужно сформировать заново.',
-                    ' Тиісті санаттардың алдын ала торларын қайта құру қажет.',
-                  )
-                : ''),
-          );
+          setNotice({
+            kind: command.kind,
+            count: command.kind === 'roster' ? command.payload.entries.length : 0,
+            invalidated:
+              'invalidatedCategoryIds' in result.receipt &&
+              !!result.receipt.invalidatedCategoryIds?.length,
+          });
           await refreshAfterDelivery();
         }
       } else {
@@ -304,7 +316,7 @@ export function ClubRoster({
     if (disabled || busyRef.current || !selectedClub || !rows.length) return;
     setShowValidation(true);
     setChecked(null);
-    setNotice('');
+    setNotice(null);
     setError('');
     if (rows.some((row) => rowErrors(row, tournament.categories).length)) return;
     busyRef.current = true;
@@ -436,7 +448,7 @@ export function ClubRoster({
           )}
           {notice && (
             <p className="info-note" role="status">
-              {notice}
+              {noticeText}
             </p>
           )}
           {pending && (
@@ -484,6 +496,7 @@ export function ClubRoster({
               )}
             </p>
             <RosterEditor
+              tournamentId={tournament.id}
               rows={rows}
               categories={tournament.categories}
               checked={checked}
@@ -577,13 +590,28 @@ export function ClubRoster({
           </div>
         </section>
       )}
-      {correction && (
+      {correction?.mode === 'identity' && (
+        <EntryIdentity
+          key={`${correction.entry.id}:identity`}
+          tournament={tournament}
+          entry={correction.entry}
+          pending={pending?.kind === 'identity' ? pending : null}
+          disabled={deliveryDisabled}
+          attempt={correctionAttempt}
+          onDeliver={deliver}
+          onClose={() => {
+            if (!busy && !pending) setCorrection(null);
+          }}
+          onUpdate={onUpdate}
+        />
+      )}
+      {correction && correction.mode !== 'identity' && (
         <EntryCorrection
           key={`${correction.entry.id}:${correction.mode}`}
           tournament={tournament}
           entry={correction.entry}
           mode={correction.mode}
-          pending={pending && 'entryId' in pending ? pending : null}
+          pending={pending && 'entryId' in pending && pending.kind !== 'identity' ? pending : null}
           disabled={deliveryDisabled}
           attempt={correctionAttempt}
           onDeliver={deliver}

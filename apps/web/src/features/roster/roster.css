@@ -183,6 +183,70 @@
   background: #f6f8fb;
   color: #354d6d;
 }
+.club-roster .roster-athlete-choice {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e1e6ef;
+  color: #435672;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.club-roster .roster-athlete-details {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  background: #f4f7fb;
+  color: #435672;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.club-roster .roster-athlete-choice > .roster-athlete-details {
+  margin-top: 10px;
+}
+.club-roster .roster-athlete-picker {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #d5deea;
+  border-radius: 10px;
+  background: white;
+}
+.club-roster .roster-athlete-picker .field-note {
+  margin: 0;
+}
+.club-roster .roster-athlete-picker-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.club-roster .roster-athlete-results {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.club-roster .roster-athlete-results li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 12px;
+  border: 1px solid #e1e6ef;
+  border-radius: 8px;
+}
+.club-roster .roster-athlete-results li > .field-note {
+  grid-column: 1;
+}
+.club-roster .roster-athlete-results li > button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
 .club-roster .roster-correction .roster-card-body {
   display: grid;
   gap: 20px;
@@ -482,6 +546,13 @@
   }
 }
 @media (max-width: 640px) {
+  .club-roster .roster-athlete-results li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .club-roster .roster-athlete-results li > button {
+    grid-column: 1;
+    grid-row: auto;
+  }
   .club-roster .roster-before-after,
   .club-roster .roster-entry-details > div {
     grid-template-columns: minmax(0, 1fr);
@@ -541,6 +612,13 @@
   }
 }
 @container roster-card (max-width: 460px) {
+  .club-roster .roster-athlete-results li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .club-roster .roster-athlete-results li > button {
+    grid-column: 1;
+    grid-row: auto;
+  }
   .club-roster .roster-before-after,
   .club-roster .roster-entry-details > div {
     grid-template-columns: minmax(0, 1fr);

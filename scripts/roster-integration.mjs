@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { PrismaClient } from '@prisma/client';
-import { createTestUser } from './test-user.mjs';
+import { createTestUser, createTestEntries } from './test-user.mjs';
 
 // This suite writes only into the disposable schema/API created by rehearsal.mjs.
 const schema = new URL(process.env.DATABASE_URL).searchParams.get('schema');
@@ -461,8 +461,9 @@ try {
   assert.deepEqual(await rosterSnapshot(main), beforeReplay);
 
   const capacityClub = await createClub(capacityTournament, 'Capacity club');
-  await db.entry.createMany({
-    data: Array.from({ length: 127 }, (_, i) => ({
+  await createTestEntries(
+    db,
+    Array.from({ length: 127 }, (_, i) => ({
       categoryId: capacityCategory.id,
       firstName: 'Capacity',
       lastName: `Seed ${i}`,
@@ -471,7 +472,7 @@ try {
       club: capacityClub.club.name,
       clubId: capacityClub.club.id,
     })),
-  });
+  );
   await invalidCommit(
     capacityTournament,
     capacityClub.club.id,
@@ -596,8 +597,9 @@ try {
   );
   // Backfilling only new fields preserves the historical preview fingerprint.
   const legacyClub = await createClub(legacyPreviewTournament, 'Legacy Club');
-  await db.entry.createMany({
-    data: [0, 1].map((i) => ({
+  await createTestEntries(
+    db,
+    [0, 1].map((i) => ({
       categoryId: legacyCategory.id,
       firstName: 'Legacy',
       lastName: `Entry ${i}`,
@@ -606,7 +608,7 @@ try {
       clubId: null,
       gender: null,
     })),
-  });
+  );
   const legacyPreview = await successful(`/categories/${legacyCategory.id}/draw/preview`, {});
   const legacyDrawSnapshot = await db.drawRecord.findUniqueOrThrow({
     where: { categoryId: legacyCategory.id },

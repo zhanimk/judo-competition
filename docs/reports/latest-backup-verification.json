@@ -1,19 +1,24 @@
 {
-  "startedAt": "2026-10-09T08:52:53.135Z",
+  "startedAt": "2026-10-09T14:46:21.560Z",
   "passed": true,
-  "output": "tmp/backups/verified-2026-10-09T08-52-53.132Z-3e78a6ab",
-  "dumpPath": "tmp/backups/verified-2026-10-09T08-52-53.132Z-3e78a6ab/database.dump",
+  "output": "tmp/backups/verified-2026-10-09T14-46-21.558Z-47619b72",
+  "dumpPath": "tmp/backups/verified-2026-10-09T14-46-21.558Z-47619b72/database.dump",
   "schema": "public",
-  "verificationDatabase": "qa_restore_f19e1d47c81d457ca19e131b707e4b26",
+  "verificationDatabase": "qa_restore_40d0921ccfab4b44a0a8aa42aca3ee70",
   "verificationDatabaseRemoved": true,
   "versions": {
     "server": "180003",
     "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
     "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
   },
-  "dumpBytes": 85730,
-  "dumpSha256": "8a3bbd840b104fcf0a5d5edb286141adeee169be0e4d1a2d1a6cf687bc28abfb",
+  "dumpBytes": 89143,
+  "dumpSha256": "6aa9fc32f796258868b03c12fee56ae6449d4d3a84425f3156a8d3d4afef50dd",
   "tables": [
+    {
+      "name": "Athlete",
+      "rows": 34,
+      "matched": true
+    },
     {
       "name": "AuditEvent",
       "rows": 357,
@@ -81,10 +86,10 @@
     },
     {
       "name": "_prisma_migrations",
-      "rows": 13,
+      "rows": 14,
       "matched": true
     }
   ],
   "schemaStructureMatched": true,
-  "finishedAt": "2026-10-09T08:52:53.427Z"
+  "finishedAt": "2026-10-09T14:46:21.881Z"
 }

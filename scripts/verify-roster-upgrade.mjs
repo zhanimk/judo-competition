@@ -183,6 +183,41 @@ const report = await createVerifiedBackup(sourceUrl, {
               'legacy gender must be inferred or match its category',
             );
           }
+          const identities = await tx.$queryRawUnsafe(`
+            SELECT e.id,e."athleteId",a."ownerId",t."ownerId" AS "tournamentOwnerId"
+            FROM ${quoteIdentifier(schema)}."Entry" e
+            JOIN ${quoteIdentifier(schema)}."Category" c ON c.id=e."categoryId"
+            JOIN ${quoteIdentifier(schema)}."Tournament" t ON t.id=c."tournamentId"
+            LEFT JOIN ${quoteIdentifier(schema)}."Athlete" a ON a.id=e."athleteId"
+          `);
+          const hadIdentities = baseline
+            .find((table) => table.table === 'Entry')
+            ?.columns.includes('athleteId');
+          for (const identity of identities) {
+            assert.ok(identity.athleteId, 'registration requires a durable athlete identity');
+            assert.equal(
+              identity.ownerId,
+              identity.tournamentOwnerId,
+              'identity owner scope differs',
+            );
+            if (!hadIdentities)
+              assert.equal(
+                identity.athleteId,
+                identity.id,
+                'historical identities must remain separate',
+              );
+          }
+          if (!hadIdentities)
+            assert.equal(
+              new Set(identities.map((entry) => entry.athleteId)).size,
+              identities.length,
+              'historical names must never be merged',
+            );
+          const [{ is_nullable: identityNullable }] = await tx.$queryRaw`
+            SELECT is_nullable FROM information_schema.columns
+            WHERE table_schema=${schema} AND table_name='Entry' AND column_name='athleteId'
+          `;
+          assert.equal(identityNullable, 'NO', 'identity must be required in PostgreSQL');
         },
         { isolationLevel: 'RepeatableRead', timeout: 60000 },
       );
@@ -196,6 +231,10 @@ const report = await createVerifiedBackup(sourceUrl, {
         legacyGenderCompatible: true,
         unicodeFixtureEntries,
         migrationsAppliedTwice: true,
+        athleteIdentityLinksVerified: true,
+        athleteOwnerScopeVerified: true,
+        athleteIdentityRequired: true,
+        historicalAthletesNotMerged: true,
       };
     } finally {
       await db.$disconnect();

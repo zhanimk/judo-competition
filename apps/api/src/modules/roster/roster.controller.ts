@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '../auth/auth.guard.js';
 import type { Principal } from '../auth/auth.types.js';
 import {
@@ -9,12 +9,22 @@ import {
   EntryUpdateDto,
   EntryArchiveDto,
   EntryRestoreDto,
+  EntryIdentityPreviewDto,
+  EntryIdentityBindDto,
+  AthleteDirectoryQueryDto,
 } from './roster.dto.js';
 import { RosterService } from './roster.service.js';
 
 @Controller('tournaments')
 export class RosterController {
   constructor(private readonly service: RosterService) {}
+  @Get(':id/athletes') athletes(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: AthleteDirectoryQueryDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.athletes(id, dto, user);
+  }
   @Get(':id/clubs') clubs(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: Principal) {
     return this.service.clubs(id, user);
   }
@@ -76,5 +86,21 @@ export class RosterController {
     @CurrentUser() user: Principal,
   ) {
     return this.service.restoreEntry(id, entryId, dto, user);
+  }
+  @Post(':id/roster/entries/:entryId/identity/preview') previewIdentity(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @Body() dto: EntryIdentityPreviewDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.previewIdentity(id, entryId, dto, user);
+  }
+  @Post(':id/roster/entries/:entryId/identity') bindIdentity(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @Body() dto: EntryIdentityBindDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.bindIdentity(id, entryId, dto, user);
   }
 }

@@ -24,6 +24,7 @@ const actor = { id: randomUUID(), role: 'ORGANIZER' };
 const mat = randomUUID();
 const tournament = randomUUID();
 const matchId = randomUUID();
+const categoryId = randomUUID();
 const offlineSession = randomUUID();
 const conflict = (reason) => (error) => error.getStatus() === 409 && error.message === reason;
 const httpError = (status) => (error) => error.getStatus() === status;
@@ -58,21 +59,43 @@ function harness({ offline = true, oldEvents = [], collideOnWrite = false } = {}
       winnerEntryId: null,
       confirmedAt: null,
       updatedAt: new Date('2026-10-09T01:00:00.000Z'),
-      draw: { category: { tournamentId: tournament } },
+      draw: { categoryId, category: { tournamentId: tournament } },
     },
     events: structuredClone(oldEvents),
     audit: [],
     matStatus: 'BUSY',
   };
+  saved.entries = [saved.row.whiteEntryId, saved.row.blueEntryId].map((id) => ({
+    id,
+    categoryId,
+    athleteId: randomUUID(),
+    archivedAt: null,
+  }));
   const notices = [];
   const db = {
     async $transaction(callback) {
       const staged = structuredClone(saved);
       const tx = {
-        $queryRaw: async () => [],
+        $queryRaw: async (strings, ...values) =>
+          strings.join('').includes('FROM "Athlete"')
+            ? staged.entries
+                .filter((entry) => entry.athleteId === values[0])
+                .map((entry) => ({ id: entry.athleteId }))
+            : [],
         rosterCommand: { findFirst: async () => null },
+        entry: {
+          findMany: async ({ where }) =>
+            structuredClone(
+              staged.entries.filter((entry) =>
+                where.id
+                  ? where.id.in.includes(entry.id)
+                  : where.athleteId.in.includes(entry.athleteId),
+              ),
+            ),
+        },
         contest: {
           findUnique: async () => structuredClone(staged.row),
+          findFirst: async () => null,
           update: async ({ data }) => {
             staged.row = {
               ...staged.row,

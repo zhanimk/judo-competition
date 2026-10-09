@@ -249,6 +249,7 @@ export class TournamentsService {
           normalizedName: normalizedName(dto.club),
         },
       });
+      const athlete = await tx.athlete.create({ data: { ownerId: c.tournament.ownerId } });
       const entry = await tx.entry.create({
         data: {
           ...dto,
@@ -258,6 +259,7 @@ export class TournamentsService {
           categoryId,
           clubId: club.id,
           gender: c.gender,
+          athleteId: athlete.id,
         },
       });
       const updated = await tx.tournament.update({

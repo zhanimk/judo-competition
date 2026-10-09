@@ -1,5 +1,6 @@
 export type Entry = {
   id: string;
+  athleteId?: string;
   firstName: string;
   lastName: string;
   birthYear?: number | null;

@@ -59,6 +59,7 @@ export function correctionPreviewMatches(
   if (
     !validEntryCorrectionPreview(preview) ||
     preview.before.id !== entry.id ||
+    preview.before.athleteId !== preview.proposed.athleteId ||
     preview.proposed.archivedAt !== null
   )
     return false;

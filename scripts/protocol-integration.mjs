@@ -6,7 +6,7 @@ import { generateDraw, resolveMatches, bracketNodes } from '@judo/engine/draw';
 import { createMatch } from '@judo/engine/match';
 import { drawPlaces } from '../apps/api/dist/modules/protocols/pdf-draw-places.js';
 import { teamStandings } from '../apps/api/dist/modules/protocols/protocol-model.js';
-import { createTestUser } from './test-user.mjs';
+import { createTestUser, createTestEntries } from './test-user.mjs';
 const db = new PrismaClient(),
   base = process.env.TEST_API_URL ?? 'http://127.0.0.1:4319/api/v1';
 let owner, foreign, tournament;
@@ -67,7 +67,7 @@ try {
         birthYear: 2012,
         club: ['Клуб А', 'Клуб Б', ' КЛУБ  А '][i % 3],
       });
-    await db.entry.createMany({ data: entries });
+    await createTestEntries(db, entries);
     const draw = generateDraw(
       format,
       entries.map((e) => ({

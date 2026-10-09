@@ -1,4 +1,4 @@
-import { createTestUser } from './test-user.mjs';
+import { createTestUser, createTestEntries } from './test-user.mjs';
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 const db = new PrismaClient();
@@ -104,15 +104,16 @@ try {
   ).json();
   assert.equal(saved.categories[0].entries.length, 1);
   assert.equal(await db.entry.count({ where: { categoryId: category.body.id } }), 1);
-  await db.entry.createMany({
-    data: Array.from({ length: 126 }, (_, i) => ({
+  await createTestEntries(
+    db,
+    Array.from({ length: 126 }, (_, i) => ({
       categoryId: category.body.id,
       firstName: 'Capacity',
       lastName: String(i),
       club: 'Test Club',
       birthYear: 2012,
     })),
-  });
+  );
   const parallel = await Promise.all([
     post(path, { firstName: 'Concurrent A', lastName: 'Test', club: 'Test Club', birthYear: 2012 }),
     post(path, { firstName: 'Concurrent B', lastName: 'Test', club: 'Test Club', birthYear: 2012 }),
