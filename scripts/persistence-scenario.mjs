@@ -46,13 +46,56 @@ export async function persistenceScenario({ db, base, restart, output }) {
     durationSeconds: 180,
     format: 'SINGLE_ELIMINATION',
   });
-  for (let i = 0; i < 4; i++)
-    await post(`/tournaments/${tournament.id}/categories/${category.id}/entries`, {
-      firstName: 'Әлихан',
-      lastName: `Сохранение-${i + 1}`,
-      club: `Клуб ${(i % 2) + 1}`,
-      birthYear: 2014,
+  const rosterCommands = [];
+  let rosterRevision = 0;
+  for (let clubIndex = 0; clubIndex < 2; clubIndex++) {
+    const clubPath = `/tournaments/${tournament.id}/clubs`;
+    const clubPayload = {
+      id: randomUUID(),
+      expectedRevision: rosterRevision,
+      name: `Клуб ${clubIndex + 1}`,
+    };
+    const clubResponse = await post(clubPath, clubPayload);
+    rosterRevision = clubResponse.revision;
+    rosterCommands.push({ path: clubPath, payload: clubPayload, response: clubResponse });
+    const rosterPath = `/tournaments/${tournament.id}/roster`;
+    const rosterPayload = {
+      id: randomUUID(),
+      expectedRevision: rosterRevision,
+      clubId: clubResponse.club.id,
+      entries: [clubIndex, clubIndex + 2].map((index) => ({
+        firstName: 'Әлихан',
+        lastName: `Сохранение-${index + 1}`,
+        birthYear: 2014,
+        gender: 'MALE',
+        categoryId: category.id,
+      })),
+    };
+    const rosterResponse = await post(rosterPath, rosterPayload);
+    rosterRevision = rosterResponse.revision;
+    rosterCommands.push({ path: rosterPath, payload: rosterPayload, response: rosterResponse });
+  }
+  const savedRosterEntries = await db.entry.findMany({
+    where: { categoryId: category.id },
+    orderBy: { id: 'asc' },
+  });
+  assert.equal(savedRosterEntries.length, 4);
+  assert.equal(new Set(savedRosterEntries.map((entry) => entry.id)).size, 4);
+  for (let index = 0; index < 4; index++)
+    assert.equal(
+      savedRosterEntries.find((entry) => entry.lastName === `Сохранение-${index + 1}`).club,
+      `Клуб ${(index % 2) + 1}`,
+    );
+  const readRosterAudit = () =>
+    db.auditEvent.findMany({
+      where: {
+        tournamentId: tournament.id,
+        action: { in: ['CLUB_CREATED', 'ROSTER_ADDED'] },
+      },
+      orderBy: { id: 'asc' },
     });
+  const savedRosterAudit = await readRosterAudit();
+  assert.equal(savedRosterAudit.length, 4);
   const preview = await post(`/categories/${category.id}/draw/preview`);
   const confirmedDraw = await post(`/categories/${category.id}/draw/confirm`, {
     version: preview.version,
@@ -113,6 +156,37 @@ export async function persistenceScenario({ db, base, restart, output }) {
   let restored = (await live()).currentMatch.state;
   assert.deepEqual(restored, { ...saved, status: 'PAUSED' });
   assert.equal((await get('/auth/me')).id, owner.id, 'session survives a process restart');
+  const beforeRosterRetry = await db.contest.findUniqueOrThrow({ where: { id: first.id } });
+  const lockedTournament = await db.tournament.findUniqueOrThrow({
+    where: { id: tournament.id },
+  });
+  assert.equal(lockedTournament.status, 'RUNNING');
+  assert.equal(lockedTournament.rosterRevision, rosterRevision);
+  for (const command of rosterCommands) {
+    assert.deepEqual(
+      await post(command.path, command.payload),
+      command.response,
+      'club/roster retry after crash returns its original receipt despite roster lock',
+    );
+    assert.equal(await db.rosterCommand.count({ where: { id: command.payload.id } }), 1);
+  }
+  assert.deepEqual(
+    await db.entry.findMany({ where: { categoryId: category.id }, orderBy: { id: 'asc' } }),
+    savedRosterEntries,
+    'club/roster retry must preserve exactly four original entries and IDs',
+  );
+  assert.equal(await db.rosterCommand.count({ where: { tournamentId: tournament.id } }), 4);
+  assert.deepEqual(await readRosterAudit(), savedRosterAudit);
+  assert.deepEqual(
+    await db.tournament.findUniqueOrThrow({ where: { id: tournament.id } }),
+    lockedTournament,
+    'club/roster retry cannot increment the current roster revision',
+  );
+  assert.deepEqual(
+    await db.contest.findUniqueOrThrow({ where: { id: first.id } }),
+    beforeRosterRetry,
+    'club/roster retry cannot modify the active contest state or clock',
+  );
   const beforeAssignmentRetry = await db.contest.findUniqueOrThrow({ where: { id: opening.id } });
   assert.equal(beforeAssignmentRetry.status, 'ACTIVE');
   assert.deepEqual(await post(assignmentPath, assignment), assignmentResponse);
@@ -202,6 +276,7 @@ export async function persistenceScenario({ db, base, restart, output }) {
       'fresh DB connection',
       'paused clock recovery',
       'session recovery',
+      'club/roster retry after crash without duplicate entries or audit',
       'assignment retry after crash without clock or audit changes',
       'hold without duplication',
       'confirmed result and draw recovery',

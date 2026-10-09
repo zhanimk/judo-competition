@@ -1,18 +1,18 @@
 {
-  "startedAt": "2026-10-09T06:40:40.681Z",
+  "startedAt": "2026-10-09T07:40:51.662Z",
   "passed": true,
-  "output": "tmp/backups/verified-2026-10-09T06-40-40.679Z-8a1d3d0f",
-  "dumpPath": "tmp/backups/verified-2026-10-09T06-40-40.679Z-8a1d3d0f/database.dump",
+  "output": "tmp/backups/verified-2026-10-09T07-40-51.661Z-92906fd0",
+  "dumpPath": "tmp/backups/verified-2026-10-09T07-40-51.661Z-92906fd0/database.dump",
   "schema": "public",
-  "verificationDatabase": "qa_restore_e68fcc808f5b4593833a9018e1f0aadd",
+  "verificationDatabase": "qa_restore_d7aeee3c4c3b4c788318cbfead2ed63d",
   "verificationDatabaseRemoved": true,
   "versions": {
     "server": "180003",
     "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
     "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
   },
-  "dumpBytes": 79872,
-  "dumpSha256": "db6ffdd5e8a91bead426ea25c1230c25aba16f91786f9b96ee071562c640143d",
+  "dumpBytes": 84824,
+  "dumpSha256": "d38b7f203de65d3c184836e05bce8c7ab211e95c9448b071654d009663a9b924",
   "tables": [
     {
       "name": "AuditEvent",
@@ -22,6 +22,11 @@
     {
       "name": "Category",
       "rows": 45,
+      "matched": true
+    },
+    {
+      "name": "Club",
+      "rows": 4,
       "matched": true
     },
     {
@@ -50,6 +55,11 @@
       "matched": true
     },
     {
+      "name": "RosterCommand",
+      "rows": 0,
+      "matched": true
+    },
+    {
       "name": "Session",
       "rows": 20,
       "matched": true
@@ -71,10 +81,10 @@
     },
     {
       "name": "_prisma_migrations",
-      "rows": 11,
+      "rows": 12,
       "matched": true
     }
   ],
   "schemaStructureMatched": true,
-  "finishedAt": "2026-10-09T06:40:40.952Z"
+  "finishedAt": "2026-10-09T07:40:51.956Z"
 }

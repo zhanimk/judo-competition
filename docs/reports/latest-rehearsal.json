@@ -1,76 +1,82 @@
 {
-  "startedAt": "2026-10-09T06:41:47.771Z",
-  "schema": "qa_rehearsal_fb5d3efd21ca4b8a8b71c1fb8e108b27",
+  "startedAt": "2026-10-09T07:30:57.112Z",
+  "schema": "qa_rehearsal_bd8e5f32ece74205848eff1f30bde8a9",
   "passed": true,
   "suites": [
     {
       "name": "migrations",
       "passed": true,
-      "durationMs": 725
+      "durationMs": 765
     },
     {
       "name": "migrations-repeat",
       "passed": true,
-      "durationMs": 543
+      "durationMs": 545
     },
     {
       "name": "integration",
       "passed": true,
-      "durationMs": 195
+      "durationMs": 211
     },
     {
       "name": "auth-integration",
       "passed": true,
-      "durationMs": 303
+      "durationMs": 305
+    },
+    {
+      "name": "roster-integration",
+      "passed": true,
+      "durationMs": 776
     },
     {
       "name": "draw-integration",
       "passed": true,
-      "durationMs": 328
+      "durationMs": 317
     },
     {
       "name": "scheduling-integration",
       "passed": true,
-      "durationMs": 364
+      "durationMs": 437
     },
     {
       "name": "public-integration",
       "passed": true,
-      "durationMs": 316
+      "durationMs": 315
     },
     {
       "name": "control-integration",
       "passed": true,
-      "durationMs": 526
+      "durationMs": 588
     },
     {
       "name": "formats-integration",
       "passed": true,
-      "durationMs": 2808
+      "durationMs": 3029
     },
     {
       "name": "rematches-integration",
       "passed": true,
-      "durationMs": 1427
+      "durationMs": 1676
     },
     {
       "name": "live-integration",
       "passed": true,
-      "durationMs": 21879
+      "durationMs": 22040
     },
     {
       "name": "protocol-integration",
       "passed": true,
-      "durationMs": 6615
+      "durationMs": 6606
     },
     {
       "name": "actual-process-restart-and-persistence",
       "passed": true
     }
   ],
-  "output": "tmp/rehearsal/qa_rehearsal_fb5d3efd21ca4b8a8b71c1fb8e108b27",
+  "output": "tmp/rehearsal/qa_rehearsal_bd8e5f32ece74205848eff1f30bde8a9",
+  "suiteBoundaryRestarts": 1,
   "persistence": {
-    "tournamentId": "d8f9ee15-1f86-4c2b-980a-5ca2de64e5cb",
+    "tournamentId": "ffa41ed7-a627-4ea1-995d-227dd19756fd",
     "confirmedBouts": 3,
     "crashRestarts": 2,
     "gracefulRestarts": 1,
@@ -79,6 +85,7 @@
       "fresh DB connection",
       "paused clock recovery",
       "session recovery",
+      "club/roster retry after crash without duplicate entries or audit",
       "assignment retry after crash without clock or audit changes",
       "hold without duplication",
       "confirmed result and draw recovery",
@@ -89,5 +96,5 @@
     ]
   },
   "cleanedUp": true,
-  "finishedAt": "2026-10-09T06:42:31.538Z"
+  "finishedAt": "2026-10-09T07:31:42.957Z"
 }

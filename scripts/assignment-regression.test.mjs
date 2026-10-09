@@ -57,6 +57,7 @@ function harness({ legacyEvents = [], collision = false, failAudit = false } = {
         const staged = structuredClone(saved);
         const tx = {
           $queryRaw: async () => [],
+          rosterCommand: { findFirst: async () => null },
           contest: {
             findUniqueOrThrow: async ({ where }) => readRow(staged, where.id),
             aggregate: async ({ where }) => ({

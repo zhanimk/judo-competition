@@ -1,0 +1,91 @@
+{
+  "startedAt": "2026-10-09T07:21:49.968Z",
+  "passed": true,
+  "output": "tmp/roster-upgrade/verified-2026-10-09T07-21-49.966Z-4e965a41",
+  "dumpPath": "tmp/roster-upgrade/verified-2026-10-09T07-21-49.966Z-4e965a41/database.dump",
+  "schema": "public",
+  "verificationDatabase": "qa_restore_ba703e8411bd4aca94bb20a2ec9a1531",
+  "verificationDatabaseRemoved": true,
+  "versions": {
+    "server": "180003",
+    "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
+    "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
+  },
+  "dumpBytes": 79872,
+  "dumpSha256": "1c3609b565b0ca575ee9ba3c65f98b251fa6c1a9e0bbce39231e8027dcb1d2a9",
+  "tables": [
+    {
+      "name": "AuditEvent",
+      "rows": 357,
+      "matched": true
+    },
+    {
+      "name": "Category",
+      "rows": 45,
+      "matched": true
+    },
+    {
+      "name": "Contest",
+      "rows": 47,
+      "matched": true
+    },
+    {
+      "name": "DrawRecord",
+      "rows": 5,
+      "matched": true
+    },
+    {
+      "name": "Entry",
+      "rows": 34,
+      "matched": true
+    },
+    {
+      "name": "Invitation",
+      "rows": 0,
+      "matched": true
+    },
+    {
+      "name": "MatchEvent",
+      "rows": 160,
+      "matched": true
+    },
+    {
+      "name": "Session",
+      "rows": 20,
+      "matched": true
+    },
+    {
+      "name": "Tatami",
+      "rows": 6,
+      "matched": true
+    },
+    {
+      "name": "Tournament",
+      "rows": 2,
+      "matched": true
+    },
+    {
+      "name": "User",
+      "rows": 2,
+      "matched": true
+    },
+    {
+      "name": "_prisma_migrations",
+      "rows": 11,
+      "matched": true
+    }
+  ],
+  "schemaStructureMatched": true,
+  "additionalValidation": {
+    "passed": true,
+    "oldTablesPreserved": 12,
+    "oldColumnValuesPreserved": true,
+    "oldEntryAndDrawIdsPreserved": true,
+    "legacyClubLinksVerified": true,
+    "clubNormalizationVerified": true,
+    "legacyGenderCompatible": true,
+    "unicodeFixtureEntries": 11,
+    "migrationsAppliedTwice": true
+  },
+  "finishedAt": "2026-10-09T07:21:51.636Z"
+}

@@ -166,7 +166,10 @@ async function writePrivateJson(file, value) {
 }
 
 /** Read the working database, restore only into a newly generated disposable database. */
-export async function createVerifiedBackup(sourceUrl, { outputRoot = 'tmp/backups' } = {}) {
+export async function createVerifiedBackup(
+  sourceUrl,
+  { outputRoot = 'tmp/backups', validateRestored } = {},
+) {
   const connection = new URL(sourceUrl);
   const schema = connection.searchParams.get('schema') ?? 'public';
   quoteIdentifier(schema);
@@ -276,6 +279,9 @@ export async function createVerifiedBackup(sourceUrl, { outputRoot = 'tmp/backup
     if (!compareManifests(original, recovered)) throw new Error('RESTORED_DATA_MISMATCH');
     report.tables = original.tables.map(({ name, rows }) => ({ name, rows, matched: true }));
     report.schemaStructureMatched = true;
+    // Optional upgrade rehearsal runs only after the fresh clone matches the source snapshot.
+    if (validateRestored)
+      report.additionalValidation = await validateRestored(restoredUrl.href, output);
     report.passed = true;
   } catch (error) {
     // Database diagnostics may contain connection details; only codes enter the public report.

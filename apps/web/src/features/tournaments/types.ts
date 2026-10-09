@@ -4,7 +4,11 @@ export type Entry = {
   lastName: string;
   birthYear?: number;
   club: string;
+  clubId?: string | null;
+  gender?: 'MALE' | 'FEMALE' | null;
+  categoryId?: string;
 };
+export type Club = { id: string; name: string; _count: { entries: number } };
 export type Category = {
   homeTatamiId?: string | null;
   draw?: { status: string; publishedAt: string | null; _count: { contests: number } } | null;
@@ -32,5 +36,7 @@ export type Tournament = {
   publishedAt?: string | null;
   status: string;
   categories: Category[];
+  rosterRevision: number;
+  clubs: Club[];
   tatamis?: { id: string; number: number; status: string }[];
 };

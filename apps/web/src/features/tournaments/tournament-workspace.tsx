@@ -1,12 +1,16 @@
 'use client';
 import { subscribeTournament } from '../../shared/live/subscribe';
+import { pollSnapshots } from '../../shared/live/snapshot-poller';
 import { formatLabel } from '../draws/format-label';
 import { NEW_DRAW_FORMATS } from '@judo/engine/draw';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
 import { ProtocolDownload } from '../draws/protocol-download';
 import { DrawPanel } from '../draws/draw-panel';
 import { ControlCenter } from '../control/control-center';
+import { ClubRoster } from '../roster/club-roster';
+import { readPendingRoster } from '../roster/roster-command';
+import { acceptRosterSnapshot, mergeRosterReceipt, type Receipt } from '../roster/roster-model';
 import Link from 'next/link';
 import { request } from './api';
 import type { Tournament } from './types';
@@ -17,6 +21,8 @@ export function TournamentWorkspace({ id }: { id: string }) {
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [loaded, setLoaded] = useState(false);
+  const [rosterPending, setRosterPending] = useState(false);
+  const pollerRef = useRef<{ refresh: () => Promise<void>; stop: () => void } | null>(null);
   const [category, setCategory] = useState({
     name: '',
     gender: 'MALE',
@@ -27,48 +33,50 @@ export function TournamentWorkspace({ id }: { id: string }) {
     durationSeconds: 180,
   });
   const [openWeight, setOpenWeight] = useState(false);
-  const [entry, setEntry] = useState({
-    categoryId: '',
-    firstName: '',
-    lastName: '',
-    birthYear: 2012,
-    club: '',
-  });
   async function load() {
-    setError('');
-    try {
-      setT(await request<Tournament>(`/tournaments/${id}`));
-    } catch (e) {
-      setError(
-        (e as Error).message === 'DRAW_LOCKED'
-          ? text(
-              'Состав категории заблокирован после подтверждения сетки.',
-              'Тор расталғаннан кейін санат құрамы бекітілді.',
-            )
-          : (e as Error).message,
-      );
-    } finally {
-      setLoaded(true);
-    }
+    await pollerRef.current?.refresh();
   }
+  const applyReceipt = useCallback(
+    (receipt: Receipt) => {
+      setT((current) => (current?.id === id ? mergeRosterReceipt(current, receipt) : current));
+    },
+    [id],
+  );
   useEffect(() => {
-    void load();
-  }, [id]);
-  useEffect(() => {
-    let active = true;
-    const refresh = () =>
-      request<Tournament>(`/tournaments/${id}`)
-        .then((value) => {
-          if (active) setT(value);
-        })
-        .catch(() => {});
-    const timer = setInterval(refresh, 5000);
+    setT(null);
+    setLoaded(false);
+    setError('');
+    setRosterPending(false);
+    try {
+      if (readPendingRoster(sessionStorage, id)) {
+        setRosterPending(true);
+        setTab('entries');
+      }
+    } catch {
+      setRosterPending(true);
+      setTab('entries');
+    }
+    const poller = pollSnapshots(
+      () => request<Tournament>(`/tournaments/${id}`),
+      (value) => {
+        setT((current) => acceptRosterSnapshot(current, value, id));
+        setLoaded(true);
+        setError('');
+      },
+      (error) => {
+        setError((error as Error).message);
+        setLoaded(true);
+      },
+      5000,
+    );
+    pollerRef.current = poller;
+    void poller.refresh();
     const unsubscribe = subscribeTournament(id, (event) => {
-      if (event.kind !== 'state') void refresh();
+      if (event.kind !== 'state') void poller.refresh();
     });
     return () => {
-      active = false;
-      clearInterval(timer);
+      poller.stop();
+      if (pollerRef.current === poller) pollerRef.current = null;
       unsubscribe();
     };
   }, [id]);
@@ -111,23 +119,17 @@ export function TournamentWorkspace({ id }: { id: string }) {
       setBusy(false);
     }
   }
-  async function save(e: React.FormEvent, kind: 'category' | 'entry') {
+  async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      if (kind === 'category') {
-        await request(`/tournaments/${id}/categories`, {
-          ...category,
-          maxWeightGrams: openWeight ? null : category.maxWeightGrams,
-          minWeightGrams: openWeight ? category.maxWeightGrams : null,
-        });
-        setCategory({ ...category, name: '' });
-      } else {
-        const { categoryId, ...data } = entry;
-        await request(`/tournaments/${id}/categories/${categoryId}/entries`, data);
-        setEntry({ ...entry, firstName: '', lastName: '' });
-      }
+      await request(`/tournaments/${id}/categories`, {
+        ...category,
+        maxWeightGrams: openWeight ? null : category.maxWeightGrams,
+        minWeightGrams: openWeight ? category.maxWeightGrams : null,
+      });
+      setCategory({ ...category, name: '' });
       await load();
     } catch (e) {
       setError(
@@ -142,7 +144,7 @@ export function TournamentWorkspace({ id }: { id: string }) {
       setBusy(false);
     }
   }
-  if (!t)
+  if (!t || t.id !== id)
     return (
       <div className="panel state-box">
         {loaded ? error : text('Загружаем турнир…', 'Турнир жүктелуде…')}
@@ -152,22 +154,6 @@ export function TournamentWorkspace({ id }: { id: string }) {
   const entries = t.categories.flatMap((c) =>
     (c.entries ?? []).map((e) => ({ ...e, category: c.name })),
   );
-  const duplicateKeys = new Map<string, number>();
-  for (const athlete of entries) {
-    const key = [
-      athlete.lastName,
-      athlete.firstName,
-      athlete.birthYear,
-      athlete.club,
-      athlete.category,
-    ]
-      .join('|')
-      .normalize('NFKC')
-      .toLocaleLowerCase('ru')
-      .trim();
-    duplicateKeys.set(key, (duplicateKeys.get(key) ?? 0) + 1);
-  }
-  const possibleDuplicates = [...duplicateKeys.values()].filter((count) => count > 1).length;
   return (
     <>
       <Link className="back-link" href="/tournaments">
@@ -193,7 +179,7 @@ export function TournamentWorkspace({ id }: { id: string }) {
               : text('Правила прежней версии', 'Алдыңғы нұсқа ережелері')}
           </p>
           {t.status === 'DRAFT' ? (
-            <button className="solid-button" disabled={busy} onClick={start}>
+            <button className="solid-button" disabled={busy || rosterPending} onClick={start}>
               {text('Запустить турнир', 'Турнирді бастау')} →
             </button>
           ) : (
@@ -208,7 +194,7 @@ export function TournamentWorkspace({ id }: { id: string }) {
               {text('Страница для зрителей ↗', 'Көрермендер беті ↗')}
             </Link>
           ) : (
-            <button className="solid-button" disabled={busy} onClick={publish}>
+            <button className="solid-button" disabled={busy || rosterPending} onClick={publish}>
               {text('Опубликовать турнир', 'Турнирді жариялау')}
             </button>
           )}
@@ -227,6 +213,7 @@ export function TournamentWorkspace({ id }: { id: string }) {
             key={value}
             aria-current={tab === value ? 'page' : undefined}
             className={tab === value ? 'active' : ''}
+            disabled={rosterPending && tab !== value}
             onClick={() => {
               setTab(value);
               setError('');
@@ -396,7 +383,7 @@ export function TournamentWorkspace({ id }: { id: string }) {
               </div>
             )}
           </section>
-          <form className="panel form-panel" onSubmit={(e) => save(e, 'category')}>
+          <form className="panel form-panel" onSubmit={save}>
             <h2>{text('Новая категория', 'Жаңа санат')}</h2>
             <label>
               {text('Название', 'Атауы')}
@@ -510,124 +497,14 @@ export function TournamentWorkspace({ id }: { id: string }) {
           </form>
         </div>
       )}
-      {tab === 'entries' && possibleDuplicates > 0 && (
-        <p className="info-note" role="status">
-          {text('Возможные повторы', 'Ықтимал қайталанулар')}: {possibleDuplicates}.{' '}
-          {text(
-            'Проверьте ФИО, год рождения и клуб. Однофамильцы не объединяются автоматически.',
-            'Аты-жөнін, туған жылын және клубын тексеріңіз. Тегі бірдей адамдар автоматты түрде біріктірілмейді.',
-          )}
-        </p>
-      )}
       {tab === 'entries' && (
-        <div className="detail-grid">
-          <section className="panel">
-            <div className="panel-heading">
-              <h2>{text('Участники турнира', 'Турнир қатысушылары')}</h2>
-              <span>{entries.length}</span>
-            </div>
-            {!entries.length ? (
-              <p className="state-box">{text('Участников пока нет.', 'Әзірге қатысушылар жоқ.')}</p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{text('Спортсмен', 'Спортшы')}</th>
-                      <th>{text('Клуб', 'Клуб')}</th>
-                      <th>{text('Категория', 'Санат')}</th>
-                      <th>{text('Статус', 'Мәртебе')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {entries.map((e) => (
-                      <tr key={e.id}>
-                        <td>
-                          <strong>
-                            {e.lastName} {e.firstName}
-                          </strong>
-                          <small>{e.birthYear} г. р.</small>
-                        </td>
-                        <td>{e.club}</td>
-                        <td>{e.category}</td>
-                        <td>
-                          <span className="draft">
-                            {text('Внесён организатором', 'Ұйымдастырушы енгізген')}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-          <form className="panel form-panel" onSubmit={(e) => save(e, 'entry')}>
-            <h2>{text('Добавить спортсмена', 'Спортшыны қосу')}</h2>
-            <label>
-              {text('Категория', 'Санат')}
-              <select
-                required
-                value={entry.categoryId}
-                onChange={(e) => setEntry({ ...entry, categoryId: e.target.value })}
-              >
-                <option value="">{text('Выберите категорию', 'Санатты таңдаңыз')}</option>
-                {t.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              {text('Фамилия', 'Тегі')}
-              <input
-                required
-                maxLength={80}
-                value={entry.lastName}
-                onChange={(e) => setEntry({ ...entry, lastName: e.target.value })}
-              />
-            </label>
-            <label>
-              {text('Имя', 'Аты')}
-              <input
-                required
-                maxLength={80}
-                value={entry.firstName}
-                onChange={(e) => setEntry({ ...entry, firstName: e.target.value })}
-              />
-            </label>
-            <label>
-              {text('Год рождения', 'Туған жылы')}
-              <input
-                type="number"
-                min={1900}
-                max={2100}
-                required
-                value={entry.birthYear}
-                onChange={(e) => setEntry({ ...entry, birthYear: +e.target.value })}
-              />
-            </label>
-            <label>
-              {text('Клуб', 'Клуб')}
-              <input
-                required
-                minLength={2}
-                maxLength={120}
-                value={entry.club}
-                onChange={(e) => setEntry({ ...entry, club: e.target.value })}
-              />
-            </label>
-            <button
-              className="solid-button"
-              disabled={busy || !t.categories.length || t.status !== 'DRAFT'}
-            >
-              {busy
-                ? text('Сохраняем…', 'Сақталуда…')
-                : text('Добавить участника', 'Қатысушыны қосу')}
-            </button>
-          </form>
-        </div>
+        <ClubRoster
+          key={t.id}
+          tournament={t}
+          onUpdate={load}
+          onCommitted={applyReceipt}
+          onPendingChange={setRosterPending}
+        />
       )}
       {tab === 'tatamis' && <ControlCenter tournamentId={t.id} />}
       {tab === 'draw' && <DrawPanel key={t.id} tournament={t} onUpdate={load} />}

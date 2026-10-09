@@ -70,6 +70,7 @@ function harness({ offline = true, oldEvents = [], collideOnWrite = false } = {}
       const staged = structuredClone(saved);
       const tx = {
         $queryRaw: async () => [],
+        rosterCommand: { findFirst: async () => null },
         contest: {
           findUnique: async () => structuredClone(staged.row),
           update: async ({ data }) => {
@@ -341,6 +342,7 @@ test('administrative commands also reject IDs reserved by a legacy offline packe
   let writes = 0;
   const tx = {
     $queryRaw: async () => [],
+    rosterCommand: { findFirst: async () => null },
     contest: {
       findFirst: async () => ({ id: matchId, revision: 7, state: pausedMatch() }),
       update: async () => writes++,

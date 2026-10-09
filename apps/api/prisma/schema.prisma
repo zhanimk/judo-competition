@@ -17,11 +17,14 @@ model Tournament {
  publishedAt DateTime?
  tatamiCount Int
  status String @default("DRAFT")
+ rosterRevision Int @default(0)
  createdAt DateTime @default(now())
  ownerId String?
  owner User? @relation(fields:[ownerId],references:[id],onDelete:Restrict)
  categories Category[]
  tatamis Tatami[]
+ clubs Club[]
+ rosterCommands RosterCommand[]
 }
 model Category {
  homeTatamiId String?
@@ -51,7 +54,32 @@ model Entry {
  birthYear Int
  club String
  createdAt DateTime @default(now())
+ clubId String?
+ clubRecord Club? @relation(fields:[clubId],references:[id],onDelete:Restrict)
+ gender String?
  @@index([categoryId])
+ @@index([clubId])
+}
+model Club {
+ id String @id @default(uuid())
+ tournamentId String
+ tournament Tournament @relation(fields:[tournamentId],references:[id],onDelete:Cascade)
+ name String
+ normalizedName String
+ createdAt DateTime @default(now())
+ entries Entry[]
+ @@unique([tournamentId,normalizedName])
+}
+model RosterCommand {
+ id String @id
+ tournamentId String
+ tournament Tournament @relation(fields:[tournamentId],references:[id],onDelete:Cascade)
+ actorId String
+ type String
+ command Json
+ response Json
+ createdAt DateTime @default(now())
+ @@index([tournamentId,createdAt])
 }
 model Tatami {
  categories Category[]

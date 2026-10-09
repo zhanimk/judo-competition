@@ -16,8 +16,34 @@ import { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/auth.types.js';
 import { assertUnusedCommandIds } from '../matches/command-ids.js';
 import type { AssignDto, AssignmentResult } from './draws.dto.js';
-const fingerprint = (entries: unknown) =>
-  createHash('sha256').update(JSON.stringify(entries)).digest('hex');
+import { normalizedName } from '../roster/roster-validation.js';
+type FingerprintEntry = {
+  id: string;
+  categoryId: string;
+  firstName: string;
+  lastName: string;
+  birthYear: number;
+  club: string;
+  createdAt: Date;
+};
+// Keep the exact original Prisma Entry column order. New metadata must not
+// invalidate previously saved previews or rewrite confirmed historical draws.
+export const entryFingerprint = (entries: FingerprintEntry[]) =>
+  createHash('sha256')
+    .update(
+      JSON.stringify(
+        entries.map((entry) => ({
+          id: entry.id,
+          categoryId: entry.categoryId,
+          firstName: entry.firstName,
+          lastName: entry.lastName,
+          birthYear: entry.birthYear,
+          club: entry.club,
+          createdAt: entry.createdAt,
+        })),
+      ),
+    )
+    .digest('hex');
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 type AssignmentReceipt = { command: AssignDto; response: AssignmentResult };
 @Injectable()
@@ -104,14 +130,14 @@ export class DrawsService {
           category.format,
           entries.map((e) => ({
             id: e.id,
-            clubId: e.club.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru'),
+            clubId: e.clubId ?? normalizedName(e.club),
           })),
           randomInt(0, 0x100000000),
           rules.drawPolicy ?? 'LEGACY',
         ),
         tieBreak: rules.tieBreak,
       };
-      const data = { fingerprint: fingerprint(entries), snapshot: json(snapshot) };
+      const data = { fingerprint: entryFingerprint(entries), snapshot: json(snapshot) };
       const result = old
         ? await tx.drawRecord.update({
             where: { id: old.id },
@@ -149,7 +175,7 @@ export class DrawsService {
         where: { categoryId: id },
         orderBy: { id: 'asc' },
       });
-      if (fingerprint(entries) !== draw.fingerprint)
+      if (entryFingerprint(entries) !== draw.fingerprint)
         throw new ConflictException('DRAW_ENTRIES_CHANGED');
       const rows = resolveMatches(draw.snapshot as unknown as Draw, {});
       await tx.contest.createMany({

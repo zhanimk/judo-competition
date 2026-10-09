@@ -1,10 +1,13 @@
 import { LiveService } from './modules/matches/live.service.js';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module.js';
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // A permitted 500-row roster with Unicode names exceeds Express's 100 KB default.
+  app.useBodyParser('json', { limit: '1mb' });
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),

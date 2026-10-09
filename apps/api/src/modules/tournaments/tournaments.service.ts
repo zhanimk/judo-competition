@@ -14,6 +14,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../../database/database.service.js';
 import { CreateTournamentDto, CreateCategoryDto, CreateEntryDto } from './dto.js';
+import { cleanName, normalizedName } from '../roster/roster-validation.js';
 @Injectable()
 export class TournamentsService {
   constructor(
@@ -127,6 +128,10 @@ export class TournamentsService {
       where: { id },
       include: {
         tatamis: { orderBy: { number: 'asc' } },
+        clubs: {
+          orderBy: { name: 'asc' },
+          select: { id: true, name: true, _count: { select: { entries: true } } },
+        },
         categories: {
           orderBy: { name: 'asc' },
           include: {
@@ -139,7 +144,16 @@ export class TournamentsService {
       },
     });
     if (!t) throw new NotFoundException('Турнир не найден');
-    return t;
+    return {
+      ...t,
+      categories: t.categories.map((category) => ({
+        ...category,
+        entries: category.entries.map((entry) => ({
+          ...entry,
+          gender: entry.gender ?? category.gender,
+        })),
+      })),
+    };
   }
   create(dto: CreateTournamentDto, user: Principal) {
     if (!['ORGANIZER', 'SUPER_ADMIN'].includes(user.role))
@@ -195,30 +209,64 @@ export class TournamentsService {
     await this.auth.owner(user, id);
     if (!dto.firstName.trim() || !dto.lastName.trim() || !dto.club.trim())
       throw new BadRequestException('Заполните данные спортсмена');
-    return this.db.$transaction(async (tx) => {
-      // Serialize admissions and draw confirmation on the same category lock.
+    const result = await this.db.$transaction(async (tx) => {
+      // All roster mutations lock tournament before categories. Draw confirmation
+      // also takes the category lock, so admission cannot partially change a draw.
+      await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM "Category" WHERE id = ${categoryId} FOR UPDATE`;
-      if (await tx.drawRecord.findFirst({ where: { categoryId, status: 'CONFIRMED' } }))
-        throw new ConflictException('DRAW_LOCKED');
       const c = await tx.category.findFirst({
         where: { id: categoryId, tournamentId: id },
         include: { tournament: true },
       });
       if (!c) throw new NotFoundException('Категория не найдена');
       if (c.tournament.status !== 'DRAFT') throw new ConflictException('Состав заблокирован');
+      if (await tx.drawRecord.findFirst({ where: { categoryId, status: 'CONFIRMED' } }))
+        throw new ConflictException('DRAW_LOCKED');
       if (dto.birthYear < c.birthYearFrom || dto.birthYear > c.birthYearTo)
         throw new BadRequestException('Год рождения не соответствует категории');
       if ((await tx.entry.count({ where: { categoryId } })) >= 128)
         throw new ConflictException('В категории уже 128 участников');
-      return tx.entry.create({
+      const club = await tx.club.upsert({
+        where: {
+          tournamentId_normalizedName: {
+            tournamentId: id,
+            normalizedName: normalizedName(dto.club),
+          },
+        },
+        update: {},
+        create: {
+          tournamentId: id,
+          name: cleanName(dto.club),
+          normalizedName: normalizedName(dto.club),
+        },
+      });
+      const entry = await tx.entry.create({
         data: {
           ...dto,
           firstName: dto.firstName.trim(),
           lastName: dto.lastName.trim(),
           club: dto.club.trim(),
           categoryId,
+          clubId: club.id,
+          gender: c.gender,
         },
       });
+      const updated = await tx.tournament.update({
+        where: { id },
+        data: { rosterRevision: { increment: 1 } },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorId: user.id,
+          tournamentId: id,
+          entityId: entry.id,
+          action: 'ENTRY_ADDED',
+          payload: JSON.parse(JSON.stringify({ revision: updated.rosterRevision, entry })),
+        },
+      });
+      return entry;
     });
+    this.live.notify({ kind: 'result', tournamentId: id });
+    return result;
   }
 }
