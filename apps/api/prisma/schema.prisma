@@ -57,8 +57,11 @@ model Entry {
  clubId String?
  clubRecord Club? @relation(fields:[clubId],references:[id],onDelete:Restrict)
  gender String?
+ archivedAt DateTime?
  @@index([categoryId])
  @@index([clubId])
+ @@index([categoryId,archivedAt])
+ @@index([clubId,archivedAt])
 }
 model Club {
  id String @id @default(uuid())

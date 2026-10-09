@@ -13,6 +13,7 @@ import {
   Max,
   Min,
   ValidateNested,
+  registerDecorator,
 } from 'class-validator';
 
 export class RosterEntryDto {
@@ -40,4 +41,36 @@ export class CreateClubDto {
   @IsUUID() id!: string;
   @IsInt() @Min(0) @Max(Number.MAX_SAFE_INTEGER) expectedRevision!: number;
   @IsString() @Length(2, 120) name!: string;
+}
+
+function TrimmedReason() {
+  return (object: object, propertyName: string) =>
+    registerDecorator({
+      name: 'trimmedReason',
+      target: object.constructor,
+      propertyName,
+      validator: {
+        validate: (value: unknown) =>
+          typeof value === 'string' &&
+          [...value.trim()].length >= 3 &&
+          [...value.trim()].length <= 500,
+        defaultMessage: () => 'reason must contain 3–500 characters after trimming',
+      },
+    });
+}
+export class EntryPreviewDto extends RosterEntryDto {
+  @IsUUID() clubId!: string;
+}
+export class EntryUpdateDto extends EntryPreviewDto {
+  @IsUUID() id!: string;
+  @IsInt() @Min(0) @Max(Number.MAX_SAFE_INTEGER) expectedRevision!: number;
+  @IsString() @TrimmedReason() reason!: string;
+}
+export class EntryArchiveDto {
+  @IsUUID() id!: string;
+  @IsInt() @Min(0) @Max(Number.MAX_SAFE_INTEGER) expectedRevision!: number;
+  @IsString() @TrimmedReason() reason!: string;
+}
+export class EntryRestoreDto extends EntryArchiveDto {
+  @IsOptional() @IsBoolean() duplicateConfirmed?: boolean;
 }

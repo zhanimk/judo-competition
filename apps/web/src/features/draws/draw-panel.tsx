@@ -359,7 +359,9 @@ export function DrawPanel({
                   ? text('Опубликована', 'Жарияланған')
                   : c.draw?.status === 'CONFIRMED'
                     ? text('Подтверждена', 'Расталған')
-                    : text('Подготовка', 'Дайындық')}
+                    : c.draw?.status === 'STALE'
+                      ? text('Состав изменён', 'Құрам өзгерген')
+                      : text('Подготовка', 'Дайындық')}
               </small>
             </button>
           ))}
@@ -407,14 +409,24 @@ export function DrawPanel({
           ) : (
             category && (
               <>
+                {draw?.status === 'STALE' && (
+                  <p className="info-note" role="status">
+                    {text(
+                      'Состав изменился. Повторите жеребьёвку и проверьте новые пары перед подтверждением. Предыдущая версия сохранена в истории.',
+                      'Құрам өзгерді. Растамас бұрын жеребені қайталап, жаңа жұптарды тексеріңіз. Алдыңғы нұсқа тарихта сақталған.',
+                    )}
+                  </p>
+                )}
                 <div className="draw-actions-grid">
                   <section>
                     <span className="draw-step">01</span>
                     <h4>{text('Создать сетку', 'Тор құру')}</h4>
                     <p>
-                      {draw
-                        ? text('Пары сформированы', 'Жұптар құрылды')
-                        : text('Из состава категории', 'Санат қатысушыларынан')}
+                      {draw?.status === 'STALE'
+                        ? text('Требуется повторная жеребьёвка', 'Жеребені қайталау қажет')
+                        : draw
+                          ? text('Пары сформированы', 'Жұптар құрылды')
+                          : text('Из состава категории', 'Санат қатысушыларынан')}
                     </p>
                     {draw?.status === 'CONFIRMED' ? (
                       <span className="draw-action-done">✓ {text('Готово', 'Дайын')}</span>
@@ -440,7 +452,7 @@ export function DrawPanel({
                     ) : (
                       <button
                         className="solid-button"
-                        disabled={blocked || !draw}
+                        disabled={blocked || !draw || draw.status === 'STALE'}
                         onClick={() => action('confirm')}
                       >
                         {text('Подтвердить сетку', 'Торды растау')}
@@ -470,7 +482,7 @@ export function DrawPanel({
                     )}
                   </section>
                 </div>
-                {draw && (
+                {draw && draw.status !== 'STALE' && (
                   <>
                     <div className="draw-canvas-panel">
                       <DrawView

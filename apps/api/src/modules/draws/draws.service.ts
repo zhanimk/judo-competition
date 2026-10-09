@@ -108,7 +108,7 @@ export class DrawsService {
       const old = await tx.drawRecord.findUnique({ where: { categoryId: id } });
       if (old?.status === 'CONFIRMED') throw new ConflictException('DRAW_LOCKED');
       const entries = await tx.entry.findMany({
-        where: { categoryId: id },
+        where: { categoryId: id, archivedAt: null },
         orderBy: { id: 'asc' },
       });
       if (entries.length < 2 || entries.length > 128)
@@ -137,7 +137,11 @@ export class DrawsService {
         ),
         tieBreak: rules.tieBreak,
       };
-      const data = { fingerprint: entryFingerprint(entries), snapshot: json(snapshot) };
+      const data = {
+        status: 'PREVIEW',
+        fingerprint: entryFingerprint(entries),
+        snapshot: json(snapshot),
+      };
       const result = old
         ? await tx.drawRecord.update({
             where: { id: old.id },
@@ -162,6 +166,7 @@ export class DrawsService {
       await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${id} FOR UPDATE`;
       const draw = await tx.drawRecord.findUnique({ where: { categoryId: id } });
       if (!draw) throw new NotFoundException('DRAW_NOT_FOUND');
+      if (draw.status === 'STALE') throw new ConflictException('DRAW_ENTRIES_CHANGED');
       if (draw.version !== version) throw new ConflictException('DRAW_STALE');
       if (draw.status === 'CONFIRMED')
         return {
@@ -172,7 +177,7 @@ export class DrawsService {
           }),
         };
       const entries = await tx.entry.findMany({
-        where: { categoryId: id },
+        where: { categoryId: id, archivedAt: null },
         orderBy: { id: 'asc' },
       });
       if (entryFingerprint(entries) !== draw.fingerprint)

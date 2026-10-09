@@ -140,12 +140,16 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
     if (!mat) throw new NotFoundException('TATAMI_NOT_FOUND');
     const row = await this.db.contest.findFirst({
       where: { tatamiId, status: 'ACTIVE' },
-      include: { draw: { include: { category: { include: { entries: true } } } } },
+      include: {
+        draw: { include: { category: { include: { entries: { where: { archivedAt: null } } } } } },
+      },
     });
     const recent = await this.db.contest.findFirst({
       where: { tatamiId, status: 'CONFIRMED' },
       orderBy: { confirmedAt: 'desc' },
-      include: { draw: { include: { category: { include: { entries: true } } } } },
+      include: {
+        draw: { include: { category: { include: { entries: { where: { archivedAt: null } } } } } },
+      },
     });
     if (!row)
       return {

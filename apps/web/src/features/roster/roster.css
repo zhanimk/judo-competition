@@ -167,6 +167,99 @@
   gap: 12px;
   align-items: end;
 }
+.club-roster .roster-row-fields-single {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 106px 126px minmax(0, 1.4fr);
+}
+.club-roster .roster-entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.club-roster .roster-entry-actions button {
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 12px;
+  background: #f6f8fb;
+  color: #354d6d;
+}
+.club-roster .roster-correction .roster-card-body {
+  display: grid;
+  gap: 20px;
+}
+.club-roster .roster-correction .roster-actions {
+  margin: 0;
+}
+.club-roster .roster-correction-club {
+  max-width: 480px;
+}
+.club-roster .roster-correction-reason textarea {
+  min-height: 100px;
+}
+.club-roster .roster-entry-details {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.club-roster .roster-entry-details > div {
+  display: grid;
+  grid-template-columns: minmax(0, 120px) minmax(0, 1fr);
+  gap: 12px;
+}
+.club-roster .roster-entry-details dt {
+  color: #66748a;
+  font-size: 12px;
+}
+.club-roster .roster-entry-details dd {
+  margin: 0;
+  color: #253a56;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.club-roster .roster-before-after {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.club-roster .roster-before-after > div {
+  min-width: 0;
+}
+.club-roster .roster-before-after h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: #435672;
+}
+.club-roster .roster-correction-preview {
+  display: grid;
+  gap: 16px;
+}
+.club-roster .roster-correction-preview > p {
+  margin: 0;
+}
+.club-roster .roster-archive {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e1e6ef;
+}
+.club-roster .roster-archive summary {
+  cursor: pointer;
+  line-height: 24px;
+  color: #354d6d;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.club-roster .roster-archive .field-note {
+  margin: 16px 0;
+}
+.club-roster .roster-archive td:nth-child(3) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .club-roster .roster-remove {
   width: 48px;
   height: 48px;
@@ -389,6 +482,13 @@
   }
 }
 @media (max-width: 640px) {
+  .club-roster .roster-before-after,
+  .club-roster .roster-entry-details > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .club-roster .roster-entry-details > div {
+    gap: 4px;
+  }
   .club-roster .roster-card-header,
   .club-roster .roster-card-body {
     padding: 20px;
@@ -441,6 +541,13 @@
   }
 }
 @container roster-card (max-width: 460px) {
+  .club-roster .roster-before-after,
+  .club-roster .roster-entry-details > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .club-roster .roster-entry-details > div {
+    gap: 4px;
+  }
   .club-roster .roster-row-fields,
   .club-roster .roster-browse-controls,
   .club-roster .roster-new-club {

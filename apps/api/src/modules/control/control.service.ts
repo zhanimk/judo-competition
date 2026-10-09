@@ -59,7 +59,7 @@ export class ControlService {
       where: { id },
       include: {
         tatamis: { orderBy: { number: 'asc' } },
-        categories: { include: { entries: true } },
+        categories: { include: { entries: { where: { archivedAt: null } } } },
       },
     });
     const rows = await this.db.contest.findMany({

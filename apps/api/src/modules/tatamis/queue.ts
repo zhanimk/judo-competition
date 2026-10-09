@@ -8,7 +8,10 @@ export async function readyQueue(db: Prisma.TransactionClient, tatamiId: string)
         include: {
           category: {
             include: {
-              entries: { select: { id: true, firstName: true, lastName: true, club: true } },
+              entries: {
+                where: { archivedAt: null },
+                select: { id: true, firstName: true, lastName: true, club: true },
+              },
             },
           },
         },

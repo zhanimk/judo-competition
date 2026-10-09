@@ -1,18 +1,18 @@
 {
-  "startedAt": "2026-10-09T07:40:51.662Z",
+  "startedAt": "2026-10-09T08:52:53.135Z",
   "passed": true,
-  "output": "tmp/backups/verified-2026-10-09T07-40-51.661Z-92906fd0",
-  "dumpPath": "tmp/backups/verified-2026-10-09T07-40-51.661Z-92906fd0/database.dump",
+  "output": "tmp/backups/verified-2026-10-09T08-52-53.132Z-3e78a6ab",
+  "dumpPath": "tmp/backups/verified-2026-10-09T08-52-53.132Z-3e78a6ab/database.dump",
   "schema": "public",
-  "verificationDatabase": "qa_restore_d7aeee3c4c3b4c788318cbfead2ed63d",
+  "verificationDatabase": "qa_restore_f19e1d47c81d457ca19e131b707e4b26",
   "verificationDatabaseRemoved": true,
   "versions": {
     "server": "180003",
     "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
     "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
   },
-  "dumpBytes": 84824,
-  "dumpSha256": "d38b7f203de65d3c184836e05bce8c7ab211e95c9448b071654d009663a9b924",
+  "dumpBytes": 85730,
+  "dumpSha256": "8a3bbd840b104fcf0a5d5edb286141adeee169be0e4d1a2d1a6cf687bc28abfb",
   "tables": [
     {
       "name": "AuditEvent",
@@ -61,7 +61,7 @@
     },
     {
       "name": "Session",
-      "rows": 20,
+      "rows": 21,
       "matched": true
     },
     {
@@ -81,10 +81,10 @@
     },
     {
       "name": "_prisma_migrations",
-      "rows": 12,
+      "rows": 13,
       "matched": true
     }
   ],
   "schemaStructureMatched": true,
-  "finishedAt": "2026-10-09T07:40:51.956Z"
+  "finishedAt": "2026-10-09T08:52:53.427Z"
 }

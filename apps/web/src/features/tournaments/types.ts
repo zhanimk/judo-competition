@@ -2,11 +2,12 @@ export type Entry = {
   id: string;
   firstName: string;
   lastName: string;
-  birthYear?: number;
+  birthYear?: number | null;
   club: string;
   clubId?: string | null;
   gender?: 'MALE' | 'FEMALE' | null;
   categoryId?: string;
+  archivedAt?: string | null;
 };
 export type Club = { id: string; name: string; _count: { entries: number } };
 export type Category = {

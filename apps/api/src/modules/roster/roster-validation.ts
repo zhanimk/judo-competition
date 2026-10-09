@@ -10,6 +10,7 @@ type ExistingEntry = {
   lastName: string;
   birthYear: number;
   club: string;
+  archivedAt?: Date | string | null;
 };
 export type RosterSnapshot = {
   status: string;
@@ -43,10 +44,21 @@ export function validateRoster(
   snapshot: RosterSnapshot,
   clubName: string,
   entries: RosterEntryDto[],
+  excludeEntryId?: string,
 ) {
-  const categories = new Map(snapshot.categories.map((category) => [category.id, category]));
+  const categories = new Map(
+    snapshot.categories.map((category) => [
+      category.id,
+      {
+        ...category,
+        entries: category.entries.filter(
+          (entry) => !entry.archivedAt && entry.id !== excludeEntryId,
+        ),
+      },
+    ]),
+  );
   const existing = new Map<string, PossibleDuplicate[]>();
-  for (const category of snapshot.categories)
+  for (const category of categories.values())
     for (const entry of category.entries) {
       const key = identity(entry);
       const duplicate = {

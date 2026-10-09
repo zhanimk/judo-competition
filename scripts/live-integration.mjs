@@ -26,6 +26,19 @@ async function call(path, data, auth = cookie) {
     cookie: r.headers.get('set-cookie')?.split(';')[0],
   };
 }
+async function login(user) {
+  const result = await call('/auth/login', { email: user.email, password: user.password }, '');
+  assert.equal(
+    result.status,
+    201,
+    `LIVE setup login failed: ${result.body.message ?? result.status}`,
+  );
+  assert.ok(
+    typeof result.cookie === 'string' && /^judo_session=.+$/.test(result.cookie),
+    'LIVE setup login must return a session cookie',
+  );
+  return result.cookie;
+}
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 async function view(mat) {
   return (await call(`/tatamis/${mat}/live`, undefined, '')).body;
@@ -40,10 +53,8 @@ async function command(mat, id, type, revision, extra = {}, auth = cookie) {
 try {
   owner = await createTestUser(db);
   outsider = await createTestUser(db);
-  cookie = (await call('/auth/login', { email: owner.email, password: owner.password })).cookie;
-  const foreign = (
-    await call('/auth/login', { email: outsider.email, password: outsider.password })
-  ).cookie;
+  cookie = await login(owner);
+  const foreign = await login(outsider);
   const t = await call('/tournaments', {
     name: 'LIVE QA — Әлихан',
     city: 'Алматы',

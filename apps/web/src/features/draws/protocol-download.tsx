@@ -125,8 +125,13 @@ export function ProtocolDownload({
       const r = await fetch(`/api/v1/tournaments/${tournamentId}/protocol.pdf?${query}`, {
         cache: 'no-store',
       });
-      if (!r.ok || !r.headers.get('content-type')?.includes('application/pdf'))
-        throw new Error('DOWNLOAD');
+      if (!r.ok) {
+        const failure = await r.json().catch(() => null);
+        throw new Error(
+          failure?.message === 'DRAW_ENTRIES_CHANGED' ? 'DRAW_ENTRIES_CHANGED' : 'DOWNLOAD',
+        );
+      }
+      if (!r.headers.get('content-type')?.includes('application/pdf')) throw new Error('DOWNLOAD');
       const url = URL.createObjectURL(await r.blob()),
         a = document.createElement('a');
       a.href = url;
@@ -136,12 +141,17 @@ export function ProtocolDownload({
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30000);
       setDone(true);
-    } catch {
+    } catch (error) {
       setError(
-        text(
-          'Не удалось скачать PDF. Проверьте подключение и повторите.',
-          'PDF жүктеу мүмкін болмады. Қосылымды тексеріп, қайталаңыз.',
-        ),
+        error instanceof Error && error.message === 'DRAW_ENTRIES_CHANGED'
+          ? text(
+              'Состав изменился. Повторите жеребьёвку затронутых категорий перед скачиванием сетки. Список участников можно скачать отдельно.',
+              'Құрам өзгерді. Торды жүктемес бұрын тиісті санаттардың жеребесін қайталаңыз. Қатысушылар тізімін бөлек жүктеуге болады.',
+            )
+          : text(
+              'Не удалось скачать PDF. Проверьте подключение и повторите.',
+              'PDF жүктеу мүмкін болмады. Қосылымды тексеріп, қайталаңыз.',
+            ),
       );
     } finally {
       setBusy(false);

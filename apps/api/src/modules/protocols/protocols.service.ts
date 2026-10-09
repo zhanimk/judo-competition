@@ -38,7 +38,10 @@ export class ProtocolsService {
               where: ids ? { id: { in: ids } } : {},
               orderBy: [{ birthYearFrom: 'desc' }, { maxWeightGrams: 'asc' }, { name: 'asc' }],
               include: {
-                entries: { orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] },
+                entries: {
+                  where: { archivedAt: null },
+                  orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+                },
                 draw: { include: { contests: { orderBy: [{ round: 'asc' }, { key: 'asc' }] } } },
               },
             },
@@ -48,6 +51,8 @@ export class ProtocolsService {
     );
     if (ids && t.categories.length !== new Set(ids).size)
       throw new NotFoundException('CATEGORY_NOT_FOUND');
+    if (kind === 'DRAW' && t.categories.some((category) => category.draw?.status === 'STALE'))
+      throw new ConflictException('DRAW_ENTRIES_CHANGED');
     return renderProtocol(t, kind, lang);
   }
 }

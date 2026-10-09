@@ -32,13 +32,65 @@ export type PreviewRow = {
   possibleDuplicates: Duplicate[];
 };
 export type RosterPreview = { revision: number; rows: PreviewRow[]; canSave: boolean };
+export type SavedEntry = Entry & {
+  birthYear: number | null;
+  categoryId: string;
+  clubId: string | null;
+  gender: 'MALE' | 'FEMALE' | null;
+  archivedAt: string | null;
+};
+export type EntryCorrectionPreview = RosterPreview & {
+  before: SavedEntry;
+  proposed: SavedEntry;
+  affectedCategoryIds: string[];
+  invalidatedCategoryIds: string[];
+};
+export type EntryCorrectionReceipt = {
+  revision: number;
+  entry: SavedEntry;
+  invalidatedCategoryIds: string[];
+};
 export type ClubReceipt = { revision: number; club: Club };
 export type RosterReceipt = {
   revision: number;
   clubId: string;
   entries: (Entry & { categoryId: string; gender: 'MALE' | 'FEMALE'; clubId: string })[];
+  invalidatedCategoryIds?: string[];
 };
-export type Receipt = ClubReceipt | RosterReceipt;
+export type Receipt = ClubReceipt | RosterReceipt | EntryCorrectionReceipt;
+export const isUuid = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value);
+export function validSavedEntry(value: unknown): value is SavedEntry {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as SavedEntry;
+  return (
+    isUuid(entry.id) &&
+    isUuid(entry.categoryId) &&
+    (entry.clubId === null || isUuid(entry.clubId)) &&
+    typeof entry.firstName === 'string' &&
+    typeof entry.lastName === 'string' &&
+    typeof entry.club === 'string' &&
+    (entry.birthYear === null || Number.isInteger(entry.birthYear)) &&
+    (entry.gender === null || ['MALE', 'FEMALE'].includes(entry.gender)) &&
+    (entry.archivedAt === null ||
+      (typeof entry.archivedAt === 'string' && Number.isFinite(Date.parse(entry.archivedAt))))
+  );
+}
+export function validCategoryIds(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isUuid) && new Set(value).size === value.length;
+}
+export function validEntryCorrectionPreview(value: EntryCorrectionPreview): boolean {
+  return (
+    validRosterPreview(value, 1) &&
+    validSavedEntry(value.before) &&
+    validSavedEntry(value.proposed) &&
+    value.before.id === value.proposed.id &&
+    validCategoryIds(value.affectedCategoryIds) &&
+    validCategoryIds(value.invalidatedCategoryIds) &&
+    value.invalidatedCategoryIds.every((id) => value.affectedCategoryIds.includes(id))
+  );
+}
 export function blankRow(): DraftRow {
   return {
     localId: crypto.randomUUID(),
@@ -180,10 +232,26 @@ export function mergeRosterReceipt(tournament: Tournament, receipt: Receipt): To
         : [...tournament.clubs, receipt.club],
     };
   const categories = tournament.categories.map((category) => {
-    const entries = [...(category.entries ?? [])];
-    for (const entry of receipt.entries.filter((entry) => entry.categoryId === category.id))
+    const corrected = 'entry' in receipt ? receipt.entry : null;
+    const entries = (category.entries ?? []).filter((entry) => entry.id !== corrected?.id);
+    const incoming = corrected
+      ? corrected.archivedAt === null && corrected.categoryId === category.id
+        ? [corrected]
+        : []
+      : 'entries' in receipt
+        ? receipt.entries.filter((entry) => entry.categoryId === category.id)
+        : [];
+    for (const entry of incoming)
       if (!entries.some((current) => current.id === entry.id)) entries.push(entry);
-    return { ...category, entries, _count: { ...category._count, entries: entries.length } };
+    const invalidated = receipt.invalidatedCategoryIds?.includes(category.id);
+    return {
+      ...category,
+      ...(invalidated && category.draw && category.draw.status !== 'CONFIRMED'
+        ? { draw: { ...category.draw, status: 'STALE' } }
+        : {}),
+      entries,
+      _count: { ...category._count, entries: entries.length },
+    };
   });
   const clubs = tournament.clubs.map((club) => ({
     ...club,

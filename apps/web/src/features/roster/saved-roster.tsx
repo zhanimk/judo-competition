@@ -3,17 +3,24 @@
 import { useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
 import type { Tournament } from '../tournaments/types';
+import { ArchivedRoster } from './archived-roster';
+import { savedEntry, type CorrectionMode } from './entry-correction-model';
+import type { SavedEntry } from './roster-model';
 
 export function SavedRoster({
   tournament,
   selectedClubId,
   disabled,
   onClub,
+  onCorrect,
+  onUpdate,
 }: {
   tournament: Tournament;
   selectedClubId: string;
   disabled: boolean;
   onClub: (id: string) => void;
+  onCorrect: (entry: SavedEntry, mode: CorrectionMode) => void;
+  onUpdate: () => Promise<void>;
 }) {
   const { text } = useLanguage();
   const [group, setGroup] = useState<'club' | 'category'>('club');
@@ -126,27 +133,55 @@ export function SavedRoster({
                 </tr>
               </thead>
               <tbody>
-                {visible.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>
-                      <strong>
-                        {entry.lastName} {entry.firstName}
-                      </strong>
-                    </td>
-                    <td>{entry.birthYear ?? '—'}</td>
-                    <td>
-                      {(entry.gender ?? entry.category.gender) === 'MALE'
-                        ? text('Мужской', 'Ер')
-                        : text('Женский', 'Әйел')}
-                    </td>
-                    <td>{entry.club}</td>
-                    <td>{entry.category.name}</td>
-                  </tr>
-                ))}
+                {visible.map((entry) => {
+                  const record = savedEntry(entry, entry.category);
+                  const correctionDisabled = disabled || tournament.status !== 'DRAFT' || !record;
+                  return (
+                    <tr key={entry.id}>
+                      <td>
+                        <strong>
+                          {entry.lastName} {entry.firstName}
+                        </strong>
+                        <div className="roster-entry-actions">
+                          <button
+                            type="button"
+                            disabled={correctionDisabled}
+                            onClick={() => record && onCorrect(record, 'update')}
+                            aria-label={`${text('Исправить заявку', 'Өтінімді түзету')}: ${entry.lastName} ${entry.firstName}`}
+                          >
+                            {text('Изменить', 'Өзгерту')}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={correctionDisabled}
+                            onClick={() => record && onCorrect(record, 'archive')}
+                            aria-label={`${text('Исключить из состава', 'Құрамнан шығару')}: ${entry.lastName} ${entry.firstName}`}
+                          >
+                            {text('Исключить', 'Шығару')}
+                          </button>
+                        </div>
+                      </td>
+                      <td>{entry.birthYear ?? '—'}</td>
+                      <td>
+                        {(entry.gender ?? entry.category.gender) === 'MALE'
+                          ? text('Мужской', 'Ер')
+                          : text('Женский', 'Әйел')}
+                      </td>
+                      <td>{entry.club}</td>
+                      <td>{entry.category.name}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
+        <ArchivedRoster
+          tournament={tournament}
+          disabled={disabled}
+          onRestore={(entry) => onCorrect(entry, 'restore')}
+          onUpdate={onUpdate}
+        />
       </div>
     </section>
   );

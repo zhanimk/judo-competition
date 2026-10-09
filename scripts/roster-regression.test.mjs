@@ -5,16 +5,22 @@ import { test } from 'node:test';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Prisma } from '@prisma/client';
-import { AuthService } from '../apps/api/dist/modules/auth/auth.service.js';
-import { RosterService } from '../apps/api/dist/modules/roster/roster.service.js';
-import {
+const apiDist = process.env.JUDO_API_TEST_DIST ?? '../apps/api/dist';
+const apiModule = (path) => import(new URL(`${apiDist}/modules/${path}.js`, import.meta.url));
+const { AuthService } = await apiModule('auth/auth.service');
+const { RosterService } = await apiModule('roster/roster.service');
+const {
   CreateClubDto,
   RosterCommitDto,
   RosterPreviewDto,
-} from '../apps/api/dist/modules/roster/roster.dto.js';
-import { TournamentsService } from '../apps/api/dist/modules/tournaments/tournaments.service.js';
-import { entryFingerprint } from '../apps/api/dist/modules/draws/draws.service.js';
-import { assertUnusedCommandIds } from '../apps/api/dist/modules/matches/command-ids.js';
+  EntryPreviewDto,
+  EntryUpdateDto,
+  EntryArchiveDto,
+  EntryRestoreDto,
+} = await apiModule('roster/roster.dto');
+const { TournamentsService } = await apiModule('tournaments/tournaments.service');
+const { DrawsService, entryFingerprint } = await apiModule('draws/draws.service');
+const { assertUnusedCommandIds } = await apiModule('matches/command-ids');
 
 const owner = { id: randomUUID(), role: 'ORGANIZER' };
 const tournamentId = randomUUID();
@@ -70,16 +76,35 @@ function harness({
     receipts: [],
     audits: [],
     matchEvents: structuredClone(matchEvents),
+    contests: [],
   };
   const notices = [];
   const locks = [];
   let chain = Promise.resolve();
+  const entryMatches = (data, entry, where = {}) =>
+    (!where.id ||
+      (typeof where.id === 'string' ? entry.id === where.id : where.id.in.includes(entry.id))) &&
+    (!where.categoryId || entry.categoryId === where.categoryId) &&
+    (!where.category ||
+      data.categories.find((category) => category.id === entry.categoryId)?.tournamentId ===
+        where.category.tournamentId) &&
+    (where.archivedAt !== null || entry.archivedAt == null) &&
+    (where.archivedAt?.not !== null || entry.archivedAt != null);
   const viewTournament = (data, options) => {
     if (options.where.id !== tournamentId) return null;
     const clubs = data.clubs.map((club) => ({
       id: club.id,
       name: club.name,
-      _count: { entries: data.entries.filter((entry) => entry.clubId === club.id).length },
+      _count: {
+        entries: data.entries.filter(
+          (entry) =>
+            entry.clubId === club.id &&
+            entryMatches(data, entry, {
+              archivedAt: (options.select?.clubs ?? options.include?.clubs)?.select?._count?.select
+                ?.entries?.where?.archivedAt,
+            }),
+        ).length,
+      },
     }));
     if (options.select) return { rosterRevision: data.tournament.rosterRevision, clubs };
     if (!options.include) return structuredClone(data.tournament);
@@ -89,7 +114,11 @@ function harness({
       tatamis: [],
       categories: data.categories.map((category) => ({
         ...category,
-        entries: data.entries.filter((entry) => entry.categoryId === category.id),
+        entries: data.entries.filter(
+          (entry) =>
+            entry.categoryId === category.id &&
+            entryMatches(data, entry, options.include?.categories?.include?.entries?.where),
+        ),
       })),
     });
   };
@@ -133,6 +162,33 @@ function harness({
             },
           },
           drawRecord: {
+            findMany: async ({ where }) =>
+              staged.categories
+                .filter(
+                  (category) =>
+                    where.categoryId.in.includes(category.id) &&
+                    category.draw?.status === where.status,
+                )
+                .map((category) => ({
+                  id: category.draw.id ?? `draw:${category.id}`,
+                  categoryId: category.id,
+                  version: category.draw.version ?? 1,
+                  status: category.draw.status,
+                  fingerprint: category.draw.fingerprint ?? 'saved-fingerprint',
+                  snapshot: structuredClone(category.draw.snapshot ?? {}),
+                })),
+            update: async ({ where, data }) => {
+              const category = staged.categories.find(
+                (category) =>
+                  category.draw && (category.draw.id ?? `draw:${category.id}`) === where.id,
+              );
+              category.draw = {
+                ...category.draw,
+                ...data,
+                version: (category.draw.version ?? 1) + (data.version?.increment ?? 0),
+              };
+              return structuredClone(category.draw);
+            },
             findFirst: async ({ where }) =>
               staged.categories.find((item) => item.id === where.categoryId)?.draw?.status ===
               where.status
@@ -170,13 +226,41 @@ function harness({
           },
           entry: {
             count: async ({ where }) =>
-              staged.entries.filter((entry) => entry.categoryId === where.categoryId).length,
-            findMany: async ({ where }) =>
+              staged.entries.filter((entry) => entryMatches(staged, entry, where)).length,
+            findFirst: async ({ where }) =>
               structuredClone(
-                staged.entries.filter((entry) => where.id.in.includes(entry.id)).reverse(),
+                staged.entries.find((entry) => entryMatches(staged, entry, where)) ?? null,
               ),
+            findMany: async ({ where, include }) =>
+              structuredClone(
+                staged.entries
+                  .filter((entry) => entryMatches(staged, entry, where))
+                  .reverse()
+                  .map((entry) =>
+                    include?.category
+                      ? {
+                          ...entry,
+                          category: { gender: category(staged, { id: entry.categoryId }).gender },
+                        }
+                      : entry,
+                  ),
+              ),
+            update: async ({ where, data }) => {
+              const entry = staged.entries.find((entry) => entry.id === where.id);
+              if (failEntryWrite) throw new Error('entry storage unavailable');
+              const { category, clubRecord, ...values } = data;
+              Object.assign(entry, structuredClone(values));
+              if (category) entry.categoryId = category.connect.id;
+              if (clubRecord) entry.clubId = clubRecord.connect.id;
+              return structuredClone(entry);
+            },
             create: async ({ data }) => {
-              const entry = { id: randomUUID(), createdAt, ...structuredClone(data) };
+              const entry = {
+                id: randomUUID(),
+                createdAt,
+                archivedAt: null,
+                ...structuredClone(data),
+              };
               staged.entries.push(entry);
               return structuredClone(entry);
             },
@@ -185,7 +269,9 @@ function harness({
                 staged.entries.push(structuredClone(data[0]));
                 throw new Error('entry storage unavailable');
               }
-              staged.entries.push(...structuredClone(data));
+              staged.entries.push(
+                ...structuredClone(data).map((entry) => ({ archivedAt: null, ...entry })),
+              );
               return { count: data.length };
             },
           },
@@ -215,6 +301,14 @@ function harness({
                 ) ?? null
               );
             },
+          },
+          contest: {
+            findFirst: async ({ where }) =>
+              staged.contests.find((contest) =>
+                where.OR.some((condition) =>
+                  Object.entries(condition).every(([key, value]) => contest[key] === value),
+                ),
+              ) ?? null,
           },
           auditEvent: {
             create: async ({ data }) => {
@@ -254,6 +348,21 @@ function harness({
     clubs: (user = owner) => service.clubs(tournamentId, user),
     get: () => legacy.get(tournamentId, owner),
     legacy: (entry, catId = categoryId) => legacy.entry(tournamentId, catId, entry, owner),
+    correction: (extra = {}) => ({
+      id: randomUUID(),
+      expectedRevision: saved.tournament.rosterRevision,
+      reason: 'Исправление заявки',
+      ...extra,
+    }),
+    update: (entryId, dto, user = owner, id = tournamentId) =>
+      service.updateEntry(id, entryId, dto, user),
+    archive: (entryId, dto, user = owner, id = tournamentId) =>
+      service.archiveEntry(id, entryId, dto, user),
+    restore: (entryId, dto, user = owner, id = tournamentId) =>
+      service.restoreEntry(id, entryId, dto, user),
+    previewEntry: (entryId, dto, user = owner) =>
+      service.previewEntry(tournamentId, entryId, dto, user),
+    archived: (user = owner) => service.archived(tournamentId, user),
     restart: () => {
       service = new RosterService(db, auth, live);
     },
@@ -463,8 +572,14 @@ test('only confirmed draws lock admission; preview can become stale without rewr
   await h.commit(h.dto());
   assert.deepEqual(h.snapshot().categories[0].draw, {
     ...before.categories[0].draw,
-    status: 'PREVIEW',
+    status: 'STALE',
+    version: 2,
   });
+  assert.equal(
+    h.snapshot().audits.find((audit) => audit.action === 'DRAW_INVALIDATED').payload
+      .invalidatedDraws[0].fingerprint,
+    'historic',
+  );
 });
 
 test('running tournament is read-only for new roster commands but preview reports locked rows', async () => {
@@ -682,4 +797,425 @@ test('draw fingerprints preserve original Entry column order and ignore new club
     entryFingerprint(upgraded.map((entry) => ({ ...entry, club: entry.club.trim() }))),
     oldHash,
   );
+});
+
+const savedEntry = (extra = {}) => ({
+  id: randomUUID(),
+  categoryId,
+  firstName: 'Әлихан',
+  lastName: 'Серік',
+  birthYear: 2012,
+  gender: 'MALE',
+  club: 'Жас Қыран',
+  clubId,
+  createdAt,
+  archivedAt: null,
+  ...extra,
+});
+const previewEntry = (entry, extra = {}) => ({
+  firstName: entry.firstName,
+  lastName: entry.lastName,
+  birthYear: entry.birthYear,
+  gender: entry.gender ?? 'MALE',
+  clubId: entry.clubId,
+  categoryId: entry.categoryId,
+  ...extra,
+});
+const seeded = (options = {}, extra = {}) => {
+  const h = harness(options);
+  const entry = savedEntry(extra);
+  h.mutate((state) => state.entries.push(entry));
+  return { h, entry };
+};
+
+test('correction DTOs require safe ID/version and a trimmed 3–500 character reason', async () => {
+  const entry = savedEntry();
+  const base = { id: randomUUID(), expectedRevision: 0, reason: '  Исправить ошибку  ' };
+  for (const [Dto, valid] of [
+    [EntryPreviewDto, previewEntry(entry)],
+    [EntryUpdateDto, { ...base, ...previewEntry(entry) }],
+    [EntryArchiveDto, base],
+    [EntryRestoreDto, { ...base, duplicateConfirmed: true }],
+  ])
+    assert.equal((await validate(plainToInstance(Dto, valid))).length, 0);
+  for (const Dto of [EntryArchiveDto, EntryRestoreDto, EntryUpdateDto])
+    for (const bad of [
+      { reason: undefined },
+      { reason: '  ' },
+      { reason: '  ab  ' },
+      { reason: 'a'.repeat(501) },
+      { id: 'bad' },
+      { expectedRevision: 0.1 },
+      { expectedRevision: Number.MAX_SAFE_INTEGER + 1 },
+    ])
+      assert.ok(
+        (await validate(plainToInstance(Dto, { ...base, ...previewEntry(entry), ...bad }))).length >
+          0,
+      );
+  assert.ok(
+    (await validate(plainToInstance(EntryRestoreDto, { ...base, duplicateConfirmed: 'yes' })))
+      .length > 0,
+  );
+});
+
+test('editing preview excludes itself from duplicates and category capacity at 128', async () => {
+  const { h, entry } = seeded();
+  h.mutate((state) =>
+    state.entries.push(
+      ...Array.from({ length: 127 }, (_, index) => savedEntry({ lastName: `Other ${index}` })),
+    ),
+  );
+  const before = h.snapshot();
+  const result = await h.previewEntry(entry.id, previewEntry(entry));
+  assert.equal(result.canSave, true);
+  assert.deepEqual(result.rows, [
+    { index: 0, errors: [], possibleDuplicates: [], duplicateCount: 0 },
+  ]);
+  assert.equal(result.before.id, entry.id);
+  assert.equal(result.proposed.id, entry.id);
+  assert.deepEqual(h.snapshot(), before);
+  assert.equal(h.notices.length, 0);
+  const updated = await h.update(entry.id, {
+    ...h.correction(),
+    ...previewEntry(entry, { lastName: 'Corrected' }),
+  });
+  assert.equal(updated.entry.id, entry.id);
+  assert.equal(h.snapshot().entries.length, 128);
+});
+
+test('moving an entry preserves its identity and archives both affected preview snapshots in audit', async () => {
+  const { h, entry } = seeded({}, { club: '  Historical text  ' });
+  const destinationClub = randomUUID();
+  h.mutate((state) => {
+    state.clubs.push({
+      id: destinationClub,
+      tournamentId,
+      name: 'Новый клуб',
+      normalizedName: 'новый клуб',
+      createdAt,
+    });
+    state.categories.forEach((category, index) => {
+      category.draw = {
+        id: `draw${index}`,
+        status: 'PREVIEW',
+        version: 7 + index,
+        fingerprint: `hash${index}`,
+        snapshot: { positions: [{ id: entry.id, clubId }], custom: index },
+      };
+    });
+  });
+  const before = h.snapshot();
+  const dto = {
+    ...h.correction({ reason: '  Перенести заявку  ' }),
+    ...previewEntry(entry, {
+      clubId: destinationClub,
+      categoryId: femaleCategoryId,
+      gender: 'FEMALE',
+      lastName: 'Исправлено',
+    }),
+  };
+  const preview = await h.previewEntry(entry.id, dto);
+  assert.deepEqual(preview.affectedCategoryIds, [categoryId, femaleCategoryId].sort());
+  assert.deepEqual(preview.invalidatedCategoryIds, [categoryId, femaleCategoryId].sort());
+  assert.deepEqual(h.snapshot(), before);
+  const response = await h.update(entry.id, dto);
+  assert.equal(response.revision, 1);
+  assert.equal(response.entry.id, entry.id);
+  assert.equal(response.entry.createdAt, createdAt.toISOString());
+  assert.equal(response.entry.categoryId, femaleCategoryId);
+  assert.equal(response.entry.clubId, destinationClub);
+  assert.equal(response.entry.club, 'Новый клуб');
+  const after = h.snapshot();
+  assert.equal(after.entries.length, 1);
+  for (let index = 0; index < 2; index++) {
+    assert.equal(after.categories[index].draw.status, 'STALE');
+    assert.equal(after.categories[index].draw.version, before.categories[index].draw.version + 1);
+    assert.equal(
+      after.categories[index].draw.fingerprint,
+      before.categories[index].draw.fingerprint,
+    );
+    assert.deepEqual(after.categories[index].draw.snapshot, before.categories[index].draw.snapshot);
+  }
+  const history = after.audits
+    .filter((audit) => audit.action === 'DRAW_INVALIDATED')
+    .flatMap((audit) => audit.payload.invalidatedDraws);
+  assert.equal(history.length, 2);
+  for (const item of history)
+    assert.deepEqual(
+      item.snapshot,
+      before.categories.find((category) => category.id === item.categoryId).draw.snapshot,
+    );
+  const audit = after.audits.find((audit) => audit.action === 'ENTRY_UPDATED');
+  assert.equal(audit.payload.reason, 'Перенести заявку');
+  assert.equal(audit.payload.command.reason, dto.reason);
+  assert.equal(audit.payload.command.entryId, entry.id);
+  assert.equal(audit.payload.before.club, '  Historical text  ');
+  assert.equal(audit.payload.after.id, entry.id);
+  const categoryLocks = h.locks
+    .filter((lock) => lock.sql.includes('"Category"'))
+    .map((lock) => lock.values[0]);
+  assert.deepEqual(categoryLocks, [categoryId, femaleCategoryId].sort());
+});
+
+test('archive and restore retain one Entry ID, full historical data and only active catalog counts', async () => {
+  const { h, entry } = seeded({}, { club: 'Historical club snapshot', gender: null });
+  const archived = await h.archive(entry.id, h.correction());
+  assert.ok(archived.entry.archivedAt);
+  assert.equal(h.snapshot().entries.length, 1);
+  assert.equal((await h.get()).categories[0].entries.length, 0);
+  assert.equal((await h.clubs()).clubs[0]._count.entries, 0);
+  const listing = await h.archived();
+  assert.equal(listing.entries.length, 1);
+  assert.equal(listing.entries[0].id, entry.id);
+  assert.equal(listing.entries[0].gender, 'MALE');
+  const check = await h.previewEntry(entry.id, previewEntry(entry));
+  assert.equal(check.canSave, true);
+  assert.equal(check.before.gender, null);
+  assert.equal(check.proposed.gender, 'MALE');
+  assert.equal(check.proposed.archivedAt, null);
+  const restored = await h.restore(entry.id, h.correction());
+  assert.equal(restored.entry.archivedAt, null);
+  assert.equal(restored.entry.gender, 'MALE');
+  assert.deepEqual(h.snapshot().entries[0], entry, 'restore keeps raw legacy gender and club text');
+  assert.equal((await h.archived()).entries.length, 0);
+  assert.equal((await h.get()).categories[0].entries.length, 1);
+  assert.equal((await h.clubs()).clubs[0]._count.entries, 1);
+});
+
+test('archived entries do not cause duplicate warnings but restore requires acknowledgement if name was reused', async () => {
+  const { h, entry } = seeded();
+  await h.archive(entry.id, h.correction());
+  assert.equal((await h.preview()).canSave, true);
+  const newEntry = await h.commit(h.dto());
+  const before = h.snapshot();
+  const preview = await h.previewEntry(entry.id, previewEntry(entry));
+  assert.equal(preview.canSave, false);
+  assert.equal(preview.rows[0].duplicateCount, 1);
+  assert.equal(preview.rows[0].possibleDuplicates[0].entryId, newEntry.entries[0].id);
+  await assert.rejects(
+    h.restore(entry.id, h.correction()),
+    rowError('DUPLICATE_CONFIRMATION_REQUIRED'),
+  );
+  assert.deepEqual(h.snapshot(), before);
+  await h.restore(entry.id, h.correction({ duplicateConfirmed: true }));
+  assert.equal((await h.get()).categories[0].entries.length, 2);
+  assert.equal(new Set(h.snapshot().entries.map((entry) => entry.id)).size, 2);
+});
+
+test('restore preview rejects changes to archived original fields', async () => {
+  const { h, entry } = seeded({}, { archivedAt: createdAt });
+  const before = h.snapshot();
+  const preview = await h.previewEntry(
+    entry.id,
+    previewEntry(entry, { lastName: 'Changed while archived' }),
+  );
+  assert.equal(preview.canSave, false);
+  assert.ok(preview.rows[0].errors.includes('RESTORE_ORIGINAL_ONLY'));
+  assert.deepEqual(h.snapshot(), before);
+});
+
+test('exact correction receipts replay after restart/status changes and anchor the target Entry path', async () => {
+  const { h, entry } = seeded();
+  const other = savedEntry({ lastName: 'Other' });
+  h.mutate((state) => state.entries.push(other));
+  const command = h.correction();
+  const result = await h.archive(entry.id, command);
+  h.mutate((state) => {
+    state.tournament.status = 'RUNNING';
+    state.tournament.rosterRevision = 99;
+    state.contests.push({ whiteEntryId: entry.id });
+  });
+  h.restart();
+  const before = h.snapshot();
+  assert.deepEqual(await h.archive(entry.id, command), result);
+  await assert.rejects(h.archive(other.id, command), httpError(409, 'COMMAND_ID_REUSED'));
+  await assert.rejects(
+    h.archive(entry.id, { ...command, reason: 'Changed reason' }),
+    httpError(409, 'COMMAND_ID_REUSED'),
+  );
+  await assert.rejects(h.restore(entry.id, command), httpError(409, 'COMMAND_ID_REUSED'));
+  await assert.rejects(
+    h.archive(entry.id, command, { id: randomUUID(), role: 'SUPER_ADMIN' }, randomUUID()),
+    httpError(409, 'COMMAND_ID_REUSED'),
+  );
+  assert.deepEqual(h.snapshot(), before);
+});
+
+test('corrections reject foreign owners/judges, invalid reason/version and wrong archive state', async () => {
+  const { h, entry } = seeded();
+  for (const user of [
+    { id: randomUUID(), role: 'ORGANIZER' },
+    { id: owner.id, role: 'OPERATOR' },
+  ]) {
+    await assert.rejects(
+      h.update(entry.id, { ...h.correction(), ...previewEntry(entry) }, user),
+      httpError(403, 'FORBIDDEN'),
+    );
+    await assert.rejects(h.archive(entry.id, h.correction(), user), httpError(403, 'FORBIDDEN'));
+    await assert.rejects(h.restore(entry.id, h.correction(), user), httpError(403, 'FORBIDDEN'));
+    await assert.rejects(
+      h.previewEntry(entry.id, previewEntry(entry), user),
+      httpError(403, 'FORBIDDEN'),
+    );
+    await assert.rejects(h.archived(user), httpError(403, 'FORBIDDEN'));
+  }
+  const before = h.snapshot();
+  await assert.rejects(
+    h.archive(entry.id, h.correction({ reason: ' ab ' })),
+    httpError(400, 'REASON_REQUIRED'),
+  );
+  await assert.rejects(
+    h.archive(entry.id, h.correction({ expectedRevision: 12 })),
+    httpError(409, 'VERSION_CONFLICT'),
+  );
+  await assert.rejects(h.restore(entry.id, h.correction()), httpError(409, 'ENTRY_NOT_ARCHIVED'));
+  await assert.rejects(h.archive(randomUUID(), h.correction()), httpError(404, 'ENTRY_NOT_FOUND'));
+  assert.deepEqual(h.snapshot(), before);
+  await h.archive(entry.id, h.correction());
+  await assert.rejects(h.archive(entry.id, h.correction()), httpError(409, 'ENTRY_ARCHIVED'));
+  await assert.rejects(
+    h.update(entry.id, { ...h.correction(), ...previewEntry(entry) }),
+    httpError(409, 'ENTRY_ARCHIVED'),
+  );
+});
+
+test('correction validation rolls back age/gender/category/duplicate errors without changing identity', async () => {
+  const { h, entry } = seeded();
+  h.mutate((state) =>
+    state.entries.push(savedEntry({ firstName: 'Другой', lastName: 'Спортсмен' })),
+  );
+  const before = h.snapshot();
+  for (const [fields, code] of [
+    [{ birthYear: 2011 }, 'BIRTH_YEAR_OUT_OF_RANGE'],
+    [{ gender: 'FEMALE' }, 'GENDER_MISMATCH'],
+    [{ categoryId: randomUUID() }, 'CATEGORY_NOT_FOUND'],
+    [{ lastName: '  ' }, 'NAME_REQUIRED'],
+    [{ firstName: 'Другой', lastName: 'Спортсмен' }, 'DUPLICATE_CONFIRMATION_REQUIRED'],
+  ]) {
+    await assert.rejects(
+      h.update(entry.id, { ...h.correction(), ...previewEntry(entry, fields) }),
+      rowError(code),
+    );
+    assert.deepEqual(h.snapshot(), before);
+  }
+});
+
+test('archive can remove an invalid admission without requiring new age or duplicate confirmation', async () => {
+  const { h, entry } = seeded({}, { birthYear: 1999 });
+  h.mutate((state) => state.entries.push(savedEntry({ birthYear: 1999 })));
+  assert.ok((await h.archive(entry.id, h.correction())).entry.archivedAt);
+});
+
+test('source/destination confirmed draws and any contest reference block roster changes', async () => {
+  const { h, entry } = seeded();
+  const before = h.snapshot();
+  for (const index of [0, 1]) {
+    h.mutate((state) => {
+      state.categories[index].draw = { status: 'CONFIRMED' };
+    });
+    await assert.rejects(
+      h.update(entry.id, {
+        ...h.correction(),
+        ...previewEntry(entry, { categoryId: femaleCategoryId, gender: 'FEMALE' }),
+      }),
+      rowError('DRAW_LOCKED'),
+    );
+    h.mutate((state) => {
+      state.categories[index].draw = null;
+    });
+  }
+  assert.deepEqual(h.snapshot(), before);
+  for (const field of ['whiteEntryId', 'blueEntryId', 'winnerEntryId']) {
+    h.mutate((state) => {
+      state.contests = [{ [field]: entry.id }];
+    });
+    assert.ok(
+      (await h.previewEntry(entry.id, previewEntry(entry))).rows[0].errors.includes(
+        'ENTRY_IN_DRAW',
+      ),
+    );
+    await assert.rejects(
+      h.update(entry.id, { ...h.correction(), ...previewEntry(entry) }),
+      httpError(409, 'ENTRY_IN_DRAW'),
+    );
+    await assert.rejects(h.archive(entry.id, h.correction()), httpError(409, 'ENTRY_IN_DRAW'));
+  }
+});
+
+test('restore cannot exceed category capacity and new mutations cannot change running roster', async () => {
+  const { h, entry } = seeded({}, { archivedAt: createdAt });
+  h.mutate((state) =>
+    state.entries.push(
+      ...Array.from({ length: 128 }, (_, index) => savedEntry({ lastName: `Active ${index}` })),
+    ),
+  );
+  await assert.rejects(h.restore(entry.id, h.correction()), rowError('CATEGORY_CAPACITY'));
+  h.mutate((state) => {
+    state.tournament.status = 'RUNNING';
+  });
+  await assert.rejects(h.restore(entry.id, h.correction()), httpError(409, 'ROSTER_LOCKED'));
+});
+
+test('correction receipt/storage/audit failures roll back edits and draw invalidation together', async () => {
+  for (const options of [{ failAudit: true }, { collision: true }, { failEntryWrite: true }]) {
+    const { h, entry } = seeded(options);
+    h.mutate((state) => {
+      state.categories[0].draw = {
+        id: 'preview',
+        status: 'PREVIEW',
+        version: 4,
+        fingerprint: 'old',
+        snapshot: { position: entry.id },
+      };
+    });
+    const before = h.snapshot();
+    await assert.rejects(
+      h.update(entry.id, { ...h.correction(), ...previewEntry(entry, { lastName: 'Changed' }) }),
+      options.collision ? httpError(409, 'COMMAND_ID_REUSED') : undefined,
+    );
+    assert.deepEqual(h.snapshot(), before);
+    assert.equal(h.notices.length, 0);
+  }
+});
+
+test('competing fresh edit/archive commands admit only one current roster version', async () => {
+  const { h, entry } = seeded();
+  const results = await Promise.allSettled([
+    h.update(entry.id, { ...h.correction(), ...previewEntry(entry, { lastName: 'Changed' }) }),
+    h.archive(entry.id, h.correction()),
+  ]);
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.ok(
+    httpError(
+      409,
+      'VERSION_CONFLICT',
+    )(results.find((result) => result.status === 'rejected').reason),
+  );
+  assert.equal(h.snapshot().receipts.length, 1);
+});
+
+test('STALE draw confirmation rejects even if restoring entries returns the previous fingerprint', async () => {
+  let entryReads = 0;
+  const db = {
+    category: { findUnique: async () => ({ id: categoryId, tournamentId }) },
+    $transaction: async (callback) =>
+      callback({
+        $queryRaw: async () => [],
+        drawRecord: {
+          findUnique: async () => ({ status: 'STALE', version: 8, fingerprint: 'old' }),
+        },
+        entry: {
+          findMany: async () => {
+            entryReads++;
+            throw new Error('stale draw must not reach regeneration');
+          },
+        },
+      }),
+  };
+  const service = new DrawsService({}, db, { owner: async () => {} });
+  await assert.rejects(
+    service.confirm(categoryId, 7, owner),
+    httpError(409, 'DRAW_ENTRIES_CHANGED'),
+  );
+  assert.equal(entryReads, 0);
 });

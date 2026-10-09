@@ -1,18 +1,18 @@
 {
-  "startedAt": "2026-10-09T07:21:49.968Z",
+  "startedAt": "2026-10-09T08:22:51.872Z",
   "passed": true,
-  "output": "tmp/roster-upgrade/verified-2026-10-09T07-21-49.966Z-4e965a41",
-  "dumpPath": "tmp/roster-upgrade/verified-2026-10-09T07-21-49.966Z-4e965a41/database.dump",
+  "output": "tmp/roster-upgrade/verified-2026-10-09T08-22-51.870Z-81418040",
+  "dumpPath": "tmp/roster-upgrade/verified-2026-10-09T08-22-51.870Z-81418040/database.dump",
   "schema": "public",
-  "verificationDatabase": "qa_restore_ba703e8411bd4aca94bb20a2ec9a1531",
+  "verificationDatabase": "qa_restore_61ad9bf345ef490ca103552b4ca1170d",
   "verificationDatabaseRemoved": true,
   "versions": {
     "server": "180003",
     "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
     "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
   },
-  "dumpBytes": 79872,
-  "dumpSha256": "1c3609b565b0ca575ee9ba3c65f98b251fa6c1a9e0bbce39231e8027dcb1d2a9",
+  "dumpBytes": 84906,
+  "dumpSha256": "c2c2c9d3cb13e1dd5fc751700e5d937c6cf5fca198b95d3cc5fa51c41762f243",
   "tables": [
     {
       "name": "AuditEvent",
@@ -22,6 +22,11 @@
     {
       "name": "Category",
       "rows": 45,
+      "matched": true
+    },
+    {
+      "name": "Club",
+      "rows": 4,
       "matched": true
     },
     {
@@ -50,8 +55,13 @@
       "matched": true
     },
     {
+      "name": "RosterCommand",
+      "rows": 0,
+      "matched": true
+    },
+    {
       "name": "Session",
-      "rows": 20,
+      "rows": 21,
       "matched": true
     },
     {
@@ -71,21 +81,21 @@
     },
     {
       "name": "_prisma_migrations",
-      "rows": 11,
+      "rows": 12,
       "matched": true
     }
   ],
   "schemaStructureMatched": true,
   "additionalValidation": {
     "passed": true,
-    "oldTablesPreserved": 12,
+    "oldTablesPreserved": 14,
     "oldColumnValuesPreserved": true,
     "oldEntryAndDrawIdsPreserved": true,
     "legacyClubLinksVerified": true,
     "clubNormalizationVerified": true,
     "legacyGenderCompatible": true,
-    "unicodeFixtureEntries": 11,
+    "unicodeFixtureEntries": 0,
     "migrationsAppliedTwice": true
   },
-  "finishedAt": "2026-10-09T07:21:51.636Z"
+  "finishedAt": "2026-10-09T08:22:55.211Z"
 }

@@ -75,7 +75,7 @@ export async function persistenceScenario({ db, base, restart, output }) {
     rosterRevision = rosterResponse.revision;
     rosterCommands.push({ path: rosterPath, payload: rosterPayload, response: rosterResponse });
   }
-  const savedRosterEntries = await db.entry.findMany({
+  let savedRosterEntries = await db.entry.findMany({
     where: { categoryId: category.id },
     orderBy: { id: 'asc' },
   });
@@ -86,20 +86,93 @@ export async function persistenceScenario({ db, base, restart, output }) {
       savedRosterEntries.find((entry) => entry.lastName === `Сохранение-${index + 1}`).club,
       `Клуб ${(index % 2) + 1}`,
     );
+  const corrected = savedRosterEntries.find((entry) => entry.lastName === 'Сохранение-1');
+  const correctionFields = {
+    clubId: corrected.clubId,
+    firstName: corrected.firstName,
+    lastName: 'Сохранение-1 исправлено',
+    birthYear: corrected.birthYear,
+    gender: corrected.gender,
+    categoryId: corrected.categoryId,
+  };
+  for (const action of ['update', 'archive', 'restore']) {
+    const path = `/tournaments/${tournament.id}/roster/entries/${corrected.id}/${action}`;
+    const payload = {
+      id: randomUUID(),
+      expectedRevision: rosterRevision,
+      reason: 'Проверка сохранности исправления после аварии',
+      ...(action === 'update' ? correctionFields : {}),
+    };
+    const response = await post(path, payload);
+    assert.equal(response.entry.id, corrected.id);
+    assert.equal(response.revision, rosterRevision + 1);
+    if (action === 'archive') assert.ok(response.entry.archivedAt);
+    else assert.equal(response.entry.archivedAt, null);
+    rosterRevision = response.revision;
+    rosterCommands.push({ path, payload, response });
+  }
+  // Keep a fifth original registration archived, so the checkpoint verifies both
+  // the retained archive row and its exclusion from the four-person draw.
+  const archiveAdmissionPath = `/tournaments/${tournament.id}/roster`;
+  const archiveAdmissionPayload = {
+    id: randomUUID(),
+    expectedRevision: rosterRevision,
+    clubId: corrected.clubId,
+    entries: [
+      {
+        firstName: correctionFields.firstName,
+        lastName: 'Архивная заявка',
+        birthYear: correctionFields.birthYear,
+        gender: correctionFields.gender,
+        categoryId: correctionFields.categoryId,
+      },
+    ],
+  };
+  const archiveAdmissionResponse = await post(archiveAdmissionPath, archiveAdmissionPayload);
+  rosterRevision = archiveAdmissionResponse.revision;
+  rosterCommands.push({
+    path: archiveAdmissionPath,
+    payload: archiveAdmissionPayload,
+    response: archiveAdmissionResponse,
+  });
+  const archivedEntryId = archiveAdmissionResponse.entries[0].id;
+  const archivePath = `/tournaments/${tournament.id}/roster/entries/${archivedEntryId}/archive`;
+  const archivePayload = {
+    id: randomUUID(),
+    expectedRevision: rosterRevision,
+    reason: 'Архив сохраняется после аварийного перезапуска',
+  };
+  const archiveResponse = await post(archivePath, archivePayload);
+  rosterRevision = archiveResponse.revision;
+  assert.ok(archiveResponse.entry.archivedAt);
+  rosterCommands.push({ path: archivePath, payload: archivePayload, response: archiveResponse });
+  savedRosterEntries = await db.entry.findMany({
+    where: { categoryId: category.id },
+    orderBy: { id: 'asc' },
+  });
+  assert.equal(savedRosterEntries.length, 5);
+  assert.equal(savedRosterEntries.filter((entry) => entry.archivedAt === null).length, 4);
+  assert.equal(
+    savedRosterEntries.find((entry) => entry.id === corrected.id).lastName,
+    correctionFields.lastName,
+  );
   const readRosterAudit = () =>
     db.auditEvent.findMany({
       where: {
         tournamentId: tournament.id,
-        action: { in: ['CLUB_CREATED', 'ROSTER_ADDED'] },
+        action: {
+          in: ['CLUB_CREATED', 'ROSTER_ADDED', 'ENTRY_UPDATED', 'ENTRY_ARCHIVED', 'ENTRY_RESTORED'],
+        },
       },
       orderBy: { id: 'asc' },
     });
   const savedRosterAudit = await readRosterAudit();
-  assert.equal(savedRosterAudit.length, 4);
+  assert.equal(savedRosterAudit.length, rosterCommands.length);
   const preview = await post(`/categories/${category.id}/draw/preview`);
   const confirmedDraw = await post(`/categories/${category.id}/draw/confirm`, {
     version: preview.version,
   });
+  assert.equal(JSON.stringify(confirmedDraw.snapshot).includes(archivedEntryId), false);
   await post(`/categories/${category.id}/draw/publication`, {
     published: true,
     expectedRevision: 0,
@@ -166,17 +239,25 @@ export async function persistenceScenario({ db, base, restart, output }) {
     assert.deepEqual(
       await post(command.path, command.payload),
       command.response,
-      'club/roster retry after crash returns its original receipt despite roster lock',
+      'roster/correction retry after crash returns its original receipt despite roster lock',
     );
     assert.equal(await db.rosterCommand.count({ where: { id: command.payload.id } }), 1);
   }
   assert.deepEqual(
     await db.entry.findMany({ where: { categoryId: category.id }, orderBy: { id: 'asc' } }),
     savedRosterEntries,
-    'club/roster retry must preserve exactly four original entries and IDs',
+    'roster/correction retry must preserve four active entries and the original archived row/IDs',
   );
-  assert.equal(await db.rosterCommand.count({ where: { tournamentId: tournament.id } }), 4);
+  assert.equal(
+    await db.rosterCommand.count({ where: { tournamentId: tournament.id } }),
+    rosterCommands.length,
+  );
   assert.deepEqual(await readRosterAudit(), savedRosterAudit);
+  const recoveredArchived = await get(`/tournaments/${tournament.id}/roster/archived`);
+  assert.equal(recoveredArchived.entries.length, 1);
+  assert.equal(recoveredArchived.entries[0].id, archivedEntryId);
+  assert.equal(recoveredArchived.entries[0].archivedAt, archiveResponse.entry.archivedAt);
+  assert.equal((await get(`/tournaments/${tournament.id}`)).categories[0].entries.length, 4);
   assert.deepEqual(
     await db.tournament.findUniqueOrThrow({ where: { id: tournament.id } }),
     lockedTournament,
@@ -277,6 +358,7 @@ export async function persistenceScenario({ db, base, restart, output }) {
       'paused clock recovery',
       'session recovery',
       'club/roster retry after crash without duplicate entries or audit',
+      'update/archive/restore original receipts and archived row after crash',
       'assignment retry after crash without clock or audit changes',
       'hold without duplication',
       'confirmed result and draw recovery',

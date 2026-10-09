@@ -43,6 +43,7 @@ export class PublicService {
             name: true,
             format: true,
             entries: {
+              where: { archivedAt: null },
               orderBy: { lastName: 'asc' },
               select: { id: true, firstName: true, lastName: true, club: true },
             },

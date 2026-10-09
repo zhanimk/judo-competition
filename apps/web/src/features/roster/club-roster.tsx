@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
 import { ApiError, request } from '../tournaments/api';
 import type { Tournament } from '../tournaments/types';
+import { EntryCorrection } from './entry-correction';
+import type { CorrectionMode } from './entry-correction-model';
 import { rosterMessage } from './messages';
 import {
   clearPendingRoster,
@@ -24,6 +26,7 @@ import {
   type DraftRow,
   type Receipt,
   type RosterPreview,
+  type SavedEntry,
 } from './roster-model';
 import { parseRosterText } from './roster-parser';
 import {
@@ -53,6 +56,10 @@ export function ClubRoster({
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [checked, setChecked] = useState<CheckedDraft | null>(null);
   const [pending, setPending] = useState<PendingRosterCommand | null>(null);
+  const [correction, setCorrection] = useState<{ entry: SavedEntry; mode: CorrectionMode } | null>(
+    null,
+  );
+  const [correctionAttempt, setCorrectionAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [storageBlocked, setStorageBlocked] = useState(false);
@@ -64,7 +71,8 @@ export function ClubRoster({
   const busyRef = useRef(false);
   const mounted = useRef(false);
   const locked = tournament.status !== 'DRAFT';
-  const disabled = !ready || busy || !!pending || storageBlocked || locked;
+  const deliveryDisabled = !ready || busy || !!pending || storageBlocked || locked;
+  const disabled = deliveryDisabled || !!correction;
   const selectedClub = tournament.clubs.find((club) => club.id === selectedClubId);
   const previewCurrent = previewMatchesDraft(checked, rows, tournament.rosterRevision);
   const sayError = (code: string) => setError(rosterMessage(code, locale === 'kk'));
@@ -87,6 +95,8 @@ export function ClubRoster({
             : [],
       );
       if (command?.kind === 'club') setClubName(command.payload.name);
+      if (command && 'entryId' in command)
+        setCorrection({ entry: command.entrySnapshot, mode: command.kind });
       setPending(command);
       onPendingChange(!!command);
     } catch (error) {
@@ -127,7 +137,7 @@ export function ClubRoster({
     );
   }
   function selectClub(id: string) {
-    if (pending || busy || storageBlocked) return;
+    if (pending || busy || storageBlocked || correction) return;
     try {
       const restored = id ? readRosterDraft(sessionStorage, tournament.id, id) : [];
       sessionStorage.setItem(selectionKey(tournament.id), id);
@@ -168,6 +178,19 @@ export function ClubRoster({
   }
   async function refresh() {
     await onUpdate();
+  }
+  async function refreshAfterDelivery() {
+    try {
+      await refresh();
+    } catch {
+      if (mounted.current) sayError('REFRESH_FAILED');
+    }
+  }
+  function openCorrection(entry: SavedEntry, mode: CorrectionMode) {
+    if (disabled) return;
+    setCorrection({ entry: structuredClone(entry), mode });
+    setError('');
+    setNotice('');
   }
 
   async function deliver(command: PendingRosterCommand) {
@@ -214,15 +237,37 @@ export function ClubRoster({
           setChecked(null);
           setPasteIssues([]);
           setShowValidation(false);
-          setNotice(
+          if ('entryId' in command) setCorrection(null);
+          const completed =
             command.kind === 'club'
               ? text('Клуб создан. Теперь внесите состав.', 'Клуб құрылды. Енді құрамын енгізіңіз.')
-              : text(
-                  `Состав сохранён: ${command.payload.entries.length} спортсменов. Можно добавить следующих.`,
-                  `Құрам сақталды: ${command.payload.entries.length} спортшы. Келесілерін қосуға болады.`,
-                ),
+              : command.kind === 'roster'
+                ? text(
+                    `Состав сохранён: ${command.payload.entries.length} спортсменов. Можно добавить следующих.`,
+                    `Құрам сақталды: ${command.payload.entries.length} спортшы. Келесілерін қосуға болады.`,
+                  )
+                : command.kind === 'update'
+                  ? text('Исправление заявки сохранено.', 'Өтінім түзетуі сақталды.')
+                  : command.kind === 'archive'
+                    ? text(
+                        'Участник исключён из состава. Заявка доступна в архиве для восстановления.',
+                        'Қатысушы құрамнан шығарылды. Өтінімді мұрағаттан қалпына келтіруге болады.',
+                      )
+                    : text(
+                        'Исходная заявка восстановлена в составе.',
+                        'Бастапқы өтінім құрамда қалпына келтірілді.',
+                      );
+          setNotice(
+            completed +
+              ('invalidatedCategoryIds' in result.receipt &&
+              result.receipt.invalidatedCategoryIds?.length
+                ? text(
+                    ' Предварительные сетки затронутых категорий нужно сформировать заново.',
+                    ' Тиісті санаттардың алдын ала торларын қайта құру қажет.',
+                  )
+                : ''),
           );
-          await refresh();
+          await refreshAfterDelivery();
         }
       } else {
         clearPendingRoster(sessionStorage, command);
@@ -230,8 +275,9 @@ export function ClubRoster({
           setPending(null);
           onPendingChange(false);
           setChecked(null);
+          setCorrectionAttempt((value) => value + 1);
           sayError((result.error as Error).message);
-          await refresh();
+          await refreshAfterDelivery();
         }
       }
     } catch (error) {
@@ -343,7 +389,7 @@ export function ClubRoster({
               {text('Клуб турнира', 'Турнир клубы')}
               <select
                 value={selectedClubId}
-                disabled={!ready || busy || !!pending || storageBlocked}
+                disabled={!ready || busy || !!pending || storageBlocked || !!correction}
                 onChange={(event) => selectClub(event.target.value)}
               >
                 <option value="">{text('Выберите клуб', 'Клубты таңдаңыз')}</option>
@@ -397,8 +443,8 @@ export function ClubRoster({
             <div className="roster-pending" role="status">
               <p>
                 {text(
-                  'Есть сохранённая команда с неизвестным результатом. Пока она не проверена, новый состав или клуб не отправляется.',
-                  'Нәтижесі белгісіз сақталған команда бар. Ол тексерілмейінше жаңа құрам не клуб жіберілмейді.',
+                  'Есть сохранённая команда с неизвестным результатом. Пока она не проверена, новые изменения состава не отправляются.',
+                  'Нәтижесі белгісіз сақталған команда бар. Ол тексерілмейінше құрамның жаңа өзгерістері жіберілмейді.',
                 )}
               </p>
               <button
@@ -420,7 +466,7 @@ export function ClubRoster({
           )}
         </div>
       </section>
-      {selectedClub && (
+      {selectedClub && !correction && (
         <section className="panel roster-card roster-draft">
           <div className="roster-card-header">
             <h2>
@@ -531,11 +577,29 @@ export function ClubRoster({
           </div>
         </section>
       )}
+      {correction && (
+        <EntryCorrection
+          key={`${correction.entry.id}:${correction.mode}`}
+          tournament={tournament}
+          entry={correction.entry}
+          mode={correction.mode}
+          pending={pending && 'entryId' in pending ? pending : null}
+          disabled={deliveryDisabled}
+          attempt={correctionAttempt}
+          onDeliver={deliver}
+          onClose={() => {
+            if (!busy && !pending) setCorrection(null);
+          }}
+          onUpdate={onUpdate}
+        />
+      )}
       <SavedRoster
         tournament={tournament}
         selectedClubId={selectedClubId}
-        disabled={busy || !!pending || storageBlocked}
+        disabled={!ready || busy || !!pending || storageBlocked || !!correction}
         onClub={selectClub}
+        onCorrect={openCorrection}
+        onUpdate={onUpdate}
       />
     </div>
   );

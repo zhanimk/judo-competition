@@ -15,6 +15,7 @@ import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../../database/database.service.js';
 import { CreateTournamentDto, CreateCategoryDto, CreateEntryDto } from './dto.js';
 import { cleanName, normalizedName } from '../roster/roster-validation.js';
+import { invalidatePreviewDraws } from '../roster/draw-invalidation.js';
 @Injectable()
 export class TournamentsService {
   constructor(
@@ -119,7 +120,11 @@ export class TournamentsService {
     return this.db.tournament.findMany({
       where: user.role === 'SUPER_ADMIN' ? {} : { ownerId: user.id },
       orderBy: { createdAt: 'desc' },
-      include: { categories: { include: { _count: { select: { entries: true } } } } },
+      include: {
+        categories: {
+          include: { _count: { select: { entries: { where: { archivedAt: null } } } } },
+        },
+      },
     });
   }
   async get(id: string, user: Principal) {
@@ -130,12 +135,16 @@ export class TournamentsService {
         tatamis: { orderBy: { number: 'asc' } },
         clubs: {
           orderBy: { name: 'asc' },
-          select: { id: true, name: true, _count: { select: { entries: true } } },
+          select: {
+            id: true,
+            name: true,
+            _count: { select: { entries: { where: { archivedAt: null } } } },
+          },
         },
         categories: {
           orderBy: { name: 'asc' },
           include: {
-            entries: { orderBy: { lastName: 'asc' } },
+            entries: { where: { archivedAt: null }, orderBy: { lastName: 'asc' } },
             draw: {
               select: { status: true, publishedAt: true, _count: { select: { contests: true } } },
             },
@@ -224,7 +233,7 @@ export class TournamentsService {
         throw new ConflictException('DRAW_LOCKED');
       if (dto.birthYear < c.birthYearFrom || dto.birthYear > c.birthYearTo)
         throw new BadRequestException('Год рождения не соответствует категории');
-      if ((await tx.entry.count({ where: { categoryId } })) >= 128)
+      if ((await tx.entry.count({ where: { categoryId, archivedAt: null } })) >= 128)
         throw new ConflictException('В категории уже 128 участников');
       const club = await tx.club.upsert({
         where: {
@@ -255,6 +264,7 @@ export class TournamentsService {
         where: { id },
         data: { rosterRevision: { increment: 1 } },
       });
+      await invalidatePreviewDraws(tx, id, [categoryId], user.id, { type: 'ENTRY_ADDED' });
       await tx.auditEvent.create({
         data: {
           actorId: user.id,

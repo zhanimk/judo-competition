@@ -19,6 +19,8 @@ export function RosterEditor({
   disabled,
   showValidation,
   onChange,
+  allowRemove = true,
+  readonlyFields = false,
 }: {
   rows: DraftRow[];
   categories: Category[];
@@ -26,6 +28,8 @@ export function RosterEditor({
   disabled: boolean;
   showValidation: boolean;
   onChange: (rows: DraftRow[]) => void;
+  allowRemove?: boolean;
+  readonlyFields?: boolean;
 }) {
   const { text, locale } = useLanguage();
   const update = (row: DraftRow, values: Partial<DraftRow>) =>
@@ -61,10 +65,11 @@ export function RosterEditor({
             <legend>
               {text('Спортсмен', 'Спортшы')} {index + 1}
             </legend>
-            <div className="roster-row-fields">
+            <div className={`roster-row-fields${allowRemove ? '' : ' roster-row-fields-single'}`}>
               <label className="roster-field-name">
                 {text('Фамилия', 'Тегі')}
                 <input
+                  disabled={readonlyFields}
                   maxLength={80}
                   value={row.lastName}
                   onChange={(event) => update(row, { lastName: event.target.value })}
@@ -73,6 +78,7 @@ export function RosterEditor({
               <label className="roster-field-name">
                 {text('Имя', 'Аты')}
                 <input
+                  disabled={readonlyFields}
                   maxLength={80}
                   value={row.firstName}
                   onChange={(event) => update(row, { firstName: event.target.value })}
@@ -81,6 +87,7 @@ export function RosterEditor({
               <label className="roster-field-year">
                 {text('Год рождения', 'Туған жылы')}
                 <input
+                  disabled={readonlyFields}
                   inputMode="numeric"
                   maxLength={4}
                   value={row.birthYear}
@@ -90,6 +97,7 @@ export function RosterEditor({
               <label className="roster-field-gender">
                 {text('Пол', 'Жынысы')}
                 <select
+                  disabled={readonlyFields}
                   value={row.gender}
                   onChange={(event) =>
                     update(row, { gender: event.target.value as DraftRow['gender'] })
@@ -103,6 +111,7 @@ export function RosterEditor({
               <label className="roster-field-category">
                 {text('Категория', 'Санат')}
                 <select
+                  disabled={readonlyFields}
                   value={row.categoryId}
                   onChange={(event) => update(row, { categoryId: event.target.value })}
                 >
@@ -120,14 +129,18 @@ export function RosterEditor({
                   ))}
                 </select>
               </label>
-              <button
-                className="roster-remove"
-                type="button"
-                onClick={() => onChange(rows.filter((current) => current.localId !== row.localId))}
-                aria-label={`${text('Удалить строку', 'Жолды жою')} ${index + 1}`}
-              >
-                <span aria-hidden="true">×</span>
-              </button>
+              {allowRemove && (
+                <button
+                  className="roster-remove"
+                  type="button"
+                  onClick={() =>
+                    onChange(rows.filter((current) => current.localId !== row.localId))
+                  }
+                  aria-label={`${text('Удалить строку', 'Жолды жою')} ${index + 1}`}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              )}
             </div>
             {!row.categoryId && (
               <p className="field-note">

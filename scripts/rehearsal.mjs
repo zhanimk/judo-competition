@@ -85,6 +85,7 @@ try {
     'integration',
     'auth-integration',
     'roster-integration',
+    'roster-corrections-integration',
     'draw-integration',
     'scheduling-integration',
     'public-integration',
@@ -94,8 +95,8 @@ try {
     'live-integration',
     'protocol-integration',
   ]) {
-    if (suite === 'protocol-integration') {
-      // Independent suites create many valid synthetic logins. Give protocol
+    if (suite === 'live-integration') {
+      // Independent suites create many valid synthetic logins. Give live/PDF
       // checks a fresh process/IP budget without changing production throttles.
       await stop();
       await start();

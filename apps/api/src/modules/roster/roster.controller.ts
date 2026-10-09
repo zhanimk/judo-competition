@@ -1,7 +1,15 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { CurrentUser } from '../auth/auth.guard.js';
 import type { Principal } from '../auth/auth.types.js';
-import { CreateClubDto, RosterCommitDto, RosterPreviewDto } from './roster.dto.js';
+import {
+  CreateClubDto,
+  RosterCommitDto,
+  RosterPreviewDto,
+  EntryPreviewDto,
+  EntryUpdateDto,
+  EntryArchiveDto,
+  EntryRestoreDto,
+} from './roster.dto.js';
 import { RosterService } from './roster.service.js';
 
 @Controller('tournaments')
@@ -30,5 +38,43 @@ export class RosterController {
     @CurrentUser() user: Principal,
   ) {
     return this.service.commit(id, dto, user);
+  }
+  @Get(':id/roster/archived') archived(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.archived(id, user);
+  }
+  @Post(':id/roster/entries/:entryId/preview') previewEntry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @Body() dto: EntryPreviewDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.previewEntry(id, entryId, dto, user);
+  }
+  @Post(':id/roster/entries/:entryId/update') updateEntry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @Body() dto: EntryUpdateDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.updateEntry(id, entryId, dto, user);
+  }
+  @Post(':id/roster/entries/:entryId/archive') archiveEntry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @Body() dto: EntryArchiveDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.archiveEntry(id, entryId, dto, user);
+  }
+  @Post(':id/roster/entries/:entryId/restore') restoreEntry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @Body() dto: EntryRestoreDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.restoreEntry(id, entryId, dto, user);
   }
 }
