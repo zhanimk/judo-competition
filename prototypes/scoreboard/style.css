@@ -1,0 +1,386 @@
+:root {
+  color-scheme: dark;
+  --bg: #0d1119;
+  --panel: #161d29;
+  --text: #f0f4fc;
+  --muted: #9aa8be;
+  --border: #303b4d;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    15px system-ui,
+    sans-serif;
+}
+body.light {
+  color-scheme: light;
+  --bg: #f0f3f8;
+  --panel: #fff;
+  --text: #172234;
+  --muted: #56657b;
+  --border: #ced7e3;
+}
+header {
+  padding: 24px 4%;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.brand {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+.brand span {
+  color: #668dff;
+}
+button {
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 12px 16px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  min-height: 46px;
+}
+button:hover:not(:disabled) {
+  filter: brightness(1.2);
+}
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+button:focus-visible {
+  outline: 3px solid #ffcc69;
+  outline-offset: 3px;
+}
+header button {
+  margin-left: 8px;
+}
+main {
+  max-width: 1500px;
+  margin: auto;
+  padding: 36px 4%;
+}
+.eyebrow {
+  letter-spacing: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.eyebrow span {
+  color: #deb464;
+}
+.heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+h1 {
+  font-size: 42px;
+  margin: 12px 0;
+}
+h2 {
+  margin: 12px 0;
+  font-size: 28px;
+}
+.heading p {
+  text-align: right;
+  line-height: 1.6;
+}
+.heading span,
+p {
+  color: var(--muted);
+}
+.notice {
+  font-size: 13px;
+  background: var(--panel);
+  border-left: 3px solid #deb464;
+  padding: 12px 16px;
+  margin: 12px 0 28px;
+}
+.board {
+  display: grid;
+  grid-template-columns: 1fr 0.85fr 1fr;
+  gap: 18px;
+  align-items: stretch;
+}
+.athlete,
+.clock {
+  border-radius: 16px;
+  padding: 26px;
+  min-width: 0;
+}
+.white {
+  background: #eef2f8;
+  color: #152137;
+}
+.blue {
+  background: #2057ce;
+  color: white;
+}
+.athlete p {
+  color: inherit;
+  opacity: 0.7;
+  font-size: 13px;
+}
+.label {
+  display: flex;
+  justify-content: space-between;
+  letter-spacing: 2px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.label span {
+  opacity: 0.5;
+}
+.scores {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 32px 0 20px;
+  text-align: center;
+}
+.scores strong {
+  display: block;
+  font-size: 58px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.scores small {
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.penalties {
+  margin-bottom: 24px;
+  font-size: 14px;
+  letter-spacing: 3px;
+}
+.actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.actions button {
+  background: #ffffff14;
+  border-color: #ffffff50;
+  color: inherit;
+  padding: 10px 4px;
+  font-size: 12px;
+}
+.white button {
+  border-color: #bcc9dd;
+  background: #fff9;
+}
+.actions button:last-child {
+  grid-column: span 2;
+}
+.clock {
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.clock > span {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+}
+#time {
+  font-size: clamp(38px, 4.7vw, 76px);
+  letter-spacing: -3px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin: 16px 0 4px;
+}
+#status {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+.primary {
+  background: #d6ef70;
+  color: #18210b;
+  border: 0;
+  font-weight: 700;
+}
+#toggle {
+  width: 100%;
+}
+.hold {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.hold span {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+}
+.hold strong {
+  font-size: 32px;
+  font-variant-numeric: tabular-nums;
+}
+#result {
+  margin-top: 22px;
+  padding: 20px 26px;
+  border: 1px solid #b9d768;
+  border-radius: 12px;
+  background: var(--panel);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+#result[hidden],
+[hidden] {
+  display: none !important;
+}
+#result-status {
+  font-size: 12px;
+  color: #a7c653;
+}
+#result h2 {
+  font-size: 24px;
+}
+.journal {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.journal h2 {
+  font-size: 19px;
+}
+.journal .heading span {
+  font-size: 12px;
+}
+ol {
+  list-style: none;
+  padding: 0;
+}
+li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+li button {
+  padding: 7px 12px;
+  min-height: 36px;
+  font-size: 12px;
+}
+li.revoked {
+  color: var(--muted);
+}
+#error {
+  color: #ff9393;
+}
+footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 32px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+body.spectator .actions,
+body.spectator #toggle,
+body.spectator #golden,
+body.spectator #toketa,
+body.spectator #confirm,
+body.spectator .journal,
+body.spectator #reset {
+  display: none;
+}
+@media (max-width: 900px) {
+  .board {
+    grid-template-columns: 1fr 1fr;
+  }
+  .clock {
+    grid-column: 1/-1;
+    grid-row: 1;
+  }
+  .hold {
+    max-width: 280px;
+  }
+  #toggle {
+    max-width: 280px;
+  }
+  #time {
+    font-size: 64px;
+  }
+  .athlete {
+    padding: 20px;
+  }
+  .scores strong {
+    font-size: 44px;
+  }
+}
+@media (max-width: 520px) {
+  header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .brand {
+    font-size: 13px;
+  }
+  header button {
+    margin: 0 5px 0 0;
+    font-size: 12px;
+  }
+  .heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
+  }
+  .heading p {
+    text-align: left;
+  }
+  h1 {
+    font-size: 34px;
+  }
+  .board {
+    gap: 8px;
+  }
+  .athlete {
+    padding: 14px 10px;
+  }
+  .athlete h2 {
+    font-size: 20px;
+  }
+  .scores strong {
+    font-size: 34px;
+  }
+  .scores small {
+    font-size: 8px;
+  }
+  .actions {
+    grid-template-columns: 1fr;
+  }
+  .actions button:last-child {
+    grid-column: auto;
+  }
+  .label {
+    font-size: 10px;
+  }
+  #result {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+}

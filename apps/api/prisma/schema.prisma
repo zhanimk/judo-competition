@@ -1,0 +1,160 @@
+generator client {
+ provider = "prisma-client-js"
+}
+datasource db {
+ provider = "postgresql"
+ url = env("DATABASE_URL")
+}
+model Tournament {
+ rulesSnapshot Json?
+ id String @id @default(uuid())
+ name String
+ city String
+ venue String
+ startDate String
+ endDate String
+ timezone String @default("Asia/Almaty")
+ publishedAt DateTime?
+ tatamiCount Int
+ status String @default("DRAFT")
+ createdAt DateTime @default(now())
+ ownerId String?
+ owner User? @relation(fields:[ownerId],references:[id],onDelete:Restrict)
+ categories Category[]
+ tatamis Tatami[]
+}
+model Category {
+ homeTatamiId String?
+ homeTatami Tatami? @relation(fields:[homeTatamiId],references:[id],onDelete:Restrict)
+ id String @id @default(uuid())
+ tournamentId String
+ tournament Tournament @relation(fields:[tournamentId], references:[id], onDelete:Restrict)
+ name String
+ gender String
+ birthYearFrom Int
+ birthYearTo Int
+ maxWeightGrams Int?
+ minWeightGrams Int?
+ durationSeconds Int
+ format String @default("SINGLE_ELIMINATION")
+ clubSeparation String @default("LATEST_MEETING")
+ draw DrawRecord?
+ entries Entry[]
+ @@unique([tournamentId,name])
+}
+model Entry {
+ id String @id @default(uuid())
+ categoryId String
+ category Category @relation(fields:[categoryId],references:[id],onDelete:Restrict)
+ firstName String
+ lastName String
+ birthYear Int
+ club String
+ createdAt DateTime @default(now())
+ @@index([categoryId])
+}
+model Tatami {
+ categories Category[]
+ id String @id @default(uuid())
+ tournamentId String
+ tournament Tournament @relation(fields:[tournamentId],references:[id],onDelete:Restrict)
+ contests Contest[]
+ invitations Invitation[]
+ number Int
+ status String @default("IDLE")
+ @@unique([tournamentId,number])
+}
+model User {
+ id String @id @default(uuid())
+ email String? @unique
+ name String
+ passwordHash String?
+ role String
+ createdAt DateTime @default(now())
+ tournaments Tournament[]
+ sessions Session[]
+}
+model Session {
+ id String @id @default(uuid())
+ tokenHash String @unique
+ userId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ tatamiId String?
+ invitationId String?
+ expiresAt DateTime
+ createdAt DateTime @default(now())
+ @@index([userId])
+}
+model Invitation {
+ id String @id @default(uuid())
+ tatamiId String
+ tatami Tatami @relation(fields:[tatamiId],references:[id],onDelete:Cascade)
+ tokenHash String @unique
+ label String
+ expiresAt DateTime
+ usedAt DateTime?
+ revokedAt DateTime?
+ createdAt DateTime @default(now())
+ @@index([tatamiId])
+}
+
+model DrawRecord {
+ publishedAt DateTime?
+ publicationRevision Int @default(0)
+ id String @id @default(uuid())
+ categoryId String @unique
+ category Category @relation(fields:[categoryId],references:[id],onDelete:Restrict)
+ version Int @default(1)
+ status String @default("PREVIEW")
+ fingerprint String
+ snapshot Json
+ createdAt DateTime @default(now())
+ confirmedAt DateTime?
+ contests Contest[]
+}
+model Contest {
+ offlineSessionId String?
+ offlineActorId String?
+ id String @id @default(uuid())
+ drawId String
+ draw DrawRecord @relation(fields:[drawId],references:[id],onDelete:Restrict)
+ key String
+ round Int
+ whiteEntryId String?
+ blueEntryId String?
+ status String @default("WAITING")
+ tatamiId String?
+ tatami Tatami? @relation(fields:[tatamiId],references:[id],onDelete:Restrict)
+ queueOrder Int?
+ revision Int @default(0)
+ state Json?
+ clockAnchorMs Float?
+ clockEpoch String?
+ winnerEntryId String?
+ resultReason String?
+ confirmedAt DateTime?
+ updatedAt DateTime @default(now()) @updatedAt
+ events MatchEvent[]
+ @@unique([drawId,key])
+ @@unique([tatamiId,queueOrder])
+}
+model AuditEvent {
+ id String @id @default(uuid())
+ actorId String
+ tournamentId String
+ action String
+ entityId String
+ payload Json
+ createdAt DateTime @default(now())
+}
+
+model MatchEvent {
+ id String @id
+ contestId String
+ contest Contest @relation(fields:[contestId],references:[id],onDelete:Cascade)
+ actorId String
+ type String
+ payload Json
+ createdAt DateTime @default(now())
+ @@index([contestId,createdAt])
+}

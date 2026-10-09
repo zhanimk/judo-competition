@@ -1,0 +1,80 @@
+{
+  "startedAt": "2026-10-09T06:40:40.681Z",
+  "passed": true,
+  "output": "tmp/backups/verified-2026-10-09T06-40-40.679Z-8a1d3d0f",
+  "dumpPath": "tmp/backups/verified-2026-10-09T06-40-40.679Z-8a1d3d0f/database.dump",
+  "schema": "public",
+  "verificationDatabase": "qa_restore_e68fcc808f5b4593833a9018e1f0aadd",
+  "verificationDatabaseRemoved": true,
+  "versions": {
+    "server": "180003",
+    "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
+    "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
+  },
+  "dumpBytes": 79872,
+  "dumpSha256": "db6ffdd5e8a91bead426ea25c1230c25aba16f91786f9b96ee071562c640143d",
+  "tables": [
+    {
+      "name": "AuditEvent",
+      "rows": 357,
+      "matched": true
+    },
+    {
+      "name": "Category",
+      "rows": 45,
+      "matched": true
+    },
+    {
+      "name": "Contest",
+      "rows": 47,
+      "matched": true
+    },
+    {
+      "name": "DrawRecord",
+      "rows": 5,
+      "matched": true
+    },
+    {
+      "name": "Entry",
+      "rows": 34,
+      "matched": true
+    },
+    {
+      "name": "Invitation",
+      "rows": 0,
+      "matched": true
+    },
+    {
+      "name": "MatchEvent",
+      "rows": 160,
+      "matched": true
+    },
+    {
+      "name": "Session",
+      "rows": 20,
+      "matched": true
+    },
+    {
+      "name": "Tatami",
+      "rows": 6,
+      "matched": true
+    },
+    {
+      "name": "Tournament",
+      "rows": 2,
+      "matched": true
+    },
+    {
+      "name": "User",
+      "rows": 2,
+      "matched": true
+    },
+    {
+      "name": "_prisma_migrations",
+      "rows": 11,
+      "matched": true
+    }
+  ],
+  "schemaStructureMatched": true,
+  "finishedAt": "2026-10-09T06:40:40.952Z"
+}

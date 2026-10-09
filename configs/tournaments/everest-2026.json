@@ -1,0 +1,110 @@
+{
+  "key": "everest-city-open-2026",
+  "status": "DRAFT_CREATED",
+  "tournamentId": "02eb3491-602e-4a38-aede-9f9a95f273cf",
+  "name": "Дзюдодан кіші жасөспірімдер мен балалар арасында «EVEREST JUDO SCHOOL» қалалық ашық біріншілігі",
+  "city": "Астана",
+  "venue": "Қырқыншы (Сороковой) станция, Ақжар көшесі 14/2, дене шынықтыру және спорт кешені",
+  "timezone": "Asia/Almaty",
+  "primaryLanguage": "kk",
+  "tatamiCount": 3,
+  "startDate": "2026-10-10",
+  "endDate": "2026-10-10",
+  "publish": false,
+  "startCompetition": false,
+  "rulesMode": "CUSTOM_UNVERIFIED",
+  "format": null,
+  "participants": [],
+  "ageGroups": [
+    {
+      "gender": "MALE",
+      "label": "Ұлдар · 2012–2013",
+      "birthYearFrom": 2012,
+      "birthYearTo": 2013,
+      "durationSeconds": 180,
+      "plannedWindow": {
+        "from": "12:00",
+        "to": "14:00"
+      },
+      "upperWeightsKg": [35, 38, 42, 46, 50, 55, 60, 66],
+      "openWeightAboveKg": 73,
+      "openWeightConfirmed": true
+    },
+    {
+      "gender": "MALE",
+      "label": "Ұлдар · 2014–2015",
+      "birthYearFrom": 2014,
+      "birthYearTo": 2015,
+      "durationSeconds": 120,
+      "plannedWindow": {
+        "from": "09:00",
+        "to": "12:00"
+      },
+      "upperWeightsKg": [29, 32, 35, 38, 42, 46, 50, 55],
+      "openWeightAboveKg": 55,
+      "openWeightConfirmed": true
+    },
+    {
+      "gender": "MALE",
+      "label": "Ұлдар · 2016–2018",
+      "birthYearFrom": 2016,
+      "birthYearTo": 2018,
+      "durationSeconds": 120,
+      "plannedWindow": {
+        "from": "09:00",
+        "to": "12:00"
+      },
+      "upperWeightsKg": [19, 23, 26, 29, 32, 35, 38, 42],
+      "openWeightAboveKg": 42,
+      "openWeightConfirmed": true
+    },
+    {
+      "gender": "FEMALE",
+      "label": "Қыздар · 2014–2015",
+      "birthYearFrom": 2014,
+      "birthYearTo": 2015,
+      "durationSeconds": 180,
+      "plannedWindow": {
+        "from": "09:00",
+        "to": "12:00"
+      },
+      "upperWeightsKg": [33, 36, 40, 44, 48, 52],
+      "openWeightAboveKg": 57,
+      "openWeightConfirmed": true
+    },
+    {
+      "gender": "FEMALE",
+      "label": "Қыздар · 2016–2017",
+      "birthYearFrom": 2016,
+      "birthYearTo": 2017,
+      "durationSeconds": 120,
+      "plannedWindow": {
+        "from": "09:00",
+        "to": "12:00"
+      },
+      "upperWeightsKg": [27, 30, 33, 35, 40],
+      "openWeightAboveKg": 46,
+      "openWeightConfirmed": true
+    }
+  ],
+  "regulationNotes": {
+    "source": "User-provided regulation image in conversation; transcribed, not independently verified.",
+    "weighIn": "9 қазан 2026, Астана, Қошке Кемеңгерұлы атындағы №49 мектеп-гимназия. Справочная запись; встроенное взвешивание не добавляется.",
+    "weighInAllowanceGrams": 500,
+    "entryFeeKzt": 5000,
+    "medicalAdmission": "Заявка команды с медицинским допуском и заверением спортивной организации.",
+    "uniform": "Ауыспалы ақ кимоно.",
+    "prohibitedTechniquesAsPrinted": "katame-wadza (ауырту, қылқындыру), sankaku, uranage, tomoe-nage, sumi-gaeshi, seoi-otoshi",
+    "awards": "Медаль, диплом",
+    "competitionDateInProse": "2026-10-10",
+    "competitionDateInTable": "2026-11-10"
+  },
+  "pending": [
+    "Choose competition formats after athlete counts are available; the regulation does not specify them.",
+    "Keep the official participant roster empty; use a separate copy for synthetic test athletes."
+  ],
+  "confirmedByUser": {
+    "date": "2026-10-10",
+    "weights": "Keep every weight exactly as printed; no additional categories."
+  }
+}

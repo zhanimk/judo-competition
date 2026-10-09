@@ -1,0 +1,110 @@
+{
+  "tournamentId": "df950589-85a3-4ebd-9b1f-6c944679b685",
+  "backup": "tmp/backups/tournaments-reset-2026-10-08T11-18-08.380Z.json",
+  "status": "DRAFT",
+  "participantCount": 150,
+  "categories": [
+    {
+      "id": "ab53bf7f-7944-4da9-b2e9-0740ef8d1ecc",
+      "name": "01 · U11 · −26 кг",
+      "count": 2,
+      "format": "SINGLE_ELIMINATION",
+      "matches": 1
+    },
+    {
+      "id": "d14bd6f6-e570-4fb6-988e-2ddd7d0642a8",
+      "name": "02 · U11 · −28 кг",
+      "count": 3,
+      "format": "ROUND_ROBIN",
+      "matches": 3
+    },
+    {
+      "id": "1124002a-f572-4288-9230-cadc937fa4a9",
+      "name": "03 · U11 · −30 кг",
+      "count": 4,
+      "format": "ROUND_ROBIN",
+      "matches": 6
+    },
+    {
+      "id": "cb0e9fbd-d89e-4d77-8524-f321e18e67fb",
+      "name": "04 · U11 · −32 кг",
+      "count": 5,
+      "format": "ROUND_ROBIN",
+      "matches": 10
+    },
+    {
+      "id": "dd042231-5858-4683-9578-606aa99e245c",
+      "name": "05 · U13 · −34 кг",
+      "count": 8,
+      "format": "SINGLE_ELIMINATION",
+      "matches": 7
+    },
+    {
+      "id": "76b3e038-88eb-4fa4-89c1-d956ecc931d4",
+      "name": "06 · U13 · −36 кг",
+      "count": 13,
+      "format": "SINGLE_ELIMINATION",
+      "matches": 12
+    },
+    {
+      "id": "a14ca79f-aef9-4887-aec2-3ba4090b4c4d",
+      "name": "07 · U13 · −38 кг",
+      "count": 16,
+      "format": "REPECHAGE",
+      "matches": 19
+    },
+    {
+      "id": "a895d783-2a24-4041-96a6-1d4e2a507349",
+      "name": "08 · U15 · −42 кг",
+      "count": 32,
+      "format": "REPECHAGE",
+      "matches": 35
+    },
+    {
+      "id": "544793b5-49cf-47b3-9fa5-5da8f2c48b62",
+      "name": "09 · U13 · −44 кг",
+      "count": 8,
+      "format": "MIXED",
+      "matches": 15
+    },
+    {
+      "id": "596ef61e-9ca5-4cdc-8f69-0c78e4bfe4e6",
+      "name": "10 · U15 · −46 кг",
+      "count": 12,
+      "format": "MIXED",
+      "matches": 19
+    },
+    {
+      "id": "b1185a31-f634-48dc-a29a-7d2d3e93237e",
+      "name": "11 · U15 · −48 кг",
+      "count": 16,
+      "format": "MIXED",
+      "matches": 31
+    },
+    {
+      "id": "146bcd33-217a-46b5-9eee-2caaf780b81a",
+      "name": "12 · U15 · −50 кг",
+      "count": 31,
+      "format": "SINGLE_ELIMINATION",
+      "matches": 30
+    }
+  ],
+  "tatamis": [
+    {
+      "id": "e28498be-f937-4eb2-b1a4-463b0a2227b8",
+      "number": 1
+    },
+    {
+      "id": "c764f3e4-6de6-410e-ad42-f9b813bd8cd9",
+      "number": 2
+    },
+    {
+      "id": "e0ad027f-2355-426a-b357-548f790124f1",
+      "number": 3
+    },
+    {
+      "id": "b6387f2e-ab0a-49cc-b5b8-731c9e493255",
+      "number": 4
+    }
+  ]
+}

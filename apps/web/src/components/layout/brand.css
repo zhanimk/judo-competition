@@ -1,0 +1,49 @@
+.jcl-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  min-width: 0;
+}
+.jcl-brand-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: contain;
+  background: #fff;
+}
+.jcl-brand-name {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.3px;
+}
+.jcl-brand-name > span {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+.login-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+@media (max-width: 1100px) and (min-width: 761px) {
+  .sidebar .jcl-brand {
+    gap: 8px;
+  }
+  .sidebar .jcl-brand-logo {
+    width: 48px;
+    height: 48px;
+  }
+  .sidebar .jcl-brand-name {
+    font-size: 15px;
+  }
+}

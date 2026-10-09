@@ -1,0 +1,7 @@
+CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "email" TEXT UNIQUE, "name" TEXT NOT NULL, "passwordHash" TEXT, "role" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+ALTER TABLE "Tournament" ADD COLUMN "ownerId" TEXT;
+ALTER TABLE "Tournament" ADD CONSTRAINT "Tournament_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+CREATE TABLE "Session" ("id" TEXT PRIMARY KEY, "tokenHash" TEXT NOT NULL UNIQUE, "userId" TEXT NOT NULL, "tatamiId" TEXT, "invitationId" TEXT, "expiresAt" TIMESTAMP(3) NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE);
+CREATE INDEX "Session_userId_idx" ON "Session"("userId");
+CREATE TABLE "Invitation" ("id" TEXT PRIMARY KEY, "tatamiId" TEXT NOT NULL, "tokenHash" TEXT NOT NULL UNIQUE, "label" TEXT NOT NULL, "expiresAt" TIMESTAMP(3) NOT NULL, "usedAt" TIMESTAMP(3), "revokedAt" TIMESTAMP(3), "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Invitation_tatamiId_fkey" FOREIGN KEY ("tatamiId") REFERENCES "Tatami"("id") ON DELETE CASCADE ON UPDATE CASCADE);
+CREATE INDEX "Invitation_tatamiId_idx" ON "Invitation"("tatamiId");

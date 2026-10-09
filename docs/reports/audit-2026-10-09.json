@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-09",
+  "scope": "Критические ошибки и стабильность — приоритет пользователя",
+  "check": {
+    "command": "npm run check",
+    "passed": true,
+    "unitTests": {
+      "engine": 38,
+      "web": 15,
+      "api": 13,
+      "scripts": 6
+    },
+    "totalUnitTests": 72,
+    "format": true,
+    "boundaries": true,
+    "strictTypes": true,
+    "productionBuild": true
+  },
+  "rehearsal": {
+    "command": "npm run test:rehearsal",
+    "passed": true,
+    "report": "docs/reports/latest-rehearsal.json",
+    "schema": "qa_rehearsal_cd3ad3d0185541719539c077472fe066",
+    "cleanedUp": true,
+    "suites": 13,
+    "persistence": [
+      "running hold checkpoint",
+      "fresh DB connection",
+      "paused clock recovery",
+      "session recovery",
+      "hold without duplication",
+      "confirmed result and draw recovery",
+      "confirmation retry after crash",
+      "third shido ippon",
+      "completed tournament public results",
+      "PDF after restart"
+    ],
+    "crashRestarts": 2,
+    "gracefulRestarts": 1
+  },
+  "findingsAndRemainingWork": "docs/STATUS.md",
+  "architecture": "docs/ARCHITECTURE.md",
+  "originalSourceBackups": "tmp/audit-backups/",
+  "workingTournamentDataModified": false,
+  "visualBrowserAndVenueAcceptancePerformed": false,
+  "completeTechnicalSpecificationImplemented": false
+}

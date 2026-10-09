@@ -1,0 +1,40 @@
+.platform-content.operator-content {
+  width: 100%;
+  max-width: 1280px;
+  padding: 16px 24px;
+}
+.operator-content > .form-actions {
+  margin: 0;
+  gap: 12px;
+}
+.operator-heading {
+  margin: 12px 0 0;
+  gap: 16px;
+}
+.operator-heading > div {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.operator-heading .kicker {
+  display: none;
+}
+.operator-heading h1 {
+  font-size: 20px;
+  letter-spacing: 0;
+}
+.operator-heading p {
+  margin: 0;
+  font-size: 13px;
+}
+.operator-content .operator-live {
+  margin: 12px 0 24px;
+  padding: 0;
+  border-radius: 8px;
+}
+@media (max-width: 600px) {
+  .platform-content.operator-content {
+    padding: 12px 8px;
+  }
+}

@@ -1,0 +1,224 @@
+import { drawFormat, type Draw } from '@judo/engine/draw';
+import { currentProfile, profile } from '../rules/profile.js';
+import { scheduleCategories } from './scheduling.js';
+import { LiveService } from '../matches/live.service.js';
+import { AuthService } from '../auth/auth.service.js';
+import type { Principal } from '../auth/auth.types.js';
+import { ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { DatabaseService } from '../../database/database.service.js';
+import { CreateTournamentDto, CreateCategoryDto, CreateEntryDto } from './dto.js';
+@Injectable()
+export class TournamentsService {
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly live: LiveService,
+    private readonly auth: AuthService,
+  ) {}
+  async start(id: string, user: Principal) {
+    await this.auth.owner(user, id);
+    const result = await this.db.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
+        const t = await tx.tournament.findUniqueOrThrow({
+          where: { id },
+          include: {
+            categories: {
+              orderBy: { name: 'asc' },
+              include: { draw: { include: { contests: true } } },
+            },
+            tatamis: { orderBy: { number: 'asc' } },
+          },
+        });
+        if (t.status === 'RUNNING' || t.status === 'FINISHED') return { status: t.status };
+        if (!t.categories.length || t.categories.some((c) => c.draw?.status !== 'CONFIRMED'))
+          throw new ConflictException('ALL_DRAWS_REQUIRED');
+        await scheduleCategories(tx, id, user.id);
+        await tx.tournament.update({
+          where: { id },
+          data: {
+            status: 'RUNNING',
+            rulesSnapshot: JSON.parse(
+              JSON.stringify({
+                ...profile(t.rulesSnapshot),
+                approvedAt: new Date().toISOString(),
+                categories: Object.fromEntries(
+                  t.categories.map((c) => [
+                    c.id,
+                    {
+                      durationSeconds: c.durationSeconds,
+                      format: c.format,
+                      resolvedFormat: drawFormat(c.draw!.snapshot as unknown as Draw),
+                    },
+                  ]),
+                ),
+              }),
+            ),
+          },
+        });
+        await tx.auditEvent.create({
+          data: {
+            actorId: user.id,
+            tournamentId: id,
+            entityId: id,
+            action: 'TOURNAMENT_STARTED',
+            payload: {},
+          },
+        });
+        return { status: 'RUNNING' };
+      },
+      { timeout: 30000 },
+    );
+    this.live.notify({ kind: 'queue', tournamentId: id });
+    return result;
+  }
+  async schedule(id: string, user: Principal) {
+    await this.auth.owner(user, id);
+    const result = await this.db.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
+        return scheduleCategories(tx, id, user.id);
+      },
+      { timeout: 30000 },
+    );
+    this.live.notify({ kind: 'queue', tournamentId: id });
+    return result;
+  }
+  async publish(id: string, user: Principal) {
+    await this.auth.owner(user, id);
+    return this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
+      const t = await tx.tournament.findUniqueOrThrow({ where: { id } });
+      if (t.publishedAt) return t;
+      const result = await tx.tournament.update({
+        where: { id },
+        data: { publishedAt: new Date() },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorId: user.id,
+          tournamentId: id,
+          entityId: id,
+          action: 'TOURNAMENT_PUBLISHED',
+          payload: {},
+        },
+      });
+      return result;
+    });
+  }
+  list(user: Principal) {
+    if (!['ORGANIZER', 'SUPER_ADMIN'].includes(user.role))
+      throw new ForbiddenException('FORBIDDEN');
+    return this.db.tournament.findMany({
+      where: user.role === 'SUPER_ADMIN' ? {} : { ownerId: user.id },
+      orderBy: { createdAt: 'desc' },
+      include: { categories: { include: { _count: { select: { entries: true } } } } },
+    });
+  }
+  async get(id: string, user: Principal) {
+    await this.auth.owner(user, id);
+    const t = await this.db.tournament.findUnique({
+      where: { id },
+      include: {
+        tatamis: { orderBy: { number: 'asc' } },
+        categories: {
+          orderBy: { name: 'asc' },
+          include: {
+            entries: { orderBy: { lastName: 'asc' } },
+            draw: {
+              select: { status: true, publishedAt: true, _count: { select: { contests: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!t) throw new NotFoundException('Турнир не найден');
+    return t;
+  }
+  create(dto: CreateTournamentDto, user: Principal) {
+    if (!['ORGANIZER', 'SUPER_ADMIN'].includes(user.role))
+      throw new ForbiddenException('FORBIDDEN');
+    for (const v of [dto.startDate, dto.endDate])
+      if (!Number.isFinite(Date.parse(v)) || new Date(v).toISOString().slice(0, 10) !== v)
+        throw new BadRequestException('Некорректная дата');
+    if (dto.endDate < dto.startDate) throw new BadRequestException('Дата окончания раньше начала');
+    if (!dto.name.trim() || !dto.city.trim() || !dto.venue.trim())
+      throw new BadRequestException('Заполните обязательные поля');
+    return this.db.tournament.create({
+      data: {
+        ...dto,
+        rulesSnapshot: JSON.parse(JSON.stringify(currentProfile())),
+        ownerId: user.id,
+        name: dto.name.trim(),
+        city: dto.city.trim(),
+        venue: dto.venue.trim(),
+        tatamis: { create: Array.from({ length: dto.tatamiCount }, (_, i) => ({ number: i + 1 })) },
+      },
+    });
+  }
+  async category(id: string, dto: CreateCategoryDto, user: Principal) {
+    const t = await this.get(id, user);
+    if (t.status !== 'DRAFT') throw new ConflictException('Настройки турнира заблокированы');
+    const upperBound = dto.maxWeightGrams !== null && dto.minWeightGrams == null;
+    const lowerBound = dto.maxWeightGrams === null && dto.minWeightGrams != null;
+    if (!upperBound && !lowerBound) throw new BadRequestException('INVALID_WEIGHT_BOUNDS');
+    if (dto.birthYearFrom > dto.birthYearTo)
+      throw new BadRequestException('Неверный диапазон годов');
+    if (!dto.name.trim()) throw new BadRequestException('Укажите название');
+    try {
+      return await this.db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
+        const current = await tx.tournament.findUniqueOrThrow({ where: { id } });
+        if (current.status !== 'DRAFT')
+          throw new ConflictException('Настройки турнира заблокированы');
+        const policy = profile(current.rulesSnapshot).drawPolicy;
+        const format = dto.format ?? (policy ? 'REPECHAGE' : 'SINGLE_ELIMINATION');
+        if (policy && format === 'SINGLE_ELIMINATION')
+          throw new BadRequestException('FORMAT_UNSUPPORTED');
+        return tx.category.create({
+          data: { ...dto, format, name: dto.name.trim(), tournamentId: id },
+        });
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
+        throw new ConflictException('Категория с таким названием уже существует');
+      throw e;
+    }
+  }
+  async entry(id: string, categoryId: string, dto: CreateEntryDto, user: Principal) {
+    await this.auth.owner(user, id);
+    if (!dto.firstName.trim() || !dto.lastName.trim() || !dto.club.trim())
+      throw new BadRequestException('Заполните данные спортсмена');
+    return this.db.$transaction(async (tx) => {
+      // Serialize admissions and draw confirmation on the same category lock.
+      await tx.$queryRaw`SELECT id FROM "Category" WHERE id = ${categoryId} FOR UPDATE`;
+      if (await tx.drawRecord.findFirst({ where: { categoryId, status: 'CONFIRMED' } }))
+        throw new ConflictException('DRAW_LOCKED');
+      const c = await tx.category.findFirst({
+        where: { id: categoryId, tournamentId: id },
+        include: { tournament: true },
+      });
+      if (!c) throw new NotFoundException('Категория не найдена');
+      if (c.tournament.status !== 'DRAFT') throw new ConflictException('Состав заблокирован');
+      if (dto.birthYear < c.birthYearFrom || dto.birthYear > c.birthYearTo)
+        throw new BadRequestException('Год рождения не соответствует категории');
+      if ((await tx.entry.count({ where: { categoryId } })) >= 128)
+        throw new ConflictException('В категории уже 128 участников');
+      return tx.entry.create({
+        data: {
+          ...dto,
+          firstName: dto.firstName.trim(),
+          lastName: dto.lastName.trim(),
+          club: dto.club.trim(),
+          categoryId,
+        },
+      });
+    });
+  }
+}

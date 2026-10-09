@@ -1,0 +1,121 @@
+{
+  "generatedAt": "2026-10-08T10:45:07.823Z",
+  "tournamentId": "62fed548-97bd-4df7-b428-38310f92212f",
+  "url": "http://127.0.0.1:4318/tournaments/62fed548-97bd-4df7-b428-38310f92212f",
+  "participants": 150,
+  "categories": [
+    {
+      "category": "Юноши U11 · −30 кг",
+      "participants": 2,
+      "bracketSize": 2,
+      "byes": 0,
+      "matches": 1,
+      "clubPairs": 0,
+      "minimumClubPairs": 0,
+      "queued": 1
+    },
+    {
+      "category": "Девочки U11 · −28 кг",
+      "participants": 3,
+      "bracketSize": 4,
+      "byes": 1,
+      "matches": 2,
+      "clubPairs": 0,
+      "minimumClubPairs": 0,
+      "queued": 1
+    },
+    {
+      "category": "Юноши U13 · −38 кг",
+      "participants": 5,
+      "bracketSize": 8,
+      "byes": 3,
+      "matches": 4,
+      "clubPairs": 1,
+      "minimumClubPairs": 1,
+      "queued": 2
+    },
+    {
+      "category": "Девочки U13 · −36 кг",
+      "participants": 8,
+      "bracketSize": 8,
+      "byes": 0,
+      "matches": 7,
+      "clubPairs": 1,
+      "minimumClubPairs": 1,
+      "queued": 4
+    },
+    {
+      "category": "Юноши U15 · −46 кг",
+      "participants": 13,
+      "bracketSize": 16,
+      "byes": 3,
+      "matches": 12,
+      "clubPairs": 0,
+      "minimumClubPairs": 0,
+      "queued": 5
+    },
+    {
+      "category": "Девушки U15 · −44 кг",
+      "participants": 16,
+      "bracketSize": 16,
+      "byes": 0,
+      "matches": 15,
+      "clubPairs": 0,
+      "minimumClubPairs": 0,
+      "queued": 8
+    },
+    {
+      "category": "Юноши U15 · −50 кг",
+      "participants": 32,
+      "bracketSize": 32,
+      "byes": 0,
+      "matches": 31,
+      "clubPairs": 0,
+      "minimumClubPairs": 0,
+      "queued": 16
+    },
+    {
+      "category": "Девушки U15 · −48 кг",
+      "participants": 71,
+      "bracketSize": 128,
+      "byes": 57,
+      "matches": 70,
+      "clubPairs": 0,
+      "minimumClubPairs": 0,
+      "queued": 32
+    }
+  ],
+  "queues": [
+    {
+      "number": 1,
+      "count": 18
+    },
+    {
+      "number": 2,
+      "count": 17
+    },
+    {
+      "number": 3,
+      "count": 17
+    },
+    {
+      "number": 4,
+      "count": 17
+    }
+  ],
+  "checks": {
+    "persisted": true,
+    "uniqueEntries": true,
+    "byeCorrect": true,
+    "minimumOpeningClubPairs": true,
+    "publicQueue": true,
+    "privateTournamentProtected": true
+  },
+  "notImplemented": [
+    "Repechage",
+    "Round robin final ranking",
+    "Mixed formats",
+    "Final standings for repechage and round robin"
+  ],
+  "note": "Test draw, not completed competition. Athlete ages are fixture parameters, not an official category template."
+}

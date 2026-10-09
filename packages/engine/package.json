@@ -1,0 +1,21 @@
+{
+  "name": "@judo/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./draw": {
+      "types": "./dist/draw/index.d.ts",
+      "default": "./dist/draw/index.js"
+    },
+    "./match": {
+      "types": "./dist/match/index.d.ts",
+      "default": "./dist/match/index.js"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json"
+  }
+}

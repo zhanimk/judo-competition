@@ -1,0 +1,228 @@
+{
+  "tournamentId": "31c211c4-a836-4070-938a-02c92f855945",
+  "name": "СЫНАҚ · MINI CUP · 5 санат / 34 қатысушы",
+  "status": "PASSED",
+  "categories": [
+    {
+      "id": "5fc4d4da-7e69-4344-907c-7a34cd4d792d",
+      "name": "01 · Екі қатысушы · −19 кг",
+      "count": 2,
+      "format": "SINGLE_ELIMINATION",
+      "weight": 19,
+      "from": 2016,
+      "to": 2018,
+      "drawId": "0000ce9f-3fa1-4b31-94e9-d06b254b40ca",
+      "bouts": 1,
+      "firstRoundClubPairs": 0
+    },
+    {
+      "id": "2dabf295-f8bf-4c03-84d6-fc0c8c22068b",
+      "name": "02 · Олимпиадалық · −23 кг",
+      "count": 7,
+      "format": "SINGLE_ELIMINATION",
+      "weight": 23,
+      "from": 2016,
+      "to": 2018,
+      "drawId": "b4c808a6-9eb5-4c12-b06d-5d89b9d02bc8",
+      "bouts": 6,
+      "firstRoundClubPairs": 0
+    },
+    {
+      "id": "eb5e5108-36ca-4821-b2e7-f0cb5a966109",
+      "name": "03 · Жұбаныш белдесулері · −29 кг",
+      "count": 12,
+      "format": "REPECHAGE",
+      "weight": 29,
+      "from": 2014,
+      "to": 2015,
+      "drawId": "ff0a7f4a-9239-4bc7-8d32-d445b9d24411",
+      "bouts": 15,
+      "firstRoundClubPairs": 0
+    },
+    {
+      "id": "7d39d706-127e-4d1a-b488-b319ba9b7ca6",
+      "name": "04 · Айналмалы · −32 кг",
+      "count": 5,
+      "format": "ROUND_ROBIN",
+      "weight": 32,
+      "from": 2014,
+      "to": 2015,
+      "drawId": "3ac4342f-f80f-44b9-ab99-c3727d3ef641",
+      "bouts": 10,
+      "firstRoundClubPairs": 0
+    },
+    {
+      "id": "0ecf2ffc-e6ee-46d1-9c0c-09ec0c083704",
+      "name": "05 · Аралас · −35 кг",
+      "count": 8,
+      "format": "MIXED",
+      "weight": 35,
+      "from": 2012,
+      "to": 2013,
+      "drawId": "0af61f08-9f75-4a6b-b06d-5d5407ff936d",
+      "bouts": 15,
+      "firstRoundClubPairs": 0
+    }
+  ],
+  "checks": [
+    "34 athletes, 5 categories, all 4 supported formats plus 2-person final",
+    "Knockout club separation, BYE and round-robin pair uniqueness",
+    "Start idempotency, automatic category assignment",
+    "Real timer: hold 5s YUKO → 10s WAZA-ARI → 20s IPPON; undo and repeated command",
+    "Third SHIDO awards displayed IPPON to opponent; revoke restores match correctly",
+    "Two WAZA-ARI produce provisional victory",
+    "Admin reopens confirmed result and corrects winner before dependent bouts",
+    "All bouts finished; public results match database; category tatamis retained; WebSocket state/result received",
+    "Completed draws and participant PDFs downloaded in KK/RU",
+    "Final placements for all five categories, two repechage bronze medals, all RR athletes fought four opponents"
+  ],
+  "synthetic": true,
+  "provisionalRules": true,
+  "restAcceleration": "Only this test tournament: confirmed bouts are aged by 10 minutes to avoid waiting during rehearsal.",
+  "url": "http://127.0.0.1:4318/public/tournaments/31c211c4-a836-4070-938a-02c92f855945",
+  "controlUrl": "http://127.0.0.1:4318/tournaments/31c211c4-a836-4070-938a-02c92f855945/control",
+  "tatamis": [
+    {
+      "id": "6e174c04-cce5-4205-affc-3f5869df4cdc",
+      "number": 1
+    },
+    {
+      "id": "40010f00-3e29-4128-b3a7-8ff5ab605899",
+      "number": 2
+    },
+    {
+      "id": "676e272e-e1f0-416c-af8d-00dd59087d2d",
+      "number": 3
+    }
+  ],
+  "loads": [
+    {
+      "number": 1,
+      "bouts": 16
+    },
+    {
+      "number": 2,
+      "bouts": 15
+    },
+    {
+      "number": 3,
+      "bouts": 16
+    }
+  ],
+  "startedAt": "2026-10-08T15:37:01.446Z",
+  "completed": 47,
+  "pdfs": [
+    "output/mini-cup/draw-kk.pdf",
+    "output/mini-cup/participants-kk.pdf",
+    "output/mini-cup/draw-ru.pdf",
+    "output/mini-cup/participants-ru.pdf"
+  ],
+  "finishedAt": "2026-10-08T15:41:04.239Z",
+  "websocketEvents": 447,
+  "harnessCorrections": [
+    {
+      "issue": "{\"message\":\"Validation failed (uuid is expected)\",\"error\":\"Bad Request\",\"statusCode\":400}\n\n400 !== 201\n",
+      "resolution": "Retained contest/tatami IDs separately from command responses; reset first unconfirmed test bout; reran all 47 successfully."
+    }
+  ],
+  "pdfVisualReview": {
+    "pages": 30,
+    "languages": ["kk", "ru"],
+    "kinds": ["DRAW", "PARTICIPANTS"],
+    "passed": true
+  },
+  "limitations": [
+    "Offline event queue is not implemented.",
+    "Custom draw formats, not verified IJF profiles.",
+    "Browser accessibility checks showed live scores and tatami switching; full mobile visual verification remains incomplete."
+  ],
+  "finalStandings": [
+    {
+      "category": "01 · Екі қатысушы · −19 кг",
+      "places": [
+        {
+          "place": 1,
+          "name": "СЫНАҚ-002"
+        },
+        {
+          "place": 2,
+          "name": "СЫНАҚ-001"
+        }
+      ]
+    },
+    {
+      "category": "02 · Олимпиадалық · −23 кг",
+      "places": [
+        {
+          "place": 1,
+          "name": "СЫНАҚ-003"
+        },
+        {
+          "place": 2,
+          "name": "СЫНАҚ-006"
+        }
+      ]
+    },
+    {
+      "category": "03 · Жұбаныш белдесулері · −29 кг",
+      "places": [
+        {
+          "place": 1,
+          "name": "СЫНАҚ-013"
+        },
+        {
+          "place": 2,
+          "name": "СЫНАҚ-021"
+        },
+        {
+          "place": 3,
+          "name": "СЫНАҚ-020"
+        },
+        {
+          "place": 3,
+          "name": "СЫНАҚ-012"
+        }
+      ]
+    },
+    {
+      "category": "04 · Айналмалы · −32 кг",
+      "places": [
+        {
+          "place": 1,
+          "name": "СЫНАҚ-023"
+        },
+        {
+          "place": 2,
+          "name": "СЫНАҚ-026"
+        },
+        {
+          "place": 3,
+          "name": "СЫНАҚ-022"
+        },
+        {
+          "place": 4,
+          "name": "СЫНАҚ-025"
+        },
+        {
+          "place": 5,
+          "name": "СЫНАҚ-024"
+        }
+      ]
+    },
+    {
+      "category": "05 · Аралас · −35 кг",
+      "places": [
+        {
+          "place": 1,
+          "name": "СЫНАҚ-031"
+        },
+        {
+          "place": 2,
+          "name": "СЫНАҚ-032"
+        }
+      ]
+    }
+  ],
+  "everestUnchanged": true,
+  "buildCheckPassed": true
+}

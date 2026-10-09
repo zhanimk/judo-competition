@@ -1,0 +1,16 @@
+{
+  "testedAt": "2026-10-08T18:14:23.847Z",
+  "browser": "Safari",
+  "tournamentId": "f1c853e1-42c2-41f7-8693-3dfa310fb939",
+  "tatamiId": "6a4d4051-ddc4-4562-8303-79dea2717837",
+  "contestId": "a66dd2f4-1f21-4891-ad26-bfae7ebd026f",
+  "status": "CONFIRMED",
+  "elapsedMs": 20039,
+  "activeAwards": ["YUKO", "IPPON"],
+  "uniqueServerEvents": 6,
+  "serverEventCount": 6,
+  "reloadedWithWebAndApiStopped": true,
+  "unpublishedUntilSync": true,
+  "backgroundVisibilityObserved": "hidden",
+  "fixtureRemoved": true
+}

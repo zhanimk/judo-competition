@@ -1,0 +1,51 @@
+{
+  "name": "judo-tournament-system",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build -w @judo/engine && npm run build -w @judo/api && npm run build -w @judo/web",
+    "typecheck": "npm run build -w @judo/engine && npm run typecheck --workspaces --if-present",
+    "test": "npm run build -w @judo/engine && npm run test -w @judo/engine && npm run test -w @judo/web && npm run test:scripts && npm run test:api",
+    "test:api": "npm run build -w @judo/api && node --test scripts/api-regression.test.mjs scripts/assignment-regression.test.mjs",
+    "test:scripts": "node --test scripts/test/*.test.mjs",
+    "start": "npm run start -w @judo/web",
+    "check": "npm run format:check && npm run check:boundaries && npm run typecheck && npm test && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "db:generate": "npm run db:generate -w @judo/api",
+    "db:migrate": "npm run db:migrate -w @judo/api",
+    "db:backup:verify": "node --env-file=apps/api/.env scripts/verify-database-backup.mjs",
+    "dev:web": "npm run dev -w @judo/web",
+    "dev:api": "npm run build -w @judo/engine && npm run build -w @judo/api && npm run start -w @judo/api",
+    "test:rehearsal": "npm run build -w @judo/engine && npm run build -w @judo/api && node --env-file=apps/api/.env scripts/rehearsal.mjs",
+    "test:integration": "node --env-file=apps/api/.env scripts/integration.mjs",
+    "test:auth": "node --env-file=apps/api/.env scripts/auth-integration.mjs",
+    "test:draws": "node --env-file=apps/api/.env scripts/draw-integration.mjs",
+    "predev": "npm run build -w @judo/engine",
+    "predev:web": "npm run build -w @judo/engine",
+    "test:150": "node --env-file=apps/api/.env scripts/test-tournament-150.mjs",
+    "test:public": "node --env-file=apps/api/.env scripts/public-integration.mjs",
+    "test:live": "node --env-file=apps/api/.env scripts/live-integration.mjs",
+    "test:formats": "node --env-file=apps/api/.env scripts/formats-integration.mjs",
+    "demo:reset": "node --env-file=apps/api/.env scripts/reset-demo.mjs",
+    "test:control": "node --env-file=apps/api/.env scripts/control-integration.mjs",
+    "test:scheduling": "node --env-file=apps/api/.env scripts/scheduling-integration.mjs",
+    "test:protocols": "npm run build -w @judo/engine && npm run build -w @judo/api && node --env-file=apps/api/.env scripts/protocol-integration.mjs",
+    "test:mini:prepare": "node --env-file=apps/api/.env scripts/mini-tournament.mjs prepare",
+    "test:mini:run": "node --env-file=apps/api/.env scripts/mini-tournament.mjs run"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "prettier": "^3.9.9",
+    "typescript": "^7.0.2"
+  }
+}

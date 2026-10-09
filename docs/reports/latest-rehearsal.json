@@ -1,0 +1,93 @@
+{
+  "startedAt": "2026-10-09T06:41:47.771Z",
+  "schema": "qa_rehearsal_fb5d3efd21ca4b8a8b71c1fb8e108b27",
+  "passed": true,
+  "suites": [
+    {
+      "name": "migrations",
+      "passed": true,
+      "durationMs": 725
+    },
+    {
+      "name": "migrations-repeat",
+      "passed": true,
+      "durationMs": 543
+    },
+    {
+      "name": "integration",
+      "passed": true,
+      "durationMs": 195
+    },
+    {
+      "name": "auth-integration",
+      "passed": true,
+      "durationMs": 303
+    },
+    {
+      "name": "draw-integration",
+      "passed": true,
+      "durationMs": 328
+    },
+    {
+      "name": "scheduling-integration",
+      "passed": true,
+      "durationMs": 364
+    },
+    {
+      "name": "public-integration",
+      "passed": true,
+      "durationMs": 316
+    },
+    {
+      "name": "control-integration",
+      "passed": true,
+      "durationMs": 526
+    },
+    {
+      "name": "formats-integration",
+      "passed": true,
+      "durationMs": 2808
+    },
+    {
+      "name": "rematches-integration",
+      "passed": true,
+      "durationMs": 1427
+    },
+    {
+      "name": "live-integration",
+      "passed": true,
+      "durationMs": 21879
+    },
+    {
+      "name": "protocol-integration",
+      "passed": true,
+      "durationMs": 6615
+    },
+    {
+      "name": "actual-process-restart-and-persistence",
+      "passed": true
+    }
+  ],
+  "output": "tmp/rehearsal/qa_rehearsal_fb5d3efd21ca4b8a8b71c1fb8e108b27",
+  "persistence": {
+    "tournamentId": "d8f9ee15-1f86-4c2b-980a-5ca2de64e5cb",
+    "confirmedBouts": 3,
+    "crashRestarts": 2,
+    "gracefulRestarts": 1,
+    "checks": [
+      "running hold checkpoint",
+      "fresh DB connection",
+      "paused clock recovery",
+      "session recovery",
+      "assignment retry after crash without clock or audit changes",
+      "hold without duplication",
+      "confirmed result and draw recovery",
+      "confirmation retry after crash",
+      "third shido ippon",
+      "completed tournament public results",
+      "PDF after restart"
+    ]
+  },
+  "cleanedUp": true,
+  "finishedAt": "2026-10-09T06:42:31.538Z"
+}

@@ -1,0 +1,113 @@
+.protocol-shell {
+  display: block;
+  padding: 32px 20px;
+}
+.protocol-document {
+  max-width: 1080px;
+  margin: auto;
+  background: white;
+  border: 1px solid #dce3ec;
+  border-radius: 12px;
+  padding: 36px;
+}
+.protocol-tools {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+.protocol-tools a {
+  margin-right: auto;
+  color: #214e91;
+}
+.protocol-title {
+  border-bottom: 2px solid #203a62;
+  padding-bottom: 24px;
+}
+.protocol-title h2 {
+  margin-top: 20px;
+}
+.protocol-category {
+  margin-top: 36px;
+}
+.protocol-category h3 {
+  font-size: 15px;
+  margin-top: 24px;
+}
+.protocol-notice {
+  border-left: 3px solid #b79036;
+  padding: 12px;
+  background: #faf6e9;
+  line-height: 1.6;
+}
+.protocol-shell th,
+.protocol-shell td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  padding: 10px;
+}
+.protocol-shell table {
+  table-layout: fixed;
+}
+.protocol-shell th:first-child {
+  width: 12%;
+}
+@media (max-width: 600px) {
+  .protocol-shell {
+    padding: 8px;
+  }
+  .protocol-document {
+    padding: 16px;
+  }
+  .protocol-shell th,
+  .protocol-shell td {
+    font-size: 11px;
+    padding: 6px;
+  }
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+  .protocol-shell {
+    background: white;
+    padding: 0;
+    display: block;
+    color: black;
+  }
+  .protocol-document {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    max-width: none;
+  }
+  .protocol-tools {
+    display: none;
+  }
+  .protocol-category {
+    break-before: page;
+    margin-top: 0;
+  }
+  .protocol-category h2,
+  .protocol-category h3 {
+    break-after: avoid;
+  }
+  .protocol-shell tr {
+    break-inside: avoid;
+  }
+  .protocol-shell thead {
+    display: table-header-group;
+  }
+  .protocol-shell th,
+  .protocol-shell td {
+    font-size: 9pt;
+    padding: 6pt;
+  }
+  .protocol-shell p,
+  .protocol-shell li {
+    font-size: 10pt;
+  }
+}

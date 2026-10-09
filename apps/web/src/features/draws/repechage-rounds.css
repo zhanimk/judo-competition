@@ -1,0 +1,89 @@
+.medal-final,
+.medal-rounds {
+  margin-block: 24px;
+  padding: 20px;
+  border: 1px solid #dce3ec;
+  border-radius: 14px;
+  background: #fff;
+}
+.medal-final {
+  border-top: 4px solid #d9a73b;
+  background: #fffcf3;
+}
+.medal-final > h3,
+.medal-rounds-heading h3 {
+  margin: 0 0 12px;
+}
+.medal-final .pair-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.medal-rounds-heading {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 16px;
+}
+.medal-rounds-heading > span {
+  color: #76512b;
+  font-size: 14px;
+}
+.medal-branch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.medal-branch + .medal-branch {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid #dce3ec;
+}
+.medal-branch section {
+  min-width: 0;
+}
+.medal-branch h4 {
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+.medal-branch p {
+  min-height: 40px;
+  font-size: 14px;
+  color: #526176;
+  margin: 0 0 12px;
+}
+.medal-branch .pair-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.medal-bronze h4 {
+  color: #80522a;
+}
+.medal-bronze .pair-card {
+  border-top: 3px solid #b77743;
+}
+.medal-connector {
+  text-align: center;
+  color: #8797ac;
+  font-size: 30px;
+}
+.medal-final .match-schedule,
+.medal-branch .match-schedule {
+  margin-top: 0;
+}
+@media (max-width: 760px) {
+  .medal-final,
+  .medal-rounds {
+    padding: 14px;
+  }
+  .medal-branch {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .medal-connector {
+    transform: rotate(90deg);
+  }
+  .medal-branch p {
+    min-height: 0;
+  }
+}

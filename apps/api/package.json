@@ -1,0 +1,31 @@
+{
+  "name": "@judo/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "node --env-file=.env dist/main.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "node --env-file=.env ../../scripts/deploy-migrations.mjs"
+  },
+  "type": "module",
+  "dependencies": {
+    "@judo/engine": "^0.1.0",
+    "@nestjs/common": "^12.1.2",
+    "@nestjs/core": "^12.1.2",
+    "@nestjs/platform-express": "^12.1.2",
+    "@prisma/client": "^6.19.3",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "pdfkit": "^0.20.2",
+    "prisma": "^6.19.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/pdfkit": "^0.17.6",
+    "@types/ws": "^8.18.2"
+  }
+}

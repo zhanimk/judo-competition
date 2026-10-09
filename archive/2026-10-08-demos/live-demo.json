@@ -1,0 +1,19 @@
+{
+  "tournamentId": "0babbc8c-487c-4617-bc8e-51e78f947882",
+  "categoryId": "f17ae692-439c-4eff-bab2-26a5f19fa0c4",
+  "tatamis": [
+    {
+      "id": "04057232-119e-4c28-be07-bbeb4b0949ea",
+      "number": 1
+    },
+    {
+      "id": "1609e34d-7a9c-417c-812e-76604e84a190",
+      "number": 2
+    }
+  ],
+  "publicUrl": "http://127.0.0.1:4318/public/tournaments/0babbc8c-487c-4617-bc8e-51e78f947882",
+  "operatorUrls": [
+    "http://127.0.0.1:4318/operator/04057232-119e-4c28-be07-bbeb4b0949ea",
+    "http://127.0.0.1:4318/operator/1609e34d-7a9c-417c-812e-76604e84a190"
+  ]
+}

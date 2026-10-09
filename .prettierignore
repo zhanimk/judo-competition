@@ -1,0 +1,14 @@
+node_modules
+.next
+archive
+package-lock.json
+*.tsbuildinfo
+apps/web/next-env.d.ts
+
+dist
+
+tmp/backups
+tmp/audit-backups
+tmp/stage1-backups
+
+tmp/rehearsal
