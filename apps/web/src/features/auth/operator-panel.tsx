@@ -8,9 +8,11 @@ import { request, ApiError } from '../tournaments/api';
 import { useLanguage, LanguageSwitch } from '../../shared/i18n/provider';
 import '../../components/layout/platform.css';
 import './operator-panel.css';
+import { logoutSession } from './logout';
 type Control = {
   tournamentId: string;
   role: string;
+  workRole: 'ADMIN' | 'JUDGE';
   number: number;
   tournamentName: string;
   operatorName: string;
@@ -104,7 +106,10 @@ export function OperatorPanel({ tatamiId }: { tatamiId: string }) {
                 <p className="kicker">{data?.tournamentName}</p>
                 <h1>Татами {data?.number ?? '—'}</h1>
                 <p>
-                  {text('Оператор', 'Оператор')}:{' '}
+                  {data?.workRole === 'ADMIN'
+                    ? text('Администратор', 'Әкімші')
+                    : text('Судья табло', 'Табло төрешісі')}
+                  :{' '}
                   {data?.operatorName ??
                     text('Локальное восстановление', 'Жергілікті қалпына келтіру')}
                 </p>
@@ -115,7 +120,7 @@ export function OperatorPanel({ tatamiId }: { tatamiId: string }) {
                   setLoggingOut(true);
                   setLogoutError(false);
                   try {
-                    await request('/auth/logout', {});
+                    await logoutSession();
                     location.href = '/login';
                   } catch {
                     setLogoutError(true);

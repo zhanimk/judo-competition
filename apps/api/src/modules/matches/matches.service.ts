@@ -5,6 +5,8 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
+  UnauthorizedException,
   Logger,
   type OnModuleInit,
   type OnModuleDestroy,
@@ -17,6 +19,7 @@ import { resolveMatches, appendRematches, type Draw } from '@judo/engine/draw';
 import { DatabaseService } from '../../database/database.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/auth.types.js';
+import { assertActivePrincipal, assertTatamiControl } from '../auth/access-guards.js';
 import { LiveService } from './live.service.js';
 import { MatchCommandDto } from './matches.dto.js';
 import { assertUnusedCommandIds } from './command-ids.js';
@@ -83,7 +86,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
     this.ticking = true;
     try {
       const active = await this.db.contest.findMany({
-        where: { status: 'ACTIVE', offlineSessionId: null },
+        where: { status: 'ACTIVE' },
         select: {
           id: true,
           tatamiId: true,
@@ -92,11 +95,91 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       });
       for (const item of active) {
         const changed = await this.db.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${item.draw.category.tournamentId} FOR UPDATE`;
+          await tx.$queryRaw`SELECT id FROM "Tatami" WHERE "tournamentId"=${item.draw.category.tournamentId} ORDER BY id FOR UPDATE`;
+          const mat = item.tatamiId
+            ? await tx.tatami.findUnique({ where: { id: item.tatamiId } })
+            : null;
+          let holderValid = false;
+          if (mat?.controllerSessionId && mat.controllerActorId && mat.controllerDeviceId) {
+            const holder = await tx.session.findUnique({
+              where: { id: mat.controllerSessionId },
+              include: { user: true },
+            });
+            if (holder && holder.userId === mat.controllerActorId) {
+              try {
+                await assertActivePrincipal(
+                  tx,
+                  {
+                    id: holder.userId,
+                    name: holder.user.name,
+                    role: holder.user.role,
+                    tatamiId: holder.tatamiId,
+                    sessionId: holder.id,
+                  },
+                  { tournamentId: mat.tournamentId, tatamiId: mat.id },
+                );
+                holderValid = true;
+              } catch (error) {
+                if (
+                  !(error instanceof ForbiddenException) &&
+                  !(error instanceof UnauthorizedException)
+                )
+                  throw error;
+              }
+            }
+          }
           await tx.$queryRaw`SELECT id FROM "Contest" WHERE id=${item.id} FOR UPDATE`;
           const row = await tx.contest.findUnique({ where: { id: item.id } });
-          if (!row || row.status !== 'ACTIVE' || !row.state || row.offlineSessionId) return false;
+          if (!row || row.status !== 'ACTIVE' || !row.state) return false;
           const s = row.state as unknown as MatchState;
           if (s.status !== 'RUNNING') return false;
+          if (!holderValid || row.tatamiId !== mat?.id) {
+            const state = applyCommand(s, {
+              id: randomUUID(),
+              expectedVersion: s.version,
+              type: 'RECOVER',
+            });
+            state.receipts = {};
+            const updated = await tx.contest.update({
+              where: { id: row.id },
+              data: {
+                state: json(state),
+                revision: { increment: 1 },
+                clockAnchorMs: null,
+                clockEpoch: null,
+              },
+            });
+            const payload = json({
+              reason: 'CONTROL_HOLDER_UNAVAILABLE',
+              revision: updated.revision,
+              clockUncertain: true,
+              before: s,
+              state,
+            });
+            await tx.matchEvent.create({
+              data: {
+                id: randomUUID(),
+                contestId: row.id,
+                actorId: 'SYSTEM',
+                type: 'CONTROL_LOST_PAUSED',
+                payload,
+              },
+            });
+            await tx.auditEvent.create({
+              data: {
+                actorId: 'SYSTEM',
+                tournamentId: item.draw.category.tournamentId,
+                entityId: row.id,
+                action: 'MATCH_CONTROL_LOST_PAUSED',
+                payload,
+              },
+            });
+            return true;
+          }
+          // A valid offline lease owns its own clock and event journal. Only
+          // lost access pauses its saved snapshot; the lease remains for review.
+          if (row.offlineSessionId) return false;
           const at = now(),
             state = this.advance(row, at),
             recovery = row.clockEpoch !== this.epoch;
@@ -222,6 +305,10 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
     const result = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${access.tournamentId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM "Tatami" WHERE "tournamentId"=${access.tournamentId} ORDER BY id FOR UPDATE`;
+      await assertActivePrincipal(tx, user, {
+        tournamentId: access.tournamentId,
+        tatamiId,
+      });
       await tx.$queryRaw`SELECT id FROM "Contest" WHERE id=${id} FOR UPDATE`;
       const row = await tx.contest.findUnique({
         where: { id },
@@ -238,6 +325,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         const receipt = previous.payload as unknown as Partial<CommandReceipt>;
         if (
           previous.contestId !== id ||
+          previous.actorId !== user.id ||
           !isDeepStrictEqual(receipt.command ?? previous.payload, json(dto))
         )
           throw new ConflictException('COMMAND_ID_REUSED');
@@ -245,6 +333,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         // the original response even after later commands change the contest.
         return receipt.response ?? commandResult(row);
       }
+      await assertTatamiControl(tx, user, tatamiId, dto);
       if (row.revision !== dto.expectedVersion) throw new ConflictException('VERSION_CONFLICT');
       if (row.status === 'CONFIRMED') throw new ConflictException('RESULT_LOCKED');
       const offline = dto.type.startsWith('OFFLINE_');
@@ -268,6 +357,11 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         throw new ConflictException('OFFLINE_OWNED');
       if (['OFFLINE_SYNC', 'OFFLINE_RELEASE'].includes(dto.type) && !row.offlineSessionId)
         throw new ConflictException('OFFLINE_SESSION_REVOKED');
+      if (
+        ['OFFLINE_SYNC', 'OFFLINE_RELEASE'].includes(dto.type) &&
+        row.offlineControlGeneration !== dto.controlGeneration
+      )
+        throw new ConflictException('OFFLINE_CONTROL_STALE');
       const events = offline ? (dto.events ?? []) : [];
       const ids = [dto.id, ...events.map((event) => event.id)];
       await assertUnusedCommandIds(tx, ids, row.state as unknown as MatchState | null);
@@ -341,10 +435,14 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         data: {
           state: json(state),
           ...(dto.type === 'OFFLINE_OPEN'
-            ? { offlineSessionId: dto.sessionId, offlineActorId: user.id }
+            ? {
+                offlineSessionId: dto.sessionId,
+                offlineActorId: user.id,
+                offlineControlGeneration: dto.controlGeneration,
+              }
             : {}),
           ...(dto.type === 'OFFLINE_RELEASE' || confirmed
-            ? { offlineSessionId: null, offlineActorId: null }
+            ? { offlineSessionId: null, offlineActorId: null, offlineControlGeneration: null }
             : {}),
           revision: { increment: 1 },
           status: confirmed ? 'CONFIRMED' : 'ACTIVE',

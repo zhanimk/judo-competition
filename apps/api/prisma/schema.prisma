@@ -25,6 +25,7 @@ model Tournament {
  tatamis Tatami[]
  clubs Club[]
  rosterCommands RosterCommand[]
+ accessCommands AccessCommand[]
 }
 model Category {
  homeTatamiId String?
@@ -104,7 +105,29 @@ model Tatami {
  invitations Invitation[]
  number Int
  status String @default("IDLE")
+ accessRevision Int @default(0)
+ controlGeneration Int @default(0)
+ controllerSessionId String?
+ controllerDeviceId String?
+ controllerActorId String?
+ controlledAt DateTime?
+ accessCommands AccessCommand[]
  @@unique([tournamentId,number])
+}
+model AccessCommand {
+ id String @id
+ tournamentId String
+ tournament Tournament @relation(fields:[tournamentId],references:[id],onDelete:Cascade)
+ tatamiId String
+ tatami Tatami @relation(fields:[tatamiId],references:[id],onDelete:Cascade)
+ actorId String
+ sessionId String
+ type String
+ command Json
+ response Json
+ createdAt DateTime @default(now())
+ @@index([tatamiId,createdAt])
+ @@index([tournamentId,createdAt])
 }
 model User {
  id String @id @default(uuid())
@@ -156,6 +179,7 @@ model DrawRecord {
  contests Contest[]
 }
 model Contest {
+ offlineControlGeneration Int?
  offlineSessionId String?
  offlineActorId String?
  id String @id @default(uuid())

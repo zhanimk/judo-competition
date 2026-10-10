@@ -234,24 +234,6 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
       setBusy(false);
     }
   }
-  async function timer(mat: Mat) {
-    const m = mat.live.currentMatch;
-    if (!m) return;
-    setBusy(true);
-    setError('');
-    try {
-      await request(`/tatamis/${mat.id}/live/${m.id}/command`, {
-        id: crypto.randomUUID(),
-        expectedVersion: m.revision,
-        type: m.state.status === 'RUNNING' ? 'STOP' : 'START',
-      });
-      await refresh();
-    } catch (e) {
-      setError(message(e));
-    } finally {
-      setBusy(false);
-    }
-  }
   if (!data)
     return (
       <section className="panel state-box">
@@ -390,16 +372,9 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
                       </div>
                     );
                   })}
-                  <button
-                    disabled={
-                      busy || !connected || !['RUNNING', 'PAUSED'].includes(s.status) || !!s.hold
-                    }
-                    onClick={() => timer(mat)}
-                  >
-                    {s.status === 'RUNNING'
-                      ? text('Ⅱ Остановить время', 'Ⅱ Уақытты тоқтату')
-                      : text('▶ Продолжить', '▶ Жалғастыру')}
-                  </button>
+                  <Link className="solid-link" href={`/operator/${mat.id}`}>
+                    {text('Открыть пульт для управления', 'Басқару үшін пультті ашу')} →
+                  </Link>
                 </>
               ) : (
                 <div className="control-empty">

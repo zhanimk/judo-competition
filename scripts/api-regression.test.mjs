@@ -20,7 +20,15 @@ const rules = {
   enabledScores: ['YUKO', 'WAZA_ARI', 'IPPON'],
   holdThresholds: [{ ms: 20000, score: 'IPPON' }],
 };
-const actor = { id: randomUUID(), role: 'ORGANIZER' };
+const actor = {
+  id: randomUUID(),
+  name: 'Administrator',
+  role: 'ORGANIZER',
+  sessionId: randomUUID(),
+  tatamiId: null,
+};
+const deviceId = randomUUID();
+const controlGeneration = 4;
 const mat = randomUUID();
 const tournament = randomUUID();
 const matchId = randomUUID();
@@ -56,14 +64,33 @@ function harness({ offline = true, oldEvents = [], collideOnWrite = false } = {}
       clockEpoch: null,
       offlineSessionId: offline ? offlineSession : null,
       offlineActorId: offline ? actor.id : null,
+      offlineControlGeneration: offline ? controlGeneration : null,
       winnerEntryId: null,
       confirmedAt: null,
       updatedAt: new Date('2026-10-09T01:00:00.000Z'),
       draw: { categoryId, category: { tournamentId: tournament } },
     },
     events: structuredClone(oldEvents),
+    accessCommands: [],
     audit: [],
     matStatus: 'BUSY',
+    mat: {
+      id: mat,
+      tournamentId: tournament,
+      controllerSessionId: actor.sessionId,
+      controllerActorId: actor.id,
+      controllerDeviceId: deviceId,
+      controlGeneration,
+      accessRevision: 0,
+    },
+    session: {
+      id: actor.sessionId,
+      userId: actor.id,
+      user: { id: actor.id, role: actor.role, name: actor.name },
+      expiresAt: new Date('2099-01-01'),
+      tatamiId: null,
+      invitationId: null,
+    },
   };
   saved.entries = [saved.row.whiteEntryId, saved.row.blueEntryId].map((id) => ({
     id,
@@ -73,6 +100,9 @@ function harness({ offline = true, oldEvents = [], collideOnWrite = false } = {}
   }));
   const notices = [];
   const db = {
+    contest: {
+      findMany: async () => (saved.row.status === 'ACTIVE' ? [structuredClone(saved.row)] : []),
+    },
     async $transaction(callback) {
       const staged = structuredClone(saved);
       const tx = {
@@ -83,6 +113,12 @@ function harness({ offline = true, oldEvents = [], collideOnWrite = false } = {}
                 .map((entry) => ({ id: entry.athleteId }))
             : [],
         rosterCommand: { findFirst: async () => null },
+        accessCommand: {
+          findFirst: async ({ where }) =>
+            staged.accessCommands.find((command) => where.id.in.includes(command.id)) ?? null,
+        },
+        session: { findUnique: async () => structuredClone(staged.session) },
+        tournament: { findUnique: async () => ({ id: tournament, ownerId: actor.id }) },
         entry: {
           findMany: async ({ where }) =>
             structuredClone(
@@ -107,6 +143,7 @@ function harness({ offline = true, oldEvents = [], collideOnWrite = false } = {}
           },
         },
         tatami: {
+          findUnique: async () => structuredClone(staged.mat),
           update: async ({ data }) => {
             staged.matStatus = data.status;
           },
@@ -147,10 +184,13 @@ function harness({ offline = true, oldEvents = [], collideOnWrite = false } = {}
   return {
     service,
     snapshot: () => structuredClone(saved),
+    mutate: (callback) => callback(saved),
     notices,
     packet(events, extra = {}) {
       return {
         id: randomUUID(),
+        deviceId,
+        controlGeneration,
         type: 'OFFLINE_SYNC',
         sessionId: offlineSession,
         expectedVersion: saved.row.revision,
@@ -158,7 +198,7 @@ function harness({ offline = true, oldEvents = [], collideOnWrite = false } = {}
         ...extra,
       };
     },
-    send: (dto) => service.command(mat, matchId, dto, actor),
+    send: (dto) => service.command(mat, matchId, { deviceId, controlGeneration, ...dto }, actor),
   };
 }
 
@@ -207,7 +247,7 @@ test('both public read services check visibility before reading LIVE state or qu
 });
 
 test('DTO rejects incomplete scoring, time and offline commands with a validation error', async () => {
-  const base = { id: randomUUID(), expectedVersion: 0 };
+  const base = { id: randomUUID(), expectedVersion: 0, deviceId, controlGeneration };
   const invalid = [
     { type: 'AWARD' },
     { type: 'AWARD', side: 'WHITE' },
@@ -216,6 +256,11 @@ test('DTO rejects incomplete scoring, time and offline commands with a validatio
     { type: 'OFFLINE_OPEN' },
     { type: 1 },
     { type: 'STOP', expectedVersion: Number.MAX_SAFE_INTEGER + 1 },
+    { type: 'STOP', deviceId: undefined },
+    { type: 'STOP', controlGeneration: undefined },
+    { type: 'STOP', deviceId: 'invalid' },
+    { type: 'STOP', controlGeneration: -1 },
+    { type: 'STOP', controlGeneration: 1.5 },
     {
       type: 'OFFLINE_SYNC',
       sessionId: offlineSession,
@@ -366,6 +411,16 @@ test('administrative commands also reject IDs reserved by a legacy offline packe
   const tx = {
     $queryRaw: async () => [],
     rosterCommand: { findFirst: async () => null },
+    accessCommand: { findFirst: async () => null },
+    session: {
+      findUnique: async () => ({
+        id: actor.sessionId,
+        userId: actor.id,
+        user: { id: actor.id, role: actor.role },
+        expiresAt: new Date('2099-01-01'),
+      }),
+    },
+    tournament: { findUnique: async () => ({ id: tournament, ownerId: actor.id }) },
     contest: {
       findFirst: async () => ({ id: matchId, revision: 7, state: pausedMatch() }),
       update: async () => writes++,
@@ -459,4 +514,179 @@ test('LIVE heartbeat releases unresponsive connections and retains clients that 
   assert.deepEqual(calls, { ping: 2, terminate: 0 });
   await live.heartbeat();
   assert.deepEqual(calls, { ping: 2, terminate: 1 });
+});
+
+test('new sporting mutations require the exact device and control generation without any bypass', async () => {
+  for (const [grant, reason] of [
+    [{ deviceId: undefined }, 'CONTROL_REQUIRED'],
+    [{ controlGeneration: undefined }, 'CONTROL_REQUIRED'],
+    [{ deviceId: randomUUID() }, 'CONTROL_HELD'],
+    [{ controlGeneration: controlGeneration - 1 }, 'CONTROL_GENERATION_STALE'],
+  ]) {
+    const h = harness({ offline: false });
+    const before = h.snapshot();
+    await assert.rejects(
+      h.send({ id: randomUUID(), expectedVersion: 7, type: 'START', ...grant }),
+      conflict(reason),
+    );
+    assert.deepEqual(h.snapshot(), before);
+    assert.equal(h.notices.length, 0);
+  }
+});
+
+test('exact acknowledged sporting receipts survive later grant invalidation but require a live actor', async () => {
+  const h = harness({ offline: false });
+  const command = { id: randomUUID(), expectedVersion: 7, type: 'START' };
+  const original = await h.send(command);
+  h.mutate((saved) => {
+    saved.mat.controlGeneration += 1;
+    saved.mat.controllerSessionId = randomUUID();
+    saved.mat.controllerActorId = randomUUID();
+    saved.mat.controllerDeviceId = randomUUID();
+  });
+  const afterTakeover = h.snapshot();
+  assert.deepEqual(await h.send(command), original);
+  assert.deepEqual(h.snapshot(), afterTakeover);
+  await assert.rejects(
+    h.send({ ...command, id: randomUUID(), expectedVersion: original.revision, type: 'STOP' }),
+    conflict('CONTROL_GENERATION_STALE'),
+  );
+  h.mutate((saved) => {
+    saved.session = null;
+  });
+  const afterLogout = h.snapshot();
+  await assert.rejects(h.send(command), httpError(401));
+  assert.deepEqual(h.snapshot(), afterLogout);
+});
+
+test('an acknowledged command cannot expose another actor receipt even if its payload is exact', async () => {
+  const h = harness({ offline: false });
+  const command = { id: randomUUID(), expectedVersion: 7, type: 'START' };
+  await h.send(command);
+  h.mutate((saved) => {
+    saved.events[0].actorId = randomUUID();
+  });
+  const before = h.snapshot();
+  await assert.rejects(h.send(command), conflict('COMMAND_ID_REUSED'));
+  assert.deepEqual(h.snapshot(), before);
+});
+
+test('a legacy or previous-generation offline reservation requires administrative review', async () => {
+  for (const previousGeneration of [null, controlGeneration - 1]) {
+    const h = harness();
+    h.mutate((saved) => {
+      saved.row.offlineControlGeneration = previousGeneration;
+    });
+    const before = h.snapshot();
+    await assert.rejects(h.send(h.packet([])), conflict('OFFLINE_CONTROL_STALE'));
+    assert.deepEqual(h.snapshot(), before);
+  }
+});
+
+test('Access command IDs share the sporting envelope and offline event namespace', async () => {
+  for (const nested of [false, true]) {
+    const h = harness();
+    const reserved = randomUUID();
+    h.mutate((saved) => saved.accessCommands.push({ id: reserved }));
+    const before = h.snapshot();
+    const packet = nested
+      ? h.packet([{ id: reserved, expectedVersion: before.row.state.version, type: 'START' }])
+      : h.packet([], { id: reserved });
+    await assert.rejects(h.send(packet), conflict('COMMAND_ID_REUSED'));
+    assert.deepEqual(h.snapshot(), before);
+  }
+});
+
+test('tick pauses an expired holder once, preserving hold, scores, elapsed time and sticky ownership', async () => {
+  const h = harness({ offline: false });
+  h.mutate((saved) => {
+    let value = applyCommand(saved.row.state, {
+      id: randomUUID(),
+      expectedVersion: saved.row.state.version,
+      type: 'START',
+    });
+    value = applyCommand(value, {
+      id: randomUUID(),
+      expectedVersion: value.version,
+      type: 'HOLD',
+      side: 'WHITE',
+    });
+    value.receipts = {};
+    saved.row.state = value;
+    saved.session.expiresAt = new Date('2000-01-01');
+    saved.row.clockEpoch = h.service.epoch;
+    saved.row.clockAnchorMs = 0;
+  });
+  const before = h.snapshot();
+  await h.service.tick();
+  const paused = h.snapshot();
+  assert.equal(paused.row.status, 'ACTIVE');
+  assert.equal(paused.row.state.status, 'PAUSED');
+  assert.deepEqual(paused.row.state.hold, before.row.state.hold);
+  assert.deepEqual(paused.row.state.awards, before.row.state.awards);
+  assert.equal(paused.row.state.elapsedMs, before.row.state.elapsedMs);
+  assert.equal(paused.row.state.goldenMs, before.row.state.goldenMs);
+  assert.equal(paused.row.revision, before.row.revision + 1);
+  assert.equal(paused.row.state.version, before.row.state.version + 1);
+  assert.equal(paused.row.clockAnchorMs, null);
+  assert.deepEqual(paused.mat, before.mat);
+  assert.equal(paused.matStatus, 'BUSY');
+  assert.equal(paused.events.at(-1).type, 'CONTROL_LOST_PAUSED');
+  assert.equal(paused.events.at(-1).payload.clockUncertain, true);
+  assert.equal(paused.audit.at(-1).action, 'MATCH_CONTROL_LOST_PAUSED');
+  await h.service.tick();
+  assert.deepEqual(h.snapshot(), paused);
+});
+
+test('tick pauses expired offline RUNNING snapshots without clearing the lease or its generation', async () => {
+  const h = harness();
+  h.mutate((saved) => {
+    const value = applyCommand(saved.row.state, {
+      id: randomUUID(),
+      expectedVersion: saved.row.state.version,
+      type: 'START',
+    });
+    value.receipts = {};
+    saved.row.state = value;
+    saved.session.expiresAt = new Date('2000-01-01');
+  });
+  const before = h.snapshot();
+  await h.service.tick();
+  const paused = h.snapshot();
+  assert.equal(paused.row.status, 'ACTIVE');
+  assert.equal(paused.row.state.status, 'PAUSED');
+  assert.equal(paused.row.offlineSessionId, before.row.offlineSessionId);
+  assert.equal(paused.row.offlineActorId, before.row.offlineActorId);
+  assert.equal(paused.row.offlineControlGeneration, before.row.offlineControlGeneration);
+  assert.equal(paused.row.state.elapsedMs, before.row.state.elapsedMs);
+  assert.equal(paused.row.state.goldenMs, before.row.state.goldenMs);
+  assert.deepEqual(paused.row.state.awards, before.row.state.awards);
+  assert.deepEqual(paused.mat, before.mat);
+  assert.equal(paused.matStatus, 'BUSY');
+  assert.equal(paused.events.at(-1).type, 'CONTROL_LOST_PAUSED');
+  assert.equal(paused.events.at(-1).payload.clockUncertain, true);
+  const packet = h.packet([]);
+  await assert.rejects(h.send(packet), httpError(401));
+  assert.deepEqual(h.snapshot(), paused);
+  await h.service.tick();
+  assert.deepEqual(h.snapshot(), paused);
+});
+
+test('tick never advances a valid offline holder clock or rewrites its saved journal state', async () => {
+  const h = harness();
+  h.mutate((saved) => {
+    const value = applyCommand(saved.row.state, {
+      id: randomUUID(),
+      expectedVersion: saved.row.state.version,
+      type: 'START',
+    });
+    value.receipts = {};
+    saved.row.state = value;
+    saved.row.clockEpoch = h.service.epoch;
+    saved.row.clockAnchorMs = 0;
+  });
+  const before = h.snapshot();
+  await h.service.tick();
+  assert.deepEqual(h.snapshot(), before);
+  assert.equal(h.notices.length, 0);
 });

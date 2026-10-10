@@ -1,3 +1,4 @@
+import { fixtureControl, fixtureRequest } from './test-access.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -15,11 +16,7 @@ let owner,
   socket;
 const notices = [];
 async function call(path, data, auth = cookie) {
-  const r = await fetch(base + path, {
-    method: data ? 'POST' : 'GET',
-    headers: { 'Content-Type': 'application/json', 'X-Judo-Client': 'web', Cookie: auth },
-    body: data ? JSON.stringify(data) : undefined,
-  });
+  const r = await fixtureRequest(base, path, data, auth);
   return {
     status: r.status,
     body: await r.json(),
@@ -189,13 +186,20 @@ try {
     [201, 201],
   );
   await call(`/auth/invitations/${invite.body.id}/revoke`, {});
-  const startedRevision = starts[0].body.revision;
+  const previousJudgeRevision = starts[0].body.revision;
   assert.equal(
-    (await command(m0, a, 'AWARD', startedRevision, { side: 'WHITE', kind: 'YUKO' }, op)).status,
+    (await command(m0, a, 'AWARD', previousJudgeRevision, { side: 'WHITE', kind: 'YUKO' }, op))
+      .status,
     401,
   );
   assert.equal(await db.contest.count({ where: { drawId: d.id, status: 'ACTIVE' } }), 2);
   let live = await view(m0);
+  assert.equal(live.currentMatch.state.status, 'PAUSED');
+  assert.ok(live.currentMatch.revision > previousJudgeRevision);
+  await fixtureControl(base, m0, cookie, 'TAKEOVER');
+  const resumed = await command(m0, a, 'START', live.currentMatch.revision);
+  assert.equal(resumed.status, 201);
+  const startedRevision = resumed.body.revision;
   for (let attempt = 0; attempt < 30 && live.currentMatch.state.elapsedMs < 400; attempt++) {
     await delay(100);
     live = await view(m0);

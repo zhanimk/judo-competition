@@ -12,6 +12,7 @@ import { DrawsService } from './modules/draws/draws.service.js';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './modules/auth/auth.controller.js';
 import { AuthService } from './modules/auth/auth.service.js';
+import { AccessService } from './modules/auth/access.service.js';
 import { AuthGuard } from './modules/auth/auth.guard.js';
 import { TatamisController } from './modules/tatamis/tatamis.controller.js';
 import { TatamisService } from './modules/tatamis/tatamis.service.js';
@@ -45,6 +46,7 @@ import { TournamentsController } from './modules/tournaments/tournaments.control
     RosterService,
     TatamisService,
     AuthService,
+    AccessService,
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })

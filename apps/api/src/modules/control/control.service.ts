@@ -4,14 +4,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { Prisma, type Contest } from '@prisma/client';
 import { dependentMatches, type Draw } from '@judo/engine/draw';
-import type { MatchState } from '@judo/engine/match';
+import { applyCommand, type MatchState } from '@judo/engine/match';
 import { DatabaseService } from '../../database/database.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/auth.types.js';
+import { assertActivePrincipal } from '../auth/access-guards.js';
 import { MatchesService } from '../matches/matches.service.js';
 import { LiveService } from '../matches/live.service.js';
 import { tatamiQueue } from '../tatamis/queue.js';
@@ -123,6 +124,7 @@ export class ControlService {
       await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
       // Same lock order as sporting commands; lock all mats for atomic cross-mat moves.
       await tx.$queryRaw`SELECT id FROM "Tatami" WHERE "tournamentId"=${id} ORDER BY id FOR UPDATE`;
+      await assertActivePrincipal(tx, user, { tournamentId: id });
       await tx.$queryRaw`SELECT id FROM "Contest" WHERE id=${contestId} FOR UPDATE`;
       const row = await tx.contest.findFirst({
         where: { id: contestId, draw: { category: { tournamentId: id } } },
@@ -131,7 +133,11 @@ export class ControlService {
       if (!row) throw new NotFoundException('MATCH_NOT_FOUND');
       const receipt = await tx.matchEvent.findUnique({ where: { id: dto.id } });
       if (receipt) {
-        if (receipt.contestId !== row.id || !isDeepStrictEqual(receipt.payload, json(dto)))
+        if (
+          receipt.contestId !== row.id ||
+          receipt.actorId !== user.id ||
+          !isDeepStrictEqual(receipt.payload, json(dto))
+        )
           throw new ConflictException('COMMAND_ID_REUSED');
         return { ok: true };
       }
@@ -165,12 +171,21 @@ export class ControlService {
           ...data,
           offlineSessionId: null,
           offlineActorId: null,
+          offlineControlGeneration: null,
           clockAnchorMs: null,
           clockEpoch: null,
-          state: json({
-            ...current,
-            status: current.status === 'RUNNING' ? 'PAUSED' : current.status,
-          }),
+          state: json(
+            current.status === 'RUNNING'
+              ? {
+                  ...applyCommand(current, {
+                    id: randomUUID(),
+                    expectedVersion: current.version,
+                    type: 'RECOVER',
+                  }),
+                  receipts: {},
+                }
+              : current,
+          ),
         };
       } else if (dto.type === 'MOVE') {
         if (!['READY', 'ACTIVE'].includes(row.status))
@@ -274,13 +289,26 @@ export class ControlService {
         await tx.tournament.update({ where: { id }, data: { status: 'RUNNING' } });
       }
       const updated = await tx.contest.update({ where: { id: row.id }, data });
+      const invalidateControl =
+        dto.type === 'RESET' ||
+        dto.type === 'REOPEN' ||
+        dto.type === 'RELEASE_OFFLINE' ||
+        (dto.type === 'MOVE' && row.status === 'ACTIVE');
       for (const matId of new Set(
         [row.tatamiId, updated.tatamiId].filter((s): s is string => !!s),
       )) {
         const active = await tx.contest.count({ where: { tatamiId: matId, status: 'ACTIVE' } });
         await tx.tatami.update({
           where: { id: matId },
-          data: { status: active ? 'BUSY' : 'IDLE' },
+          data: {
+            status: active ? 'BUSY' : 'IDLE',
+            ...(invalidateControl
+              ? {
+                  controlGeneration: { increment: 1 },
+                  accessRevision: { increment: 1 },
+                }
+              : {}),
+          },
         });
       }
       try {

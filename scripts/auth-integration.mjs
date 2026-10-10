@@ -1,3 +1,4 @@
+import { fixtureRequest } from './test-access.mjs';
 import { createTestUser } from './test-user.mjs';
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
@@ -6,11 +7,7 @@ const base = process.env.TEST_API_URL ?? 'http://127.0.0.1:4319/api/v1';
 const users = [];
 const tournaments = [];
 async function call(path, data, cookie = '') {
-  const r = await fetch(base + path, {
-    method: data ? 'POST' : 'GET',
-    headers: { 'Content-Type': 'application/json', 'X-Judo-Client': 'web', Cookie: cookie },
-    body: data ? JSON.stringify(data) : undefined,
-  });
+  const r = await fixtureRequest(base, path, data, cookie);
   return {
     status: r.status,
     body: await r.json(),

@@ -93,6 +93,8 @@ try {
     'formats-integration',
     'rematches-integration',
     'live-integration',
+    'tatami-access-integration',
+    'access-session-race-integration',
     'athlete-identity-integration',
     'protocol-integration',
   ]) {

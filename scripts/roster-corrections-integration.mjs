@@ -1,3 +1,4 @@
+import { fixtureRequest } from './test-access.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { inflateSync } from 'node:zlib';
@@ -19,12 +20,7 @@ const receipts = [];
 let cookie = '';
 
 async function call(path, data, auth = cookie) {
-  const response = await fetch(base + path, {
-    method: data === undefined ? 'GET' : 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Judo-Client': 'web', Cookie: auth },
-    body: data === undefined ? undefined : JSON.stringify(data),
-    signal: AbortSignal.timeout(10000),
-  });
+  const response = await fixtureRequest(base, path, data, auth);
   return {
     status: response.status,
     body: await response.json(),

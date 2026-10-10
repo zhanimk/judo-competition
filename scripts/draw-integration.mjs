@@ -1,3 +1,4 @@
+import { fixtureRequest } from './test-access.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
@@ -10,11 +11,7 @@ let cookie = '',
   foreignTournament,
   judgeId;
 async function call(path, data, auth = cookie) {
-  const r = await fetch(base + path, {
-    method: data ? 'POST' : 'GET',
-    headers: { 'Content-Type': 'application/json', 'X-Judo-Client': 'web', Cookie: auth },
-    body: data ? JSON.stringify(data) : undefined,
-  });
+  const r = await fixtureRequest(base, path, data, auth);
   return {
     status: r.status,
     body: await r.json(),

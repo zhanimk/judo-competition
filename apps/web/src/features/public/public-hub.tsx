@@ -64,7 +64,7 @@ function Frame({ children }: { children: ReactNode }) {
       </main>
       <footer className="public-footer">
         <span>Judo Child League</span>
-        <Link href="/login">{text('Вход для организаторов', 'Ұйымдастырушыларға кіру')}</Link>
+        <Link href="/login">{text('Вход администратора', 'Әкімшіге кіру')}</Link>
       </footer>
     </div>
   );
@@ -370,8 +370,8 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
                   ) : (
                     <p className="state-box">
                       {text(
-                        'Организатор ещё не опубликовал сетку этой категории.',
-                        'Ұйымдастырушы бұл санаттың торын әлі жариялаған жоқ.',
+                        'Администратор ещё не опубликовал сетку этой категории.',
+                        'Әкімші бұл санаттың торын әлі жариялаған жоқ.',
                       )}
                     </p>
                   )}

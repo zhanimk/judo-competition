@@ -125,10 +125,7 @@ export function PublicResults({ tournament }: { tournament: PublicTournament }) 
                 </div>
               ) : (
                 <p className="field-note">
-                  {text(
-                    'Ожидаем публикацию организатором.',
-                    'Ұйымдастырушының жариялауын күтеміз.',
-                  )}
+                  {text('Ожидаем публикацию администратором.', 'Әкімшінің жариялауын күтеміз.')}
                 </p>
               )}
             </article>

@@ -1,8 +1,21 @@
-import { Controller, Post, Get, Body, Req, Res, Param, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Req,
+  Res,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  Header,
+} from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { Public, CurrentUser } from './auth.guard.js';
 import { RegisterDto, LoginDto, InviteDto, AcceptDto } from './auth.dto.js';
 import type { AuthRequest, CookieResponse, Principal } from './auth.types.js';
+import { ControlAccessDto, ControlAccessQuery, RevokeInvitationDto } from './access.dto.js';
+import { workRole } from './access-guards.js';
 function cookie(res: CookieResponse, token: string, logout = false) {
   res.setHeader(
     'Set-Cookie',
@@ -28,20 +41,26 @@ export class AuthController {
     this.auth.limit('login:' + req.ip);
     const user = await this.auth.login(dto.email, dto.password);
     cookie(res, await this.auth.session(user.id));
-    return { name: user.name, role: user.role };
+    return { name: user.name, role: user.role, workRole: workRole(user.role) };
   }
-  @Get('me') me(@CurrentUser() user: Principal) {
-    return { id: user.id, name: user.name, role: user.role, tatamiId: user.tatamiId };
+  @Get('me') @Header('Cache-Control', 'no-store') me(@CurrentUser() user: Principal) {
+    return {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      workRole: workRole(user.role),
+      tatamiId: user.tatamiId,
+    };
   }
   @Post('logout') async logout(
     @CurrentUser() user: Principal,
     @Res({ passthrough: true }) res: CookieResponse,
   ) {
-    await this.auth.logout(user.sessionId);
+    await this.auth.logout(user);
     cookie(res, '', true);
     return { ok: true };
   }
-  @Get('tatamis/:id/invitations') invites(
+  @Get('tatamis/:id/invitations') @Header('Cache-Control', 'no-store') invites(
     @CurrentUser() user: Principal,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
@@ -52,13 +71,14 @@ export class AuthController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: InviteDto,
   ) {
-    return this.auth.invite(user, id, dto.label, dto.hours);
+    return this.auth.invite(user, id, dto);
   }
   @Post('invitations/:id/revoke') revoke(
     @CurrentUser() user: Principal,
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RevokeInvitationDto,
   ) {
-    return this.auth.revoke(user, id);
+    return this.auth.revoke(user, id, dto);
   }
   @Public() @Post('invitations/accept') async accept(
     @Req() req: AuthRequest,
@@ -70,10 +90,18 @@ export class AuthController {
     cookie(res, result.token);
     return { tatamiId: result.tatamiId, tournamentId: result.tournamentId };
   }
-  @Get('tatamis/:id/control') control(
+  @Get('tatamis/:id/control') @Header('Cache-Control', 'no-store') control(
     @CurrentUser() user: Principal,
     @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ControlAccessQuery,
   ) {
-    return this.auth.control(user, id);
+    return this.auth.control(user, id, query.deviceId);
+  }
+  @Post('tatamis/:id/control') controlCommand(
+    @CurrentUser() user: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ControlAccessDto,
+  ) {
+    return this.auth.controlCommand(user, id, dto);
   }
 }

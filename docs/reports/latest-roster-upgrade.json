@@ -1,22 +1,27 @@
 {
-  "startedAt": "2026-10-09T14:28:13.597Z",
+  "startedAt": "2026-10-09T16:08:15.026Z",
   "passed": true,
-  "output": "tmp/roster-upgrade/verified-2026-10-09T14-28-13.595Z-729505ab",
-  "dumpPath": "tmp/roster-upgrade/verified-2026-10-09T14-28-13.595Z-729505ab/database.dump",
+  "output": "tmp/roster-upgrade/verified-2026-10-09T16-08-15.024Z-e37c3c03",
+  "dumpPath": "tmp/roster-upgrade/verified-2026-10-09T16-08-15.024Z-e37c3c03/database.dump",
   "schema": "public",
-  "verificationDatabase": "qa_restore_8c52f0f31c3b40c297e9dc8bfe14e9e2",
+  "verificationDatabase": "qa_restore_152e9569d99b43fa9c3ec05ed8c80a16",
   "verificationDatabaseRemoved": true,
   "versions": {
     "server": "180003",
     "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
     "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
   },
-  "dumpBytes": 85730,
-  "dumpSha256": "4b80d99a74c787511818fc4cc1fc4f22edc41284771069b4cb0e1afd17a77b2c",
+  "dumpBytes": 90002,
+  "dumpSha256": "fe3bd7e5b6da36a30c7c8cde08e17e5bd29036f5ba44ce4f93680003e2c09292",
   "tables": [
     {
+      "name": "Athlete",
+      "rows": 34,
+      "matched": true
+    },
+    {
       "name": "AuditEvent",
-      "rows": 357,
+      "rows": 359,
       "matched": true
     },
     {
@@ -26,7 +31,7 @@
     },
     {
       "name": "Club",
-      "rows": 4,
+      "rows": 6,
       "matched": true
     },
     {
@@ -56,12 +61,12 @@
     },
     {
       "name": "RosterCommand",
-      "rows": 0,
+      "rows": 2,
       "matched": true
     },
     {
       "name": "Session",
-      "rows": 21,
+      "rows": 23,
       "matched": true
     },
     {
@@ -81,14 +86,14 @@
     },
     {
       "name": "_prisma_migrations",
-      "rows": 13,
+      "rows": 14,
       "matched": true
     }
   ],
   "schemaStructureMatched": true,
   "additionalValidation": {
     "passed": true,
-    "oldTablesPreserved": 14,
+    "oldTablesPreserved": 15,
     "oldColumnValuesPreserved": true,
     "oldEntryAndDrawIdsPreserved": true,
     "legacyClubLinksVerified": true,
@@ -99,7 +104,9 @@
     "athleteIdentityLinksVerified": true,
     "athleteOwnerScopeVerified": true,
     "athleteIdentityRequired": true,
-    "historicalAthletesNotMerged": true
+    "historicalAthletesNotMerged": true,
+    "accessControlDefaultsVerified": true,
+    "historicalAccessAndAccountsPreserved": true
   },
-  "finishedAt": "2026-10-09T14:28:15.828Z"
+  "finishedAt": "2026-10-09T16:08:16.517Z"
 }

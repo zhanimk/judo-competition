@@ -1,6 +1,7 @@
 'use client';
 import { useLanguage, LanguageSwitch } from '../../shared/i18n/provider';
 import { AuthGate } from '../../features/auth/auth-gate';
+import { logoutSession } from '../../features/auth/logout';
 import { request } from '../../features/tournaments/api';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
@@ -12,6 +13,8 @@ export function PlatformShell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const [admin, setAdmin] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [logoutError, setLogoutError] = useState(false),
+    [loggingOut, setLoggingOut] = useState(false);
   const menuToggle = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     try {
@@ -135,25 +138,34 @@ export function PlatformShell({ children }: { children: ReactNode }) {
                   {sidebarOpen ? <path d="m16 9-3 3 3 3" /> : <path d="m13 9 3 3-3 3" />}
                 </svg>
               </button>
-              <span className="platform-role">
-                {admin
-                  ? text('Главный администратор', 'Бас әкімші')
-                  : text('Панель организатора', 'Ұйымдастырушы панелі')}
-              </span>
+              <span className="platform-role">{text('Администратор', 'Әкімші')}</span>
             </div>
             <div>
               <LanguageSwitch />
 
               <button
+                disabled={loggingOut}
                 onClick={async () => {
-                  await request('/auth/logout', {});
-                  location.href = '/login';
+                  setLoggingOut(true);
+                  setLogoutError(false);
+                  try {
+                    await logoutSession();
+                    location.href = '/login';
+                  } catch {
+                    setLogoutError(true);
+                    setLoggingOut(false);
+                  }
                 }}
               >
                 {text('Выйти', 'Шығу')}
               </button>
             </div>
           </header>
+          {logoutError && (
+            <p className="error-box" role="alert">
+              {text('Выход не выполнен. Повторите.', 'Жүйеден шығу орындалмады. Қайталаңыз.')}
+            </p>
+          )}
           <main id="main-content" className="platform-content" tabIndex={-1}>
             {children}
           </main>

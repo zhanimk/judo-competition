@@ -1,3 +1,4 @@
+import { fixtureRequest } from './test-access.mjs';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -46,11 +47,7 @@ try {
   });
   const cookie = `judo_session=${token}`;
   async function call(path, data, auth = cookie) {
-    const r = await fetch(base + path, {
-      method: data === undefined ? 'GET' : 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Judo-Client': 'web', Cookie: auth },
-      body: data === undefined ? undefined : JSON.stringify(data),
-    });
+    const r = await fixtureRequest(base, path, data, auth);
     return { status: r.status, body: await r.json() };
   }
   async function get(path, auth = cookie) {

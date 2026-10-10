@@ -1,0 +1,29 @@
+{
+  "stage": "tatami-access",
+  "browser": "Safari",
+  "isolatedSchema": true,
+  "cleanedUp": true,
+  "languages": ["ru", "kk"],
+  "mobileViewport": {
+    "width": 390,
+    "height": 844
+  },
+  "verified": [
+    "explicit claim and release",
+    "second tab read-only",
+    "administrator takeover pauses running match and preserves scores",
+    "judge invite activation and assigned mat scope",
+    "exact invite creation retry",
+    "judge scoring and start/stop",
+    "administrator invitation revocation",
+    "mobile control cards and scoreboard layout"
+  ],
+  "fixedRegressions": [
+    "Strict Mode initial Web Lock acquisition",
+    "invitation command ID versus invitation ID"
+  ],
+  "limitations": [
+    "Background judge UI after revocation was not observed because Safari locked the private window; server rejection covered by integration tests.",
+    "HTTP snapshot polling used; equipment and network transport acceptance remain separate."
+  ]
+}

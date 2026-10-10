@@ -1,5 +1,11 @@
 'use client';
 import { useOfflineMatch } from '../offline/use-offline-match';
+import { useTabDevice } from '../auth/use-tab-device';
+import { useControlLease } from '../auth/use-control-lease';
+import { ControlLeasePanel } from '../auth/control-lease-panel';
+import { sameGrant, retainUncertainCommand } from '../auth/control-model';
+import { authMessage } from '../auth/messages';
+import { restoreMatchPending, type PendingMatchCommand } from './pending-command';
 import { resultReasonLabel } from './labels';
 import { mergeCommandResponse, type CommandResponse } from './command-response';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,6 +28,7 @@ type LiveMatch = {
   state: MatchState;
   white: Person;
   blue: Person;
+  offlineActive?: boolean;
 };
 export type View = {
   tournamentId: string;
@@ -30,10 +37,6 @@ export type View = {
   number: number;
   currentMatch: LiveMatch | null;
   lastResult: null | { id: string; key: string; resultReason: string; winner?: Person | null };
-};
-type Pending = {
-  contestId: string;
-  payload: MatchAction & { id: string; expectedVersion: number };
 };
 
 export function LiveBoard({
@@ -44,11 +47,14 @@ export function LiveBoard({
   operator?: boolean;
 }) {
   const { text, locale } = useLanguage();
+  const device = useTabDevice(operator);
+  const lease = useControlLease(tatamiId, device.deviceId, operator);
   const [view, setView] = useState<View | null>(null),
     [connected, setConnected] = useState(false),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [pending, setPending] = useState<Pending | null>(null),
+    [pending, setPending] = useState<PendingMatchCommand | null>(null),
+    [pendingInvalid, setPendingInvalid] = useState(''),
     [queue, setQueue] = useState<
       { id: string; key: string; category: string; revision: number; blockedByRound?: boolean }[]
     >([]),
@@ -71,18 +77,6 @@ export function LiveBoard({
       received.current = performance.now();
       setProjection(0);
       setConnected(true);
-      if (operator) {
-        const control = await request<{
-          queue: {
-            id: string;
-            key: string;
-            category: string;
-            revision: number;
-            blockedByRound?: boolean;
-          }[];
-        }>(`/auth/tatamis/${tatamiId}/control`);
-        if (gen === generation.current) setQueue(control.queue);
-      }
     } catch (error) {
       if (gen === generation.current) {
         setConnected(false);
@@ -103,11 +97,13 @@ export function LiveBoard({
     setQueue([]);
     setConnected(false);
     setError('');
+    setPendingInvalid('');
     try {
       const s = sessionStorage.getItem(key);
-      setPending(s ? JSON.parse(s) : null);
-    } catch {
+      setPending(s ? restoreMatchPending(s) : null);
+    } catch (e) {
       setPending(null);
+      setPendingInvalid(e instanceof Error ? e.message : 'SAVED_MATCH_INVALID');
     }
     void load();
     const timer = setInterval(load, 2000);
@@ -116,6 +112,9 @@ export function LiveBoard({
       clearInterval(timer);
     };
   }, [load, key]);
+  useEffect(() => {
+    setQueue(lease.context?.queue ?? []);
+  }, [lease.context]);
   useEffect(() => {
     if (!view?.tournamentId) return;
     return subscribeTournament(view.tournamentId, (e) => {
@@ -129,20 +128,32 @@ export function LiveBoard({
     );
     return () => clearInterval(timer);
   }, []);
-  function remember(p: Pending | null) {
+  function remember(p: PendingMatchCommand | null) {
+    if (p) sessionStorage.setItem(key, JSON.stringify(p));
+    else sessionStorage.removeItem(key);
     setPending(p);
-    try {
-      if (p) sessionStorage.setItem(key, JSON.stringify(p));
-      else sessionStorage.removeItem(key);
-    } catch {}
   }
-  async function execute(p: Pending) {
-    if (lock.current || (operator && (!offline.restored || !!offline.journal))) return;
+  async function execute(p: PendingMatchCommand) {
+    if (
+      lock.current ||
+      pendingInvalid ||
+      !connected ||
+      !lease.connected ||
+      lease.busy ||
+      lease.pending ||
+      lease.corrupt ||
+      (operator && (!offline.restored || offline.arming || !!offline.journal))
+    )
+      return;
+    if (!sameGrant(p.payload, lease.grant)) {
+      setError(authMessage('CONTROL_GENERATION_STALE', locale === 'kk'));
+      return;
+    }
     lock.current = true;
     setBusy(true);
     setError('');
-    remember(p);
     try {
+      remember(structuredClone(p));
       generation.current++;
       const result = await request<CommandResponse>(
         `/tatamis/${tatamiId}/live/${p.contestId}/command`,
@@ -162,7 +173,7 @@ export function LiveBoard({
       await load();
     } catch (e) {
       if (e instanceof ApiError && e.status < 500) {
-        remember(null);
+        if (!retainUncertainCommand(e.status, e.message)) remember(null);
         const messages: Record<string, [string, string]> = {
           VERSION_CONFLICT: [
             'Состояние изменилось в другом пульте. Проверьте обновлённое табло.',
@@ -199,9 +210,7 @@ export function LiveBoard({
           ],
         };
         const m = messages[e.message];
-        setError(
-          m ? text(...m) : text('Действие отклонено: ', 'Әрекет қабылданбады: ') + e.message,
-        );
+        setError(m ? text(...m) : authMessage(e.message, locale === 'kk'));
       } else
         setError(
           text(
@@ -210,22 +219,44 @@ export function LiveBoard({
           ),
         );
       await load();
+      await lease.refresh();
     } finally {
       lock.current = false;
       setBusy(false);
     }
   }
-  const offline = useOfflineMatch(tatamiId, operator, () => void load());
+  const offline = useOfflineMatch(
+    tatamiId,
+    operator,
+    () => void load(),
+    lease.grant,
+    !!lease.context || lease.denied,
+    device.deviceId,
+  );
   function send(action: MatchAction) {
     if (offline.journal) {
       void offline.send(action);
       return;
     }
     const m = current.current?.currentMatch;
-    if (m && !pending && !lock.current)
+    if (
+      m &&
+      !pending &&
+      !pendingInvalid &&
+      !lock.current &&
+      lease.grant &&
+      lease.connected &&
+      connected &&
+      !offline.arming
+    )
       void execute({
         contestId: m.id,
-        payload: { ...action, id: crypto.randomUUID(), expectedVersion: m.revision },
+        payload: {
+          ...action,
+          id: crypto.randomUUID(),
+          expectedVersion: m.revision,
+          ...lease.grant,
+        },
       });
   }
   const effectiveView = offline.journal
@@ -262,7 +293,17 @@ export function LiveBoard({
       !!offline.journal.conflict ||
       offline.journal.packet?.type === 'OFFLINE_RELEASE' ||
       s?.status === 'CONFIRMED'
-    : (operator && !offline.restored) || busy || !!pending || !connected;
+    : (operator &&
+        (!offline.restored ||
+          offline.arming ||
+          !lease.grant ||
+          !lease.connected ||
+          !!lease.pending ||
+          lease.corrupt ||
+          !!pendingInvalid)) ||
+      busy ||
+      !!pending ||
+      !connected;
   const winner = s?.outcome ? (s.outcome.winner === 'WHITE' ? m?.white : m?.blue) : null;
   const statuses: Record<string, [string, string]> = {
     RUNNING: ['Схватка идёт', 'Белдесу жүріп жатыр'],
@@ -273,6 +314,16 @@ export function LiveBoard({
   };
   return (
     <section className={`workspace live-board ${operator ? 'operator-live' : ''}`}>
+      {operator && (
+        <ControlLeasePanel
+          lease={lease}
+          view={view}
+          offline={!!offline.journal || !!view?.currentMatch?.offlineActive}
+          blocked={busy || !connected || offline.arming || !!pending || !!pendingInvalid}
+          deviceError={device.error}
+          duplicated={device.duplicated}
+        />
+      )}
       <div className="live-connection" role="status">
         {offline.journal
           ? text('Автономное управление', 'Автономды басқару')
@@ -298,7 +349,7 @@ export function LiveBoard({
         </p>
       )}
       {operator && offline.journal && (
-        <section className="panel offline-status" role="status">
+        <section className="panel offline-status offline-tools" role="status">
           <strong>
             {offline.journal.conflict
               ? text('Синхронизация требует проверки', 'Синхрондау тексеруді қажет етеді')
@@ -323,7 +374,7 @@ export function LiveBoard({
           </p>
           {offline.journal.conflict && (
             <p className="error">
-              {offline.journal.conflict} ·{' '}
+              {authMessage(offline.journal.conflict, locale === 'kk')} ·{' '}
               {text(
                 'Локальные действия сохранены. Проверьте доступ и обратитесь к администратору.',
                 'Жергілікті әрекеттер сақталды. Рұқсатты тексеріп, әкімшіге хабарласыңыз.',
@@ -343,10 +394,11 @@ export function LiveBoard({
             <button onClick={offline.download}>{text('Скачать журнал', 'Журналды жүктеу')}</button>
             {offline.journal.conflict ? (
               <>
-                <button onClick={() => void offline.retry()}>
+                <button disabled={!offline.ready} onClick={() => void offline.retry()}>
                   {text('Повторить синхронизацию', 'Синхрондауды қайталау')}
                 </button>
                 <button
+                  disabled={!offline.ready}
                   onClick={() => {
                     if (
                       window.confirm(
@@ -386,12 +438,17 @@ export function LiveBoard({
         </section>
       )}
       {operator && !offline.journal && m && (
-        <section className="panel">
+        <section className="panel offline-tools">
           <button
             disabled={
               !connected ||
+              offline.arming ||
               busy ||
               !!pending ||
+              !lease.grant ||
+              !lease.connected ||
+              !!lease.pending ||
+              !!pendingInvalid ||
               !offline.ready ||
               !s ||
               !['PAUSED', 'DECISION', 'PROVISIONAL'].includes(s.status) ||
@@ -416,11 +473,57 @@ export function LiveBoard({
       )}
       {operator && pending && (
         <button
-          disabled={busy || !connected || !offline.restored || !!offline.journal}
+          disabled={
+            busy ||
+            !connected ||
+            !lease.connected ||
+            !sameGrant(pending.payload, lease.grant) ||
+            !offline.restored ||
+            !!offline.journal
+          }
           onClick={() => void execute(pending)}
         >
           {text('Повторить неподтверждённую команду', 'Жауабы алынбаған команданы қайталау')}
         </button>
+      )}
+      {operator && (pending || pendingInvalid) && (
+        <div className="control-pending">
+          <p>
+            {text(
+              'Исход спортивной команды требует сверки. Её устройство и поколение управления не изменяются при повторе.',
+              'Спорттық команданың нәтижесін тексеру керек. Қайталағанда құрылғы мен басқару нұсқасы өзгермейді.',
+            )}
+          </p>
+          {pendingInvalid && (
+            <p className="error">{authMessage(pendingInvalid, locale === 'kk')}</p>
+          )}
+          <button
+            disabled={busy}
+            onClick={() => {
+              const raw = sessionStorage.getItem(key);
+              if (
+                !raw ||
+                !window.confirm(
+                  text(
+                    'Сохранить исходную команду в архиве для сверки? Это не отменяет её на сервере.',
+                    'Бастапқы команданы тексеру үшін мұрағатта сақтайсыз ба? Бұл оны серверде жоймайды.',
+                  ),
+                )
+              )
+                return;
+              try {
+                sessionStorage.setItem(key + '.archive.' + crypto.randomUUID(), raw);
+                remember(null);
+                setPendingInvalid('');
+                void load();
+              } catch {
+                setError(authMessage('DEVICE_STORAGE_INVALID', locale === 'kk'));
+              }
+            }}
+          >
+            {text('Архивировать для сверки', 'Тексеру үшін мұрағаттау')}
+          </button>
+        </div>
       )}
       {m && shown ? (
         <>
@@ -636,6 +739,7 @@ export function LiveBoard({
                       id: crypto.randomUUID(),
                       expectedVersion: queue[0].revision,
                       type: 'START',
+                      ...lease.grant!,
                     },
                   })
                 }

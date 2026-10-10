@@ -48,6 +48,8 @@ export class OfflineEventDto {
   awardId?: string;
 }
 export class MatchCommandDto {
+  @IsUUID() deviceId!: string;
+  @IsInt() @Min(0) @Max(Number.MAX_SAFE_INTEGER) controlGeneration!: number;
   @ValidateIf(
     (o: MatchCommandDto) =>
       (typeof o.type === 'string' && o.type.startsWith('OFFLINE_')) || o.sessionId !== undefined,

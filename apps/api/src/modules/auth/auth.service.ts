@@ -12,12 +12,19 @@ import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } fr
 import { promisify } from 'node:util';
 import { DatabaseService } from '../../database/database.service.js';
 import type { Principal } from './auth.types.js';
+import { AccessService } from './access.service.js';
+import { workRole } from './access-guards.js';
+import type { InviteDto } from './auth.dto.js';
+import type { ControlAccessDto, RevokeInvitationDto } from './access.dto.js';
 const scrypt = promisify(scryptCallback);
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 @Injectable()
 export class AuthService {
   private attempts = new Map<string, { count: number; until: number }>();
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly access: AccessService,
+  ) {}
   limit(key: string) {
     const now = Date.now();
     for (const [k, v] of this.attempts) if (v.until < now) this.attempts.delete(k);
@@ -76,7 +83,13 @@ export class AuthService {
     if (!session || session.expiresAt <= new Date()) return null;
     if (session.invitationId) {
       const invite = await this.db.invitation.findUnique({ where: { id: session.invitationId } });
-      if (!invite || invite.revokedAt) return null;
+      if (
+        !invite ||
+        invite.revokedAt ||
+        invite.expiresAt <= new Date() ||
+        invite.tatamiId !== session.tatamiId
+      )
+        return null;
     }
     return {
       id: session.user.id,
@@ -86,8 +99,8 @@ export class AuthService {
       sessionId: session.id,
     };
   }
-  async logout(id: string) {
-    await this.db.session.deleteMany({ where: { id } });
+  async logout(user: Principal) {
+    await this.access.logout(user);
   }
   admin(user: Principal) {
     if (user.role !== 'SUPER_ADMIN') throw new ForbiddenException('FORBIDDEN');
@@ -117,62 +130,16 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
   }
-  async invite(user: Principal, tatamiId: string, label: string, hours: number) {
-    await this.invitations(user, tatamiId);
-    if (!label.trim()) throw new BadRequestException('INVALID_NAME');
-    const token = randomBytes(32).toString('hex');
-    const invite = await this.db.invitation.create({
-      data: {
-        tatamiId,
-        label: label.trim(),
-        tokenHash: hash(token),
-        expiresAt: new Date(Date.now() + hours * 3600000),
-      },
-    });
-    return { id: invite.id, token, expiresAt: invite.expiresAt };
+  async invite(user: Principal, tatamiId: string, dto: InviteDto) {
+    return this.access.invite(user, tatamiId, dto);
   }
-  async revoke(user: Principal, id: string) {
-    const invite = await this.db.invitation.findUnique({ where: { id } });
-    if (!invite) throw new ForbiddenException('FORBIDDEN');
-    await this.invitations(user, invite.tatamiId);
-    await this.db.$transaction([
-      this.db.invitation.update({ where: { id }, data: { revokedAt: new Date() } }),
-      this.db.session.deleteMany({ where: { invitationId: id } }),
-    ]);
-    return { ok: true };
+  async revoke(user: Principal, id: string, dto: RevokeInvitationDto) {
+    return this.access.revoke(user, id, dto);
   }
   async accept(token: string, name: string) {
-    if (!name.trim()) throw new BadRequestException('INVALID_NAME');
-    return this.db.$transaction(async (tx) => {
-      const invite = await tx.invitation.findUnique({
-        where: { tokenHash: hash(token) },
-        include: { tatami: true },
-      });
-      if (!invite) throw new UnauthorizedException('INVALID_INVITATION');
-      const claim = await tx.invitation.updateMany({
-        where: { id: invite.id, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
-        data: { usedAt: new Date() },
-      });
-      if (claim.count !== 1) throw new UnauthorizedException('INVALID_INVITATION');
-      const user = await tx.user.create({ data: { name: name.trim(), role: 'OPERATOR' } });
-      const sessionToken = randomBytes(32).toString('hex');
-      await tx.session.create({
-        data: {
-          userId: user.id,
-          tokenHash: hash(sessionToken),
-          tatamiId: invite.tatamiId,
-          invitationId: invite.id,
-          expiresAt: new Date(Date.now() + 8 * 3600000),
-        },
-      });
-      return {
-        token: sessionToken,
-        tournamentId: invite.tatami.tournamentId,
-        tatamiId: invite.tatamiId,
-      };
-    });
+    return this.access.accept(token, name);
   }
-  async control(user: Principal, tatamiId: string) {
+  async control(user: Principal, tatamiId: string, deviceId?: string) {
     const tatami = await this.db.tatami.findUnique({
       where: { id: tatamiId },
       include: { tournament: { select: { ownerId: true, name: true } } },
@@ -182,6 +149,7 @@ export class AuthService {
       await this.owner(user, tatami.tournamentId);
     } else if (user.role !== 'OPERATOR' || user.tatamiId !== tatamiId)
       throw new ForbiddenException('FORBIDDEN');
+    const control = await this.access.status(this.db, tatami, user, deviceId);
     return {
       tatamiId,
       tournamentId: tatami.tournamentId,
@@ -189,9 +157,15 @@ export class AuthService {
       tournamentName: tatami.tournament.name,
       operatorName: user.name,
       role: user.role,
-      matchCommandsAvailable: true,
+      workRole: workRole(user.role),
+      accessRevision: tatami.accessRevision,
+      control,
+      matchCommandsAvailable: control.owned,
       queue: await tatamiQueue(this.db, tatamiId),
     };
+  }
+  async controlCommand(user: Principal, tatamiId: string, dto: ControlAccessDto) {
+    return this.access.command(user, tatamiId, dto);
   }
   async viewTatami(user: Principal | null, tatamiId: string, tournamentId?: string) {
     const tatami = await this.db.tatami.findFirst({

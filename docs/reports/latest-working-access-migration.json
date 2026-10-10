@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "checkedAt": "2026-10-09T16:40:44.155Z",
+  "migration": "20261009040000_tatami_access",
+  "oldTablesPreserved": 15,
+  "oldColumnValuesPreserved": true,
+  "oldEntryAndDrawIdsPreserved": true,
+  "existingEntriesActive": 34,
+  "archivedEntries": 0,
+  "clubs": 6,
+  "athleteIdentities": 34,
+  "historicalIdentitiesNotMerged": true,
+  "athleteOwnerScopeVerified": true,
+  "existingTatamisUnclaimed": 6,
+  "accessDefaultsVerified": true
+}

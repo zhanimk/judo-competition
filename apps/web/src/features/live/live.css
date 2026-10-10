@@ -54,3 +54,34 @@
 .live-board .arena-header > div {
   overflow-wrap: anywhere;
 }
+.live-board .offline-tools {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.live-board .offline-tools p {
+  margin: 8px 0;
+}
+.live-board .offline-tools .form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+}
+.live-board .offline-tools button {
+  justify-self: start;
+  max-width: 100%;
+  min-height: 44px;
+  white-space: normal;
+}
+@media (max-width: 600px) {
+  .live-board .offline-tools {
+    padding: 16px;
+  }
+  .live-board .offline-tools button {
+    justify-self: stretch;
+    width: 100%;
+  }
+}

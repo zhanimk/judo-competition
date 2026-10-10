@@ -385,6 +385,7 @@ function harness({
               return { count: data.length };
             },
           },
+          accessCommand: { findFirst: async () => null },
           rosterCommand: {
             findUnique: async ({ where }) =>
               structuredClone(staged.receipts.find((receipt) => receipt.id === where.id) ?? null),

@@ -218,6 +218,20 @@ const report = await createVerifiedBackup(sourceUrl, {
             WHERE table_schema=${schema} AND table_name='Entry' AND column_name='athleteId'
           `;
           assert.equal(identityNullable, 'NO', 'identity must be required in PostgreSQL');
+          const hadAccessControl = baseline
+            .find((table) => table.table === 'Tatami')
+            ?.columns.includes('controlGeneration');
+          if (!hadAccessControl) {
+            const mats = await tx.tatami.findMany();
+            for (const mat of mats) {
+              assert.equal(mat.accessRevision, 0, 'initial access revision');
+              assert.equal(mat.controlGeneration, 0, 'initial control generation');
+              assert.equal(mat.controllerSessionId, null, 'must not invent a controller');
+              assert.equal(mat.controllerDeviceId, null, 'must not invent a control device');
+              assert.equal(mat.controllerActorId, null, 'must not invent a control actor');
+            }
+            assert.equal(await tx.accessCommand.count(), 0, 'must not invent access receipts');
+          }
         },
         { isolationLevel: 'RepeatableRead', timeout: 60000 },
       );
@@ -235,6 +249,8 @@ const report = await createVerifiedBackup(sourceUrl, {
         athleteOwnerScopeVerified: true,
         athleteIdentityRequired: true,
         historicalAthletesNotMerged: true,
+        accessControlDefaultsVerified: true,
+        historicalAccessAndAccountsPreserved: true,
       };
     } finally {
       await db.$disconnect();

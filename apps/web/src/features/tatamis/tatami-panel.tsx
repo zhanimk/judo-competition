@@ -94,7 +94,7 @@ export function TatamiPanel({
       </div>
       {!display && (
         <Link className="solid-link" href={`/operator/${tatamiId}`}>
-          {text('Открыть пульт оператора', 'Оператор пультін ашу')} →
+          {text('Открыть пульт судьи', 'Төреші пультін ашу')} →
         </Link>
       )}
       {display && <LiveBoard key={tatamiId} tatamiId={tatamiId} />}

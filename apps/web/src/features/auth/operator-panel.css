@@ -33,6 +33,54 @@
   padding: 0;
   border-radius: 8px;
 }
+.control-lease {
+  margin-bottom: 16px;
+  padding: 18px;
+}
+.control-lease-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.control-lease h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+.control-lease p {
+  margin: 6px 0;
+}
+.control-takeover,
+.control-pending {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.control-takeover label {
+  display: grid;
+  gap: 8px;
+}
+.control-takeover textarea {
+  min-height: 80px;
+  width: 100%;
+}
+.control-takeover .control-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.control-confirm input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.control-pending button,
+.control-lease-heading button,
+.control-takeover button {
+  min-height: 44px;
+  white-space: normal;
+}
 @media (max-width: 600px) {
   .platform-content.operator-content {
     padding: 12px 8px;

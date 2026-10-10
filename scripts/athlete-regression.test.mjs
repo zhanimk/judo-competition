@@ -39,7 +39,15 @@ function fixture({
   restMs = 600000,
   archivedAlias = false,
 } = {}) {
-  const owner = { id: randomUUID(), role: 'ORGANIZER' };
+  const owner = {
+    id: randomUUID(),
+    name: 'Administrator',
+    role: 'ORGANIZER',
+    sessionId: randomUUID(),
+    tatamiId: null,
+  };
+  const deviceId = randomUUID();
+  const controlGeneration = 1;
   const tournament = randomUUID();
   const otherTournament = randomUUID();
   const mat = randomUUID();
@@ -76,6 +84,7 @@ function fixture({
     blueEntryId: entries[1].id,
     offlineSessionId: null,
     offlineActorId: null,
+    offlineControlGeneration: null,
     clockAnchorMs: null,
     clockEpoch: null,
     winnerEntryId: phase === 'CONFIRMED' ? entries[0].id : null,
@@ -113,12 +122,32 @@ function fixture({
     ],
     tournament: {
       id: tournament,
+      ownerId: owner.id,
       status: 'RUNNING',
       rulesSnapshot: { ...currentProfile(), restMs },
     },
     events: [],
     audits: [],
     mats: { [mat]: phase === 'READY' || phase === 'CONFIRMED' ? 'IDLE' : 'BUSY' },
+    grants: {
+      [mat]: {
+        id: mat,
+        tournamentId: tournament,
+        controllerSessionId: owner.sessionId,
+        controllerActorId: owner.id,
+        controllerDeviceId: deviceId,
+        controlGeneration,
+        accessRevision: 0,
+      },
+    },
+    session: {
+      id: owner.sessionId,
+      userId: owner.id,
+      user: { id: owner.id, role: owner.role, name: owner.name },
+      expiresAt: new Date('2099-01-01'),
+      invitationId: null,
+      tatamiId: null,
+    },
   };
   const locks = [];
   const notices = [];
@@ -154,7 +183,10 @@ function fixture({
         structuredClone(data.entries.filter((entry) => matchesWhere(entry, where))),
     },
     rosterCommand: { findFirst: async () => null },
+    accessCommand: { findFirst: async () => null },
+    session: { findUnique: async () => structuredClone(data.session) },
     tournament: {
+      findUnique: async () => structuredClone(data.tournament),
       findUniqueOrThrow: async () => structuredClone(data.tournament),
       update: async ({ data: changes }) => {
         Object.assign(data.tournament, changes);
@@ -184,8 +216,14 @@ function fixture({
       },
     },
     tatami: {
+      findUnique: async ({ where }) => structuredClone(data.grants[where.id] ?? null),
       update: async ({ where, data: changes }) => {
         data.mats[where.id] = changes.status;
+        const grant = data.grants[where.id];
+        if (grant) {
+          grant.controlGeneration += changes.controlGeneration?.increment ?? 0;
+          grant.accessRevision += changes.accessRevision?.increment ?? 0;
+        }
       },
     },
     matchEvent: {
@@ -224,6 +262,8 @@ function fixture({
     mutate: (callback) => callback(saved),
     command: (extra = {}) => ({
       id: randomUUID(),
+      deviceId,
+      controlGeneration,
       expectedVersion: saved.rows[0].revision,
       type: 'START',
       ...extra,
@@ -398,6 +438,7 @@ test('offline START and online resume cannot bypass another shared identity rese
       h.mutate((saved) => {
         saved.rows[0].offlineSessionId = sessionId;
         saved.rows[0].offlineActorId = h.owner.id;
+        saved.rows[0].offlineControlGeneration = saved.grants[h.mat].controlGeneration;
       });
     const before = h.snapshot();
     const command = offline
@@ -496,4 +537,62 @@ test('saved sporting response replays before new identity state and without reac
     h.locks.some((lock) => lock.query.includes('FROM "Athlete"')),
     false,
   );
+});
+
+test('administrative RESET invalidates the old grant without silently transferring its holder', async () => {
+  const h = fixture({ phase: 'ACTIVE' });
+  const before = h.snapshot();
+  await h.admin('RESET');
+  const after = h.snapshot();
+  assert.equal(after.grants[h.mat].controlGeneration, before.grants[h.mat].controlGeneration + 1);
+  assert.equal(after.grants[h.mat].accessRevision, before.grants[h.mat].accessRevision + 1);
+  assert.equal(after.grants[h.mat].controllerSessionId, before.grants[h.mat].controllerSessionId);
+  assert.equal(after.grants[h.mat].controllerDeviceId, before.grants[h.mat].controllerDeviceId);
+  await assert.rejects(h.send(h.command()), conflict('CONTROL_GENERATION_STALE'));
+  assert.deepEqual(h.snapshot(), after);
+});
+
+test('administrative corrections revalidate the administrator session before effects and receipts', async () => {
+  const h = fixture({ phase: 'ACTIVE' });
+  h.mutate((saved) => {
+    saved.session.expiresAt = new Date('2000-01-01');
+  });
+  const before = h.snapshot();
+  await assert.rejects(h.admin('RESET'), (error) => error.getStatus() === 401);
+  assert.deepEqual(h.snapshot(), before);
+  assert.equal(h.notices.length, 0);
+});
+
+test('administrative offline release clears the old reservation generation and preserves uncertain hold', async () => {
+  const h = fixture({ phase: 'ACTIVE' });
+  h.mutate((saved) => {
+    const row = saved.rows[0];
+    row.offlineSessionId = randomUUID();
+    row.offlineActorId = h.owner.id;
+    row.offlineControlGeneration = saved.grants[h.mat].controlGeneration;
+    let value = applyCommand(row.state, {
+      id: randomUUID(),
+      expectedVersion: row.state.version,
+      type: 'START',
+    });
+    value = applyCommand(value, {
+      id: randomUUID(),
+      expectedVersion: value.version,
+      type: 'HOLD',
+      side: 'BLUE',
+    });
+    value.receipts = {};
+    row.state = value;
+  });
+  const before = h.snapshot();
+  await h.admin('RELEASE_OFFLINE');
+  const after = h.snapshot();
+  assert.equal(after.rows[0].offlineSessionId, null);
+  assert.equal(after.rows[0].offlineActorId, null);
+  assert.equal(after.rows[0].offlineControlGeneration, null);
+  assert.equal(after.rows[0].status, 'ACTIVE');
+  assert.equal(after.rows[0].state.status, 'PAUSED');
+  assert.deepEqual(after.rows[0].state.hold, before.rows[0].state.hold);
+  assert.equal(after.rows[0].state.version, before.rows[0].state.version + 1);
+  assert.equal(after.grants[h.mat].controlGeneration, before.grants[h.mat].controlGeneration + 1);
 });

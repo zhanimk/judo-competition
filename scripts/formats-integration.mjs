@@ -1,3 +1,4 @@
+import { fixtureRequest } from './test-access.mjs';
 import { placements, resolveMatches } from '@judo/engine/draw';
 import { categoryResults } from '../apps/api/dist/modules/protocols/protocol-model.js';
 import { drawPlaces } from '../apps/api/dist/modules/protocols/pdf-draw-places.js';
@@ -12,11 +13,7 @@ let owner,
   tournament,
   cookie = '';
 async function call(path, data, auth = cookie) {
-  const r = await fetch(base + path, {
-    method: data ? 'POST' : 'GET',
-    headers: { 'Content-Type': 'application/json', 'X-Judo-Client': 'web', Cookie: auth },
-    body: data ? JSON.stringify(data) : undefined,
-  });
+  const r = await fixtureRequest(base, path, data, auth);
   return {
     status: r.status,
     body: await r.json(),
