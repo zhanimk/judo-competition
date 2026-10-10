@@ -161,6 +161,7 @@ function fixture() {
               return structuredClone(row);
             },
           },
+          tournamentCommand: { findFirst: async () => null },
           rosterCommand: {
             findUnique: async ({ where }) =>
               structuredClone(staged.receipts.find((receipt) => receipt.id === where.id) ?? null),
@@ -193,6 +194,9 @@ function fixture() {
                 staged.accessCommands.find((command) => where.id.in.includes(command.id)),
               ),
           },
+          drawCommand: { findFirst: async () => null },
+          protocolCommand: { findFirst: async () => null },
+          liveOutbox: { create: async () => ({ id: 1n }) },
           auditEvent: {
             create: async ({ data }) => {
               if (failure === 'audit') throw new Error('audit unavailable');

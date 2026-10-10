@@ -76,12 +76,72 @@
   min-height: 44px;
   white-space: normal;
 }
+.live-board .match-recovery {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid #dce3ec;
+  border-radius: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.live-board .match-recovery p {
+  margin: 4px 0;
+}
+.live-board .match-recovery .form-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.live-board .match-recovery fieldset {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  min-width: 0;
+}
+.live-board .match-recovery label {
+  display: grid;
+  gap: 8px;
+}
+.live-board .match-recovery textarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+.live-board .match-recovery .match-recovery-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.live-board .match-recovery-check input {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  flex: 0 0 20px;
+}
+.live-board .match-recovery button {
+  min-height: 44px;
+  white-space: normal;
+  max-width: 100%;
+}
 @media (max-width: 600px) {
   .live-board .offline-tools {
     padding: 16px;
   }
   .live-board .offline-tools button {
     justify-self: stretch;
+    width: 100%;
+  }
+  .live-board .match-recovery {
+    padding: 12px;
+  }
+  .live-board .match-recovery fieldset {
+    padding: 12px;
+  }
+  .live-board .match-recovery button {
     width: 100%;
   }
 }

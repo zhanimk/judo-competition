@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { WebSocket } from 'ws';
+import { io } from 'socket.io-client';
 import { PrismaClient } from '@prisma/client';
 import { createTestUser } from './test-user.mjs';
 import { fixtureRequest } from './test-access.mjs';
@@ -232,14 +232,18 @@ try {
 
   // Observe the actual notification independently of HTTP reads.
   const liveURL = new URL(base.replace(/^http/, 'ws'));
-  liveURL.pathname = '/api/v1/live';
-  liveURL.searchParams.set('tournamentId', tournament);
-  socket = new WebSocket(liveURL, { origin: 'http://127.0.0.1:4318', headers: { Cookie: cookie } });
   const notices = [];
-  socket.on('message', (bytes) => notices.push(JSON.parse(bytes.toString())));
+  socket = io(new URL(base).origin, {
+    path: '/api/v1/live',
+    addTrailingSlash: false,
+    transports: ['websocket'],
+    auth: { tournamentId: tournament },
+    extraHeaders: { Origin: 'http://127.0.0.1:4318', Cookie: cookie },
+  });
+  socket.on('notice', (notice) => notices.push(notice));
   await new Promise((resolve, reject) => {
-    socket.once('open', resolve);
-    socket.once('error', reject);
+    socket.once('connect', resolve);
+    socket.once('connect_error', reject);
   });
   await sport('START');
   await sport('AWARD', { side: 'WHITE', kind: 'YUKO' });
@@ -360,7 +364,7 @@ try {
     'PASS roster name: locked draft, running/offline, finalized names → live/public/draw/PDF; stable sporting state, historical Entry, receipts, permissions and live Session',
   );
 } finally {
-  socket?.terminate();
+  socket?.disconnect();
   // Delete only this guarded suite's generated fixtures.
   for (const id of tournaments) {
     await db.matchEvent.deleteMany({

@@ -99,6 +99,9 @@ test('scheduling locks tatamis before checking the live administrator and mutate
     },
     contest: { aggregate: async () => ({ _max: { queueOrder: null } }) },
     category: { update: async ({ where }) => writes.push(where.id) },
+    drawCommand: { findFirst: async () => null },
+    protocolCommand: { findFirst: async () => null },
+    liveOutbox: { create: async () => ({ id: 1n }) },
     auditEvent: { create: async () => {} },
   };
   const plan = await scheduleCategories(tx, 'tournament', user);

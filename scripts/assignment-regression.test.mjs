@@ -92,6 +92,7 @@ function harness({ legacyEvents = [], collision = false, failAudit = false } = {
               where.id === tournamentId ? structuredClone(staged.tournament) : null,
           },
           accessCommand: { findFirst: async () => null },
+          tournamentCommand: { findFirst: async () => null },
           rosterCommand: { findFirst: async () => null },
           contest: {
             findUniqueOrThrow: async ({ where }) => readRow(staged, where.id),
@@ -152,6 +153,9 @@ function harness({ legacyEvents = [], collision = false, failAudit = false } = {
               staged.events.push(structuredClone(data));
             },
           },
+          drawCommand: { findFirst: async () => null },
+          protocolCommand: { findFirst: async () => null },
+          liveOutbox: { create: async () => ({ id: 1n }) },
           auditEvent: {
             create: async ({ data }) => {
               if (failAudit) throw new Error('audit unavailable');
@@ -400,8 +404,8 @@ test('assignment locks tournament, every sorted mat and live session before its 
   const h = harness();
   await h.send(h.command());
   assert.deepEqual(
-    h.locks.slice(0, 4).map((lock) => /FROM "(\w+)"/.exec(lock.sql)?.[1]),
-    ['Tournament', 'Tatami', 'Session', 'Contest'],
+    h.locks.slice(0, 5).map((lock) => /FROM "(\w+)"/.exec(lock.sql)?.[1]),
+    ['Tournament', 'Tatami', 'Session', 'Category', 'Contest'],
   );
   assert.match(h.locks[1].sql, /"tournamentId"=\? ORDER BY id FOR UPDATE/);
   assert.deepEqual(h.locks[1].values, [tournamentId]);

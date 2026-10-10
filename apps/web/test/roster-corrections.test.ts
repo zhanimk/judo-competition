@@ -99,6 +99,7 @@ function tournament(): Tournament {
     endDate: '2026-10-10',
     tatamiCount: 1,
     status: 'DRAFT',
+    administrationRevision: 0,
     rosterRevision: 4,
     clubs: [
       { id: clubId, name: 'Қыран', _count: { entries: 1 } },

@@ -9,6 +9,26 @@ import {
 } from '../apps/api/dist/modules/protocols/protocol-readiness.js';
 import { protocolScope } from '../apps/api/dist/modules/protocols/protocol-scope.js';
 import { ProtocolsService } from '../apps/api/dist/modules/protocols/protocols.service.js';
+const apiDist = process.env.JUDO_API_TEST_DIST ?? '../apps/api/dist';
+const { protocolResultClock } = await import(
+  `${apiDist}/modules/protocols/protocol-result-clock.js`
+);
+
+test('confirmed zero-time Golden Score is shown in protocol details even when its reason is three shido', () => {
+  assert.equal(
+    protocolResultClock({ phase: 'GOLDEN', elapsedMs: 60000, goldenMs: 0 }),
+    '1:00.0 + GS 0:00.0',
+  );
+  assert.equal(
+    protocolResultClock({ phase: 'GOLDEN', elapsedMs: 60000, goldenMs: 35499 }),
+    '1:00.0 + GS 0:35.4',
+  );
+});
+
+test('regular protocol time preserves tenths and absent sporting state stays unknown', () => {
+  assert.equal(protocolResultClock({ phase: 'REGULAR', elapsedMs: 35499, goldenMs: 0 }), '0:35.4');
+  assert.equal(protocolResultClock(null), '—');
+});
 
 function category(id, format = 'ROUND_ROBIN', clubs = ['A', 'B']) {
   const entries = clubs.map((club, i) => ({

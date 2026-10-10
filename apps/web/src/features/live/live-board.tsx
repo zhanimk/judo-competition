@@ -3,11 +3,20 @@ import { useOfflineMatch } from '../offline/use-offline-match';
 import { useTabDevice } from '../auth/use-tab-device';
 import { useControlLease } from '../auth/use-control-lease';
 import { ControlLeasePanel } from '../auth/control-lease-panel';
-import { sameGrant, retainUncertainCommand } from '../auth/control-model';
+import { sameGrant, isUuid } from '../auth/control-model';
 import { authMessage } from '../auth/messages';
-import { restoreMatchPending, type PendingMatchCommand } from './pending-command';
+import {
+  restoreMatchPending,
+  saveMatchPending,
+  mayRetryMatch,
+  deliverMatchPacket,
+  isUnknownMatchFailure,
+  reviewedMatchArchive,
+  type PendingMatchCommand,
+} from './pending-command';
+import { PendingMatchReview } from './pending-match-review';
 import { resultReasonLabel } from './labels';
-import { mergeCommandResponse, type CommandResponse } from './command-response';
+import { mergeCommandResponse } from './command-response';
 import { refreshParticipantNames } from './participant-names';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MatchState, Side, Score } from '@judo/engine/match';
@@ -130,7 +139,7 @@ export function LiveBoard({
     return () => clearInterval(timer);
   }, []);
   function remember(p: PendingMatchCommand | null) {
-    if (p) sessionStorage.setItem(key, JSON.stringify(p));
+    if (p) saveMatchPending(sessionStorage, tatamiId, p);
     else sessionStorage.removeItem(key);
     setPending(p);
   }
@@ -146,7 +155,11 @@ export function LiveBoard({
       (operator && (!offline.restored || offline.arming || !!offline.journal))
     )
       return;
-    if (!sameGrant(p.payload, lease.grant)) {
+    const exactRetry = pending && JSON.stringify(pending) === JSON.stringify(p);
+    if (
+      !sameGrant(p.payload, lease.grant) &&
+      !(exactRetry && mayRetryMatch(p, lease.grant, lease.context?.workRole === 'ADMIN'))
+    ) {
       setError(authMessage('CONTROL_GENERATION_STALE', locale === 'kk'));
       return;
     }
@@ -156,9 +169,8 @@ export function LiveBoard({
     try {
       remember(structuredClone(p));
       generation.current++;
-      const result = await request<CommandResponse>(
-        `/tatamis/${tatamiId}/live/${p.contestId}/command`,
-        p.payload,
+      const result = await deliverMatchPacket(p.contestId, p.payload, (id, payload) =>
+        request(`/tatamis/${tatamiId}/live/${id}/command`, payload),
       );
       generation.current++;
       if (result.status === 'CONFIRMED' || p.payload.type === 'START') setQueue([]);
@@ -174,7 +186,7 @@ export function LiveBoard({
       await load();
     } catch (e) {
       if (e instanceof ApiError && e.status < 500) {
-        if (!retainUncertainCommand(e.status, e.message)) remember(null);
+        if (!isUnknownMatchFailure(e)) remember(null);
         const messages: Record<string, [string, string]> = {
           VERSION_CONFLICT: [
             'Состояние изменилось в другом пульте. Проверьте обновлённое табло.',
@@ -233,6 +245,7 @@ export function LiveBoard({
     lease.grant,
     !!lease.context || lease.denied,
     device.deviceId,
+    { admin: lease.context?.workRole === 'ADMIN', connected: connected && lease.connected, view },
   );
   function send(action: MatchAction) {
     if (offline.journal) {
@@ -392,7 +405,12 @@ export function LiveBoard({
                 'Локальное сохранение или действие не выполнено: ',
                 'Жергілікті сақтау немесе әрекет орындалмады: ',
               )}
-              {offline.error}
+              {offline.error === 'MATCH_RECEIPT_INVALID'
+                ? text(
+                    'Ответ сервера не удалось проверить. Исходный пакет и журнал сохранены для повтора.',
+                    'Сервер жауабын тексеру мүмкін болмады. Бастапқы пакет пен журнал қайталау үшін сақталған.',
+                  )
+                : offline.error}
             </p>
           )}
           <div className="form-actions">
@@ -402,25 +420,17 @@ export function LiveBoard({
                 <button disabled={!offline.ready} onClick={() => void offline.retry()}>
                   {text('Повторить синхронизацию', 'Синхрондауды қайталау')}
                 </button>
-                <button
-                  disabled={!offline.ready}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        text(
-                          'Оставить локальный журнал в архиве и перейти к серверному состоянию? Несинхронизированные действия не будут применены.',
-                          'Жергілікті журналды мұрағатта қалдырып, сервер күйіне өтесіз бе? Синхрондалмаған әрекеттер қолданылмайды.',
-                        ),
-                      )
-                    )
-                      void offline.archiveConflict();
-                  }}
-                >
-                  {text(
-                    'Архивировать конфликт и открыть сервер',
-                    'Қайшылықты мұрағаттап, серверді ашу',
-                  )}
-                </button>
+                {offline.journal.packet && lease.context?.workRole === 'ADMIN' && (
+                  <button
+                    disabled={!offline.ready || !connected || !lease.connected}
+                    onClick={() => void offline.synchronize(false, true)}
+                  >
+                    {text(
+                      'Повторить исходный пакет для проверки ответа',
+                      'Жауапты тексеру үшін бастапқы пакетті қайталау',
+                    )}
+                  </button>
+                )}
               </>
             ) : (
               <button
@@ -440,6 +450,17 @@ export function LiveBoard({
               </button>
             )}
           </div>
+          {offline.journal.conflict && (
+            <PendingMatchReview
+              tournamentId={offline.journal.view.tournamentId}
+              contestId={offline.journal.view.currentMatch?.id}
+              adminAccess={!!lease.connected && connected && lease.context?.workRole === 'ADMIN'}
+              busy={busy || offline.arming}
+              reviewEpoch={`${lease.context?.accessRevision}:${view?.currentMatch?.revision}`}
+              onExport={offline.download}
+              onArchive={offline.archiveConflict}
+            />
+          )}
         </section>
       )}
       {operator && !offline.journal && m && (
@@ -482,7 +503,7 @@ export function LiveBoard({
             busy ||
             !connected ||
             !lease.connected ||
-            !sameGrant(pending.payload, lease.grant) ||
+            !mayRetryMatch(pending, lease.grant, lease.context?.workRole === 'ADMIN') ||
             !offline.restored ||
             !!offline.journal
           }
@@ -502,32 +523,51 @@ export function LiveBoard({
           {pendingInvalid && (
             <p className="error">{authMessage(pendingInvalid, locale === 'kk')}</p>
           )}
-          <button
-            disabled={busy}
-            onClick={() => {
+          <PendingMatchReview
+            tournamentId={view?.tournamentId ?? lease.context?.tournamentId}
+            contestId={
+              pending?.contestId ??
+              (() => {
+                try {
+                  const id = JSON.parse(sessionStorage.getItem(key) ?? 'null')?.contestId;
+                  return isUuid(id) ? id : undefined;
+                } catch {
+                  return undefined;
+                }
+              })()
+            }
+            adminAccess={connected && lease.connected && lease.context?.workRole === 'ADMIN'}
+            busy={busy}
+            reviewEpoch={`${lease.context?.accessRevision}:${view?.currentMatch?.revision}`}
+            onExport={() => {
               const raw = sessionStorage.getItem(key);
-              if (
-                !raw ||
-                !window.confirm(
-                  text(
-                    'Сохранить исходную команду в архиве для сверки? Это не отменяет её на сервере.',
-                    'Бастапқы команданы тексеру үшін мұрағатта сақтайсыз ба? Бұл оны серверде жоймайды.',
-                  ),
-                )
-              )
-                return;
-              try {
-                sessionStorage.setItem(key + '.archive.' + crypto.randomUUID(), raw);
-                remember(null);
-                setPendingInvalid('');
-                void load();
-              } catch {
-                setError(authMessage('DEVICE_STORAGE_INVALID', locale === 'kk'));
-              }
+              if (raw === null) return;
+              const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `judo-command-${pending?.payload.id ?? tatamiId}.json`;
+              link.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
             }}
-          >
-            {text('Архивировать для сверки', 'Тексеру үшін мұрағаттау')}
-          </button>
+            onArchive={async (reason, checked, proof) => {
+              const raw = sessionStorage.getItem(key);
+              if (raw === null) throw new Error('SAVED_MATCH_INVALID');
+              const archive = reviewedMatchArchive(
+                raw,
+                reason,
+                checked,
+                proof,
+                connected && lease.connected && lease.context?.workRole === 'ADMIN',
+              );
+              sessionStorage.setItem(
+                key + '.archive.' + crypto.randomUUID(),
+                JSON.stringify(archive),
+              );
+              remember(null);
+              setPendingInvalid('');
+              await load();
+            }}
+          />
         </div>
       )}
       {m && shown ? (

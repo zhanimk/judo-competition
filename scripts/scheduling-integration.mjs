@@ -282,7 +282,7 @@ try {
   );
   await db.contest.updateMany({
     where: { draw: { category: { tournamentId: tournament } }, status: 'CONFIRMED' },
-    data: { confirmedAt: new Date(Date.now() - 601000) },
+    data: { endedAt: new Date(Date.now() - 601000) },
   });
   assert.equal(
     (

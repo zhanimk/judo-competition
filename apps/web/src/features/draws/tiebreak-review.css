@@ -1,0 +1,54 @@
+.tiebreak-review {
+  padding: 1.25rem;
+  margin-block: 1rem;
+  border: 1px solid #d8e1ec;
+  border-left: 4px solid #ad760b;
+  border-radius: 14px;
+  background: #fffaf0;
+  color: #172238;
+}
+.tiebreak-review h3,
+.tiebreak-review h4 {
+  margin: 0 0 0.75rem;
+}
+.tiebreak-review article {
+  border-top: 1px solid #e9dcc1;
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+.tiebreak-review ul {
+  padding-left: 1.25rem;
+}
+.tiebreak-review li {
+  margin-block: 0.35rem;
+  overflow-wrap: anywhere;
+}
+.tiebreak-review label {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 1rem;
+  font-weight: 600;
+}
+.tiebreak-review textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 0.7rem;
+  font: inherit;
+  border: 1px solid #b6c3d5;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  resize: vertical;
+}
+.tiebreak-review button {
+  margin: 0.35rem 0.5rem 0.35rem 0;
+}
+@media (max-width: 600px) {
+  .tiebreak-review {
+    padding: 1rem;
+  }
+  .tiebreak-review button {
+    width: 100%;
+    margin-inline: 0;
+  }
+}

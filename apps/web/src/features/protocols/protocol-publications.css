@@ -1,0 +1,176 @@
+.protocol-publications {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.protocol-publish-card {
+  padding: 24px;
+  min-width: 0;
+}
+.protocol-publish-card h2 {
+  margin: 0 0 14px;
+  font-size: 20px;
+  line-height: 1.4;
+}
+.protocol-publish-card p {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.protocol-publish-card fieldset {
+  border: 0;
+  padding: 0;
+  margin: 24px 0 0;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.protocol-publish-card legend {
+  font-weight: 650;
+  margin-bottom: 16px;
+}
+.protocol-publish-card label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: #43536c;
+}
+.protocol-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.protocol-publish-card select,
+.protocol-publish-card textarea {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #d5deea;
+  border-radius: 8px;
+  background: #fff;
+  color: #18243b;
+  font: inherit;
+  font-size: 16px;
+}
+.protocol-publish-card select {
+  min-height: 48px;
+}
+.protocol-publish-card textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+.protocol-publish-card button,
+.protocol-publish-card .solid-link {
+  min-height: 48px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.protocol-category-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.protocol-category-options label,
+.protocol-publish-card .protocol-approval {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.6;
+}
+.protocol-publications .protocol-category-options input,
+.protocol-publications .protocol-approval input {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  margin: 3px 0 0;
+  flex-shrink: 0;
+}
+.protocol-artifacts {
+  display: grid;
+  gap: 16px;
+}
+.protocol-artifact {
+  padding: 18px;
+  border: 1px solid #dce5f0;
+  border-radius: 10px;
+  min-width: 0;
+  background: #fff;
+}
+.protocol-artifact-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.protocol-artifact-title h3 {
+  margin: 0;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.protocol-artifact-title span,
+.protocol-artifact-date {
+  color: #5b6d86;
+  font-size: 14px;
+}
+.protocol-archive {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff4dc;
+  color: #755314;
+}
+.protocol-current {
+  color: #2d674c;
+}
+.protocol-artifact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+.protocol-artifact-actions .solid-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.protocol-checksum {
+  margin-top: 16px;
+  color: #5b6d86;
+  font-size: 13px;
+}
+.protocol-checksum summary {
+  cursor: pointer;
+}
+.protocol-checksum code {
+  display: block;
+  padding-top: 8px;
+  overflow-wrap: anywhere;
+}
+.protocol-pending {
+  padding: 16px;
+  background: #fff7e8;
+  border: 1px solid #d1a85b;
+  border-radius: 8px;
+}
+@media (max-width: 640px) {
+  .protocol-publish-card {
+    padding: 18px;
+  }
+  .protocol-fields,
+  .protocol-category-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .protocol-artifact {
+    padding: 14px;
+  }
+  .protocol-artifact-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .protocol-artifact-actions button,
+  .protocol-artifact-actions a,
+  .protocol-publish-card fieldset > button {
+    width: 100%;
+  }
+}

@@ -1,3 +1,4 @@
+import { enqueueLive } from '../matches/live-outbox.js';
 import {
   BadRequestException,
   ConflictException,
@@ -210,7 +211,13 @@ export class ControlService {
           throw new ConflictException((error as Error).message);
         }
         state.receipts = {};
-        data = { ...data, state: json(state), clockAnchorMs: null, clockEpoch: null };
+        data = {
+          ...data,
+          state: json(state),
+          clockAnchorMs: null,
+          clockEpoch: null,
+          endedAt: state.outcome ? row.endedAt : null,
+        };
       } else if (dto.type === 'RELEASE_OFFLINE') {
         if (!row.offlineSessionId || !current) throw new ConflictException('OFFLINE_NOT_ACTIVE');
         await lockContestAthletes(tx, row, { requirePair: false });
@@ -294,6 +301,7 @@ export class ControlService {
           winnerEntryId: null,
           resultReason: null,
           confirmedAt: null,
+          endedAt: null,
           queueOrder: row.tatamiId ? (last?._max.queueOrder ?? 0) + 1 : null,
         };
       } else {
@@ -395,6 +403,7 @@ export class ControlService {
           payload: json({ command: dto, before, after: updated }),
         },
       });
+      await enqueueLive(tx, { tournamentId: id, kind: 'result' });
       return response;
     });
     this.live.notify({ kind: 'result', tournamentId: id });

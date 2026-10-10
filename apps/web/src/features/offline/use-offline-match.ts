@@ -1,14 +1,24 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import type { MatchState } from '@judo/engine/match';
 import type { MatchAction } from '../scoreboard/model/types';
 import type { View } from '../live/live-board';
 import { ApiError, request } from '../tournaments/api';
 import { readJournal, writeJournal, prepareOfflineShell } from './storage';
-import { appendJournalCommand, canReleaseJournal, type Journal, type Packet } from './journal';
+import {
+  acknowledgeJournalPacket,
+  appendJournalCommand,
+  canReleaseJournal,
+  type Journal,
+  type Packet,
+} from './journal';
 import { journalControlError } from './journal';
-import { sameGrant, type ControlGrant } from '../auth/control-model';
+import { isGrant, sameGrant, type ControlGrant } from '../auth/control-model';
 import { startJournalTabLock, type JournalTabLock } from './tab-lock';
+import {
+  deliverMatchPacket,
+  reviewedMatchArchive,
+  type MatchRecoveryProof,
+} from '../live/pending-command';
 export function useOfflineMatch(
   tatamiId: string,
   enabled: boolean,
@@ -16,6 +26,7 @@ export function useOfflineMatch(
   grant: ControlGrant | null,
   controlKnown: boolean,
   deviceId: string | null,
+  recovery: { admin: boolean; connected: boolean; view: View | null },
 ) {
   const [journal, setJournal] = useState<Journal | null>(null),
     [error, setError] = useState(''),
@@ -32,8 +43,8 @@ export function useOfflineMatch(
     releaseCallback = useRef(onReleased);
   const ownerToken = useRef<symbol | null>(null),
     tabLock = useRef<JournalTabLock | null>(null);
-  const control = useRef({ grant, known: controlKnown, deviceId });
-  control.current = { grant, known: controlKnown, deviceId };
+  const control = useRef({ grant, known: controlKnown, deviceId, recovery });
+  control.current = { grant, known: controlKnown, deviceId, recovery };
   releaseCallback.current = onReleased;
   const key = 'active:' + tatamiId;
   function mutate(fn: (j: Journal | null) => Journal | null | Promise<Journal | null>) {
@@ -219,8 +230,21 @@ export function useOfflineMatch(
       void lock?.release();
     };
   }, [!!journal, enabled]);
-  async function synchronize(release = false) {
-    if (!owned.current || syncing.current || !ref.current || ref.current.conflict) return;
+  async function synchronize(release = false, receiptRetry = false) {
+    if (
+      !owned.current ||
+      syncing.current ||
+      !ref.current ||
+      (ref.current.conflict && !receiptRetry)
+    )
+      return;
+    if (
+      receiptRetry &&
+      (!ref.current.packet ||
+        !control.current.recovery.admin ||
+        !control.current.recovery.connected)
+    )
+      return;
     if (release && !canReleaseJournal(ref.current)) return;
     syncing.current = true;
     try {
@@ -228,6 +252,21 @@ export function useOfflineMatch(
         id = '';
       await mutate((j) => {
         if (!j) return j;
+        if (receiptRetry) {
+          // The receipt lookup uses this exact old packet. Never grant new authority to its events.
+          if (
+            !j.packet ||
+            !control.current.recovery.admin ||
+            !control.current.recovery.connected ||
+            !isGrant(j.grant) ||
+            !isGrant(j.packet) ||
+            !sameGrant(j.packet as ControlGrant, j.grant)
+          )
+            return j;
+          id = j.view.currentMatch!.id;
+          packet = j.packet;
+          return j;
+        }
         const problem = journalControlError(
           j,
           control.current.grant,
@@ -256,14 +295,14 @@ export function useOfflineMatch(
       });
       if (!packet) return;
       const sent = packet;
-      const response = await request<{ revision: number; status: string; state: MatchState }>(
-        `/tatamis/${tatamiId}/live/${id}/command`,
-        sent,
+      const response = await deliverMatchPacket(id, sent, (contestId, payload) =>
+        request(`/tatamis/${tatamiId}/live/${contestId}/command`, payload),
       );
       setOnline(true);
       await mutate(async (j) => {
         if (!j || j.packet?.id !== sent.id) return j;
-        if (response.status === 'CONFIRMED' || sent.type === 'OFFLINE_RELEASE') {
+        const receipt = acknowledgeJournalPacket(j, sent, response);
+        if (receipt.archived) {
           await writeJournal('archive:' + j.sessionId, {
             ...j,
             acknowledgedAt: new Date().toISOString(),
@@ -272,16 +311,20 @@ export function useOfflineMatch(
           return null;
         }
         return {
-          ...j,
-          revision: response.revision,
-          packet: undefined,
-          opening: false,
-          events: j.events.slice(sent.events?.length ?? 0),
+          ...receipt.next,
+          conflict:
+            journalControlError(
+              j,
+              control.current.grant,
+              control.current.known,
+              control.current.deviceId,
+            ) ?? undefined,
         };
       });
       if (!ref.current) releaseCallback.current();
     } catch (e) {
       setOnline(false);
+      setError(e instanceof Error ? e.message : 'MATCH_RECEIPT_INVALID');
       if (e instanceof ApiError && e.status < 500)
         await mutate((j) => (j ? { ...j, conflict: e.message } : j)).catch(() => {});
     } finally {
@@ -366,10 +409,20 @@ export function useOfflineMatch(
     link.click();
     URL.revokeObjectURL(url);
   }
-  async function archiveConflict() {
+  async function archiveConflict(reason: string, checked: boolean, proof: MatchRecoveryProof) {
     if (!ref.current?.conflict) return;
     await mutate(async (j) => {
-      if (j) await writeJournal('archive:' + j.sessionId, j);
+      if (!j) return null;
+      if (proof.contestId !== j.view.currentMatch?.id) throw new Error('MATCH_RECOVERY_INVALID');
+      const review = control.current.recovery;
+      const archive = reviewedMatchArchive(
+        JSON.stringify(j),
+        reason,
+        checked,
+        proof,
+        review.admin && review.connected && review.view?.tournamentId === j.view.tournamentId,
+      );
+      await writeJournal('archive:' + j.sessionId, { ...j, recovery: archive });
       return null;
     });
     releaseCallback.current();

@@ -258,10 +258,14 @@ function harness() {
           return data;
         },
       },
+      tournamentCommand: { findFirst: async () => null },
       rosterCommand: {
         findFirst: async ({ where }) =>
           structuredClone(state.rosterCommands.find((row) => where.id.in.includes(row.id)) ?? null),
       },
+      drawCommand: { findFirst: async () => null },
+      protocolCommand: { findFirst: async () => null },
+      liveOutbox: { create: async () => ({ id: 1n }) },
       auditEvent: {
         create: async ({ data }) => {
           state.audits.push(structuredClone(data));

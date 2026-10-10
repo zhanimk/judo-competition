@@ -1,5 +1,5 @@
 'use client';
-import { poolStandings, type Draw } from '@judo/engine/draw';
+import { poolStandings, drawProgress, type Draw } from '@judo/engine/draw';
 import type { Entry } from '../tournaments/types';
 import type { ResultContest } from '../live/results-table';
 import { useLanguage } from '../../shared/i18n/provider';
@@ -26,6 +26,9 @@ export function RoundStandings({
   );
   const winners = Object.fromEntries(confirmed.map((c) => [c.key, c.winnerEntryId!]));
   const final = poolStandings(draw, winners, poolId);
+  const awaitingReview = drawProgress(draw, winners).pendingReviews.some(
+    (review) => review.pool === poolId,
+  );
   const order = final?.map((r) => r.entryId) ?? members;
   return (
     <section className="round-standings">
@@ -41,10 +44,15 @@ export function RoundStandings({
               'Все встречи подтверждены. Места определены по регламенту категории.',
               'Барлық белдесулер расталды. Орындар санат ережесі бойынша анықталды.',
             )
-          : text(
-              'Пока идут встречи, участники показаны по номеру жребия. Итоговые места появятся после подтверждения всех результатов.',
-              'Белдесулер өтіп жатқанда қатысушылар жеребе нөмірімен көрсетіледі. Қорытынды орындар барлық нәтижелер расталғаннан кейін пайда болады.',
-            )}
+          : awaitingReview
+            ? text(
+                'Основной круг завершён. Места ожидают утверждённой процедуры при равенстве.',
+                'Негізгі айналым аяқталды. Теңдік кезіндегі бекітілген рәсім аяқталғанша орындар анықталмайды.',
+              )
+            : text(
+                'Пока идут встречи, участники показаны по номеру жребия. Итоговые места появятся после подтверждения всех результатов.',
+                'Белдесулер өтіп жатқанда қатысушылар жеребе нөмірімен көрсетіледі. Қорытынды орындар барлық нәтижелер расталғаннан кейін пайда болады.',
+              )}
       </p>
       <div className="table-wrap">
         <table>
@@ -54,7 +62,11 @@ export function RoundStandings({
               <th>{text('Участник / клуб', 'Қатысушы / клуб')}</th>
               <th>{text('Жребий', 'Жеребе')}</th>
               <th>{text('Проведено', 'Өткізілген')}</th>
-              <th>{text('Победы', 'Жеңістер')}</th>
+              <th>
+                {draw.tieRanking === 'WINS_ONLY'
+                  ? text('Победы в основном круге', 'Негізгі айналымдағы жеңістер')
+                  : text('Победы', 'Жеңістер')}
+              </th>
               <th>{text('Поражения', 'Жеңілістер')}</th>
               <th>{text('Осталось', 'Қалғаны')}</th>
             </tr>
@@ -65,7 +77,18 @@ export function RoundStandings({
               const played = confirmed.filter(
                 (c) => c.whiteEntryId === id || c.blueEntryId === id,
               ).length;
-              const wins = confirmed.filter((c) => c.winnerEntryId === id).length;
+              const wins = confirmed.filter(
+                (c) =>
+                  c.winnerEntryId === id &&
+                  (draw.tieRanking !== 'WINS_ONLY' ||
+                    !matches.find((match) => match.id === c.key)?.tieBreakRound),
+              ).length;
+              const additionalWins = confirmed.filter(
+                (c) =>
+                  c.winnerEntryId === id &&
+                  matches.find((match) => match.id === c.key)?.tieBreakRound,
+              ).length;
+              const allWins = confirmed.filter((c) => c.winnerEntryId === id).length;
               const total = matches.filter(
                 (m) =>
                   ('entryId' in m.white && m.white.entryId === id) ||
@@ -88,8 +111,13 @@ export function RoundStandings({
                   </td>
                   <td>
                     <b className="standing-wins">{wins}</b>
+                    {draw.tieRanking === 'WINS_ONLY' && additionalWins > 0 && (
+                      <small>
+                        {text('Дополнительные', 'Қосымша')}: {additionalWins}
+                      </small>
+                    )}
                   </td>
-                  <td>{played - wins}</td>
+                  <td>{played - allWins}</td>
                   <td>{total - played}</td>
                 </tr>
               );

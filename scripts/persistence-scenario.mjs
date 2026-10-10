@@ -319,7 +319,7 @@ export async function persistenceScenario({ db, base, restart, output }) {
   await command(second.id, 'CONFIRM');
   await db.contest.updateMany({
     where: { drawId: confirmed.drawId, status: 'CONFIRMED' },
-    data: { confirmedAt: new Date(Date.now() - 601000) },
+    data: { endedAt: new Date(Date.now() - 601000) },
   });
   const final = (await queue())[0];
   await command(final.id, 'START');

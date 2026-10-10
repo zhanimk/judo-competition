@@ -2,7 +2,12 @@ import { CurrentUser } from '../auth/auth.guard.js';
 import type { Principal } from '../auth/auth.types.js';
 import { Controller, Get, Post, Param, Body, ParseUUIDPipe } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service.js';
-import { CreateTournamentDto, CreateCategoryDto, CreateEntryDto } from './dto.js';
+import {
+  AdministrationCommandDto,
+  CreateTournamentDto,
+  CreateCategoryDto,
+  CreateEntryDto,
+} from './dto.js';
 @Controller('tournaments')
 export class TournamentsController {
   constructor(private readonly service: TournamentsService) {}
@@ -14,18 +19,24 @@ export class TournamentsController {
   }
   @Post(':id/publish') publish(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdministrationCommandDto,
     @CurrentUser() user: Principal,
   ) {
-    return this.service.publish(id, user);
+    return this.service.publish(id, dto, user);
   }
   @Post(':id/schedule') schedule(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdministrationCommandDto,
     @CurrentUser() user: Principal,
   ) {
-    return this.service.schedule(id, user);
+    return this.service.schedule(id, dto, user);
   }
-  @Post(':id/start') start(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: Principal) {
-    return this.service.start(id, user);
+  @Post(':id/start') start(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdministrationCommandDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.start(id, dto, user);
   }
   @Post() create(@Body() dto: CreateTournamentDto, @CurrentUser() user: Principal) {
     return this.service.create(dto, user);

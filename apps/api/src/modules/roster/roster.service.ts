@@ -10,10 +10,16 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../../database/database.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/auth.types.js';
-import { assertActivePrincipal } from '../auth/access-guards.js';
+import { lockAdminMutation } from '../auth/access-guards.js';
+import { enqueueLive } from '../matches/live-outbox.js';
 import { assertUnusedCommandIds, lockCommandIds } from '../matches/command-ids.js';
 import { LiveService } from '../matches/live.service.js';
-import type { CreateClubDto, RosterCommitDto, RosterPreviewDto } from './roster.dto.js';
+import type {
+  CreateClubDto,
+  RosterCommitDto,
+  RosterPreviewDto,
+  SingleEntryCommitDto,
+} from './roster.dto.js';
 import { cleanName, normalizedName, validateRoster } from './roster-validation.js';
 import type {
   EntryArchiveDto,
@@ -41,7 +47,7 @@ const snapshotInclude = {
     include: { entries: { where: { archivedAt: null } }, draw: { select: { status: true } } },
   },
 } satisfies Prisma.TournamentInclude;
-type DurableCommand = { id: string; expectedRevision: number };
+type DurableCommand = { id: string };
 
 @Injectable()
 export class RosterService {
@@ -189,6 +195,7 @@ export class RosterService {
         payload: { command: json(dto), response, ...change },
       },
     });
+    await enqueueLive(tx, { tournamentId, kind: 'roster' });
   }
 
   async createClub(id: string, dto: CreateClubDto, user: Principal) {
@@ -196,8 +203,8 @@ export class RosterService {
     let result: Prisma.JsonValue | Prisma.InputJsonValue;
     try {
       result = await this.db.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-        const saved = await this.receipt(tx, id, 'CLUB_CREATED', dto);
+        await lockAdminMutation(tx, user, id);
+        const saved = await this.receipt(tx, id, 'CLUB_CREATED', dto, user.id);
         if (saved !== null) return saved;
         await this.current(tx, id, dto.expectedRevision);
         await assertUnusedCommandIds(tx, [dto.id], null);
@@ -264,8 +271,8 @@ export class RosterService {
     try {
       result = await this.db.$transaction(
         async (tx) => {
-          await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-          const saved = await this.receipt(tx, id, 'ROSTER_ADDED', dto);
+          await lockAdminMutation(tx, user, id);
+          const saved = await this.receipt(tx, id, 'ROSTER_ADDED', dto, user.id);
           if (saved !== null) return saved;
           await this.current(tx, id, dto.expectedRevision);
           await assertUnusedCommandIds(tx, [dto.id], null);
@@ -347,6 +354,88 @@ export class RosterService {
     return result;
   }
 
+  async admitSingle(id: string, categoryId: string, dto: SingleEntryCommitDto, user: Principal) {
+    await this.auth.owner(user, id);
+    const command = { ...dto, categoryId };
+    let result: Prisma.JsonValue | Prisma.InputJsonValue;
+    try {
+      result = await this.db.$transaction(async (tx) => {
+        await lockAdminMutation(tx, user, id);
+        const saved = await this.receipt(tx, id, 'ENTRY_ADDED', command, user.id);
+        if (saved !== null) return saved;
+        await this.current(tx, id, dto.expectedRosterRevision);
+        await assertUnusedCommandIds(tx, [dto.id], null);
+        await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${categoryId} AND "tournamentId"=${id} FOR UPDATE`;
+        await lockIdentityDraws(tx, [categoryId]);
+        const selected = dto.athleteId ? [dto.athleteId] : [];
+        await lockAthleteIds(tx, selected);
+        const tournament = await tx.tournament.findUniqueOrThrow({
+          where: { id },
+          include: snapshotInclude,
+        });
+        const category = tournament.categories.find((category) => category.id === categoryId);
+        if (!category) throw new NotFoundException('CATEGORY_NOT_FOUND');
+        const clubName = cleanName(dto.club);
+        if (clubName.length < 2) throw new BadRequestException('CLUB_NAME_REQUIRED');
+        const available = await scopedAthleteIds(tx, id, tournament.ownerId, selected);
+        const admission = {
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          birthYear: dto.birthYear,
+          gender: category.gender as 'MALE' | 'FEMALE',
+          categoryId,
+          athleteId: dto.athleteId,
+          duplicateConfirmed: dto.duplicateConfirmed,
+        };
+        const validation = validateRoster(tournament, clubName, [admission], undefined, available);
+        if (!validation.canSave)
+          throw new BadRequestException({ message: 'ROSTER_VALIDATION_FAILED', ...validation });
+        const club = await tx.club.upsert({
+          where: {
+            tournamentId_normalizedName: {
+              tournamentId: id,
+              normalizedName: normalizedName(clubName),
+            },
+          },
+          update: {},
+          create: { tournamentId: id, name: clubName, normalizedName: normalizedName(clubName) },
+        });
+        const athleteId = dto.athleteId ?? randomUUID();
+        if (!dto.athleteId)
+          await tx.athlete.create({ data: { id: athleteId, ownerId: tournament.ownerId } });
+        const entry = await tx.entry.create({
+          data: {
+            categoryId,
+            athleteId,
+            firstName: cleanName(dto.firstName),
+            lastName: cleanName(dto.lastName),
+            birthYear: dto.birthYear,
+            gender: category.gender,
+            clubId: club.id,
+            club: club.name,
+          },
+        });
+        const updated = await tx.tournament.update({
+          where: { id },
+          data: { rosterRevision: { increment: 1 } },
+        });
+        await invalidatePreviewDraws(tx, id, [categoryId], user.id, {
+          type: 'ENTRY_ADDED',
+          commandId: dto.id,
+        });
+        const response = json({ ...entry, rosterRevision: updated.rosterRevision });
+        await this.record(tx, id, user, 'ENTRY_ADDED', command, response, entry.id);
+        return response;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw new ConflictException('COMMAND_ID_REUSED');
+      throw error;
+    }
+    this.live.notify({ kind: 'result', tournamentId: id });
+    return result;
+  }
+
   async archived(id: string, user: Principal) {
     await this.auth.owner(user, id);
     return this.db.$transaction(
@@ -386,10 +475,7 @@ export class RosterService {
     let changed = false;
     try {
       result = await this.db.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-        // Keep Session/logout lock order even though this command changes no mat.
-        await tx.$queryRaw`SELECT id FROM "Tatami" WHERE "tournamentId"=${id} ORDER BY id FOR UPDATE`;
-        await assertActivePrincipal(tx, user, { tournamentId: id });
+        await lockAdminMutation(tx, user, id);
         const saved = await this.receipt(tx, id, 'ENTRY_NAME_CORRECTED', command, user.id);
         if (saved !== null) return saved;
         if (
@@ -610,8 +696,8 @@ export class RosterService {
     let result: Prisma.JsonValue | Prisma.InputJsonValue;
     try {
       result = await this.db.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-        const saved = await this.receipt(tx, id, 'ENTRY_IDENTITY_BOUND', command);
+        await lockAdminMutation(tx, user, id);
+        const saved = await this.receipt(tx, id, 'ENTRY_IDENTITY_BOUND', command, user.id);
         if (saved !== null) return saved;
         const reason = typeof dto.reason === 'string' ? dto.reason.trim() : '';
         if ([...reason].length < 3 || [...reason].length > 500)
@@ -679,8 +765,8 @@ export class RosterService {
     try {
       result = await this.db.$transaction(
         async (tx) => {
-          await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-          const saved = await this.receipt(tx, id, type, command);
+          await lockAdminMutation(tx, user, id);
+          const saved = await this.receipt(tx, id, type, command, user.id);
           if (saved !== null) return saved;
           const reason = typeof dto.reason === 'string' ? dto.reason.trim() : '';
           if ([...reason].length < 3 || [...reason].length > 500)

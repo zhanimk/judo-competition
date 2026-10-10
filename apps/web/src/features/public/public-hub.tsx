@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { PublicParticipants } from './public-participants';
+import { PublicProtocols } from './public-protocols';
 import { SpectatorQueue } from './spectator-queue';
 import type { Draw } from '@judo/engine/draw';
 import { PublicResults } from './public-results';
@@ -140,7 +141,7 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
   const requestedTab = params.get('view');
   const tab = resultsOnly
     ? 'results'
-    : requestedTab === 'entries' || requestedTab === 'draw'
+    : requestedTab === 'entries' || requestedTab === 'draw' || requestedTab === 'protocols'
       ? requestedTab
       : 'tatamis';
   const [drawMode, setDrawMode] = useState('bracket');
@@ -241,6 +242,7 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
               ['entries', text('Участники', 'Қатысушылар')],
               ['draw', text('Сетки', 'Торлар')],
               ['results', text('Результаты', 'Нәтижелер')],
+              ['protocols', text('Документы PDF', 'PDF құжаттары')],
             ].map(([key, label]) => (
               <Link
                 key={key}
@@ -311,6 +313,7 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
                 </>
               )}
               {tab === 'entries' && <PublicParticipants tournament={t} />}
+              {tab === 'protocols' && <PublicProtocols key={id} tournamentId={id} />}
               {tab === 'draw' && (
                 <section className="spectator-section public-draw-panel">
                   <h2>{text('Сетка категории', 'Санат торы')}</h2>

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { PrismaClient } from '@prisma/client';
-import WebSocket from 'ws';
+import { liveSocket, connectLive } from './test-live.mjs';
 import { tally, scoreboardScores } from '@judo/engine/match';
 import { miniCategories, miniName, miniFirstNames } from '../fixtures/mini-tournament.mjs';
 
@@ -182,15 +182,9 @@ try {
       select: { id: true, homeTatamiId: true },
       orderBy: { id: 'asc' },
     });
-    const wsUrl = new URL(`${base}/live`);
-    wsUrl.protocol = 'ws:';
-    wsUrl.searchParams.set('tournamentId', id);
-    socket = new WebSocket(wsUrl, { origin: 'http://127.0.0.1:4318' });
-    socket.on('message', (raw) => notices.push(JSON.parse(raw.toString())));
-    await new Promise((resolve, reject) => {
-      socket.once('open', resolve);
-      socket.once('error', reject);
-    });
+    socket = liveSocket(base, id);
+    socket.on('notice', (notice) => notices.push(notice));
+    await connectLive(socket);
     async function row(boutId) {
       return db.contest.findUniqueOrThrow({ where: { id: boutId } });
     }
@@ -243,7 +237,7 @@ try {
       // Acceleration applies only to confirmed records in this named synthetic tournament.
       await db.contest.updateMany({
         where: { ...scope, status: 'CONFIRMED' },
-        data: { confirmedAt: new Date(Date.now() - 601000) },
+        data: { endedAt: new Date(Date.now() - 601000) },
       });
       if (completed === 0) {
         assert.equal(

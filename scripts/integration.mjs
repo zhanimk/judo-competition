@@ -1,3 +1,4 @@
+import { fixtureRequest } from './test-access.mjs';
 import { createTestUser, createTestEntries } from './test-user.mjs';
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
@@ -7,11 +8,7 @@ let id;
 let userId;
 let cookie = '';
 async function post(path, data) {
-  const r = await fetch(base + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Judo-Client': 'web', Cookie: cookie },
-    body: JSON.stringify(data),
-  });
+  const r = await fixtureRequest(base, path, data, cookie);
   return { status: r.status, body: await r.json() };
 }
 try {

@@ -5,6 +5,8 @@ import { scoreboardScores } from '@judo/engine/match';
 import type { Entry } from '../tournaments/types';
 import '../draws/match-list.css';
 import { useLanguage } from '../../shared/i18n/provider';
+import { useState } from 'react';
+import { resultClock } from './result-clock';
 export type ResultContest = {
   id: string;
   key: string;
@@ -38,11 +40,14 @@ export function ScoreSummary({
 export function ResultsTable({
   entries,
   contests,
+  printAll = false,
 }: {
   entries: Entry[];
   contests: ResultContest[];
+  printAll?: boolean;
 }) {
   const { text, locale } = useLanguage();
+  const [visible, setVisible] = useState(50);
   const rows = contests.filter((c) => c.status === 'CONFIRMED');
   if (!rows.length) return null;
   const name = (id?: string | null) => {
@@ -61,10 +66,11 @@ export function ResultsTable({
               <th>{text('Синий', 'Көк')}</th>
               <th>{text('Победитель', 'Жеңімпаз')}</th>
               <th>{text('Основание', 'Негіздеме')}</th>
+              <th>{text('Время', 'Уақыт')}</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((c) => (
+            {(printAll ? rows : rows.slice(0, visible)).map((c) => (
               <tr key={c.id}>
                 <td data-label={text('Схватка', 'Белдесу')}>{c.key}</td>
                 {(['WHITE', 'BLUE'] as const).map((side) => {
@@ -84,11 +90,17 @@ export function ResultsTable({
                 <td data-label={text('Основание', 'Негіздеме')}>
                   {resultReasonLabel(c.resultReason, locale)}
                 </td>
+                <td data-label={text('Время', 'Уақыт')}>{resultClock(c.state)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {!printAll && rows.length > visible && (
+        <button onClick={() => setVisible((count) => count + 50)}>
+          {text('Показать ещё', 'Тағы көрсету')} · {Math.min(visible, rows.length)} / {rows.length}
+        </button>
+      )}
     </section>
   );
 }

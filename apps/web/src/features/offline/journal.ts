@@ -2,6 +2,7 @@ import { applyCommand, type Command, type MatchState } from '@judo/engine/match'
 import type { MatchAction } from '../scoreboard/model/types';
 import type { View } from '../live/live-board';
 import { isGrant, sameGrant, type ControlGrant } from '../auth/control-model.ts';
+import { validateMatchReceipt } from '../live/command-response.ts';
 
 export type Packet = {
   id: string;
@@ -61,4 +62,32 @@ export function canReleaseJournal(journal: Journal): boolean {
     journal.state.status !== 'RUNNING' &&
     !journal.state.hold
   );
+}
+
+/** Only a checked receipt may acknowledge the immutable packet or finish local ownership. */
+export function acknowledgeJournalPacket(journal: Journal, packet: Packet, value: unknown) {
+  const events = packet.events ?? [];
+  if (
+    !journal.packet ||
+    JSON.stringify(journal.packet) !== JSON.stringify(packet) ||
+    packet.sessionId !== journal.sessionId ||
+    packet.expectedVersion !== journal.revision ||
+    events.length > journal.events.length ||
+    events.some((event, index) => JSON.stringify(event) !== JSON.stringify(journal.events[index]))
+  )
+    throw new Error('OFFLINE_PACKET_CHANGED');
+  const contestId = journal.view.currentMatch?.id;
+  if (!contestId) throw new Error('MATCH_RECEIPT_INVALID');
+  const response = validateMatchReceipt(contestId, packet.expectedVersion, value);
+  return {
+    response,
+    archived: response.status === 'CONFIRMED' || packet.type === 'OFFLINE_RELEASE',
+    next: {
+      ...journal,
+      revision: response.revision,
+      packet: undefined,
+      opening: false,
+      events: journal.events.slice(packet.events?.length ?? 0),
+    },
+  };
 }

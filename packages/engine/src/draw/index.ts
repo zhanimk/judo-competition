@@ -1,4 +1,4 @@
-import { rematchStandings } from './rematches.ts';
+import { rematchStandings, isWinsOnlyTiePolicy } from './rematches.ts';
 export type Entry = Readonly<{ id: string; clubId: string }>;
 export type Slot =
   | Readonly<{ entryId: string }>
@@ -17,7 +17,16 @@ export type Match = Readonly<{
 export type Draw = Readonly<{
   medalPolicy?: 'QUARTER_REPECHAGE';
   tieBreak?: 'PUBLISHED_LOT' | 'REMATCH';
-  tieRounds?: readonly { id: string; parent: string; pool?: string; members: readonly string[] }[];
+  /** Missing fields preserve the historical head-to-head/rematch profile. */
+  tieRanking?: 'WINS_ONLY';
+  tieMany?: 'ADMIN_REVIEW';
+  tieRounds?: readonly {
+    id: string;
+    parent: string;
+    pool?: string;
+    members: readonly string[];
+    procedure?: 'DECIDING_BOUT' | 'ROUND_ROBIN';
+  }[];
   algorithm:
     | 'custom-club-balanced-v1'
     | 'custom-round-robin-v1'
@@ -128,6 +137,11 @@ function confirmedWinner(winners: Readonly<Record<string, string>>, matchId: str
 export function resolveMatches(draw: Draw, winners: Readonly<Record<string, string>>) {
   const known = new Set(draw.matches.map((m) => m.id));
   for (const id of Object.keys(winners)) if (!known.has(id)) throw new Error('UNKNOWN_MATCH');
+  const blockKnockout =
+    isWinsOnlyTiePolicy(draw) &&
+    draw.algorithm === 'custom-pools-knockout-v1' &&
+    (!draw.pools?.length ||
+      draw.pools.some((pool) => poolStandings(draw, winners, pool.id) === null));
   const resolved = new Map<string, string>();
   const losers = new Map<string, string>();
   const rows = [];
@@ -138,8 +152,9 @@ export function resolveMatches(draw: Draw, winners: Readonly<Record<string, stri
     return poolStandings(draw, winners, slot.pool)?.[slot.place - 1]?.entryId;
   };
   for (const match of draw.matches) {
-    const white = resolve(match.white),
-      blue = resolve(match.blue);
+    const blocked = blockKnockout && !match.pool;
+    const white = blocked ? undefined : resolve(match.white),
+      blue = blocked ? undefined : resolve(match.blue);
     const winner = confirmedWinner(winners, match.id);
     if (winner !== undefined) {
       if (!white || !blue) throw new Error('DEPENDENCY_UNCONFIRMED');
@@ -532,4 +547,13 @@ export function compareScheduledBouts(a: ScheduledBout, b: ScheduledBout) {
 
 export { bracketNodes, type BracketNode } from './bracket.ts';
 
-export { appendRematches, rematchStandings } from './rematches.ts';
+export {
+  appendRematches,
+  rematchStandings,
+  drawProgress,
+  approveAdditionalRound,
+  isWinsOnlyTiePolicy,
+  type DrawProgress,
+  type TieRequirement,
+  type AdditionalRoundApproval,
+} from './rematches.ts';

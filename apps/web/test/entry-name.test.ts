@@ -54,6 +54,7 @@ function tournament(status = 'RUNNING', drawStatus = 'CONFIRMED'): Tournament {
     endDate: '2026-10-10',
     tatamiCount: 1,
     status,
+    administrationRevision: 0,
     rosterRevision: 8,
     clubs: [{ id: clubId, name: 'QA Қыран', _count: { entries: 2 } }],
     categories: [

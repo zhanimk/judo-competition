@@ -6,51 +6,56 @@ import {
   ForbiddenException,
   BadRequestException,
   NotFoundException,
-  HttpException,
 } from '@nestjs/common';
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { DatabaseService } from '../../database/database.service.js';
 import type { Principal } from './auth.types.js';
 import { AccessService } from './access.service.js';
-import { workRole } from './access-guards.js';
-import type { InviteDto } from './auth.dto.js';
+import { assertSessionIdentity, workRole } from './access-guards.js';
+import type { InviteDto, RegisterDto } from './auth.dto.js';
 import type { ControlAccessDto, RevokeInvitationDto } from './access.dto.js';
+import { AuthAttempts } from './auth-attempts.js';
 const scrypt = promisify(scryptCallback);
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 @Injectable()
 export class AuthService {
-  private attempts = new Map<string, { count: number; until: number }>();
+  private readonly attempts = new AuthAttempts();
   constructor(
     private readonly db: DatabaseService,
     private readonly access: AccessService,
   ) {}
-  limit(key: string) {
-    const now = Date.now();
-    for (const [k, v] of this.attempts) if (v.until < now) this.attempts.delete(k);
-    const v = this.attempts.get(key) ?? { count: 0, until: now + 15 * 60 * 1000 };
-    v.count++;
-    this.attempts.set(key, v);
-    if (v.count > 20) throw new HttpException('TRY_LATER', 429);
-  }
-  async register(email: string, name: string, password: string) {
-    if (!name.trim()) throw new BadRequestException('INVALID_NAME');
+  async register(dto: RegisterDto, actor: Principal) {
+    this.admin(actor);
+    const name = dto.name.normalize('NFKC').trim().replace(/\s+/g, ' ');
+    if (name.length < 2 || name.length > 80) throw new BadRequestException('INVALID_NAME');
     const salt = randomBytes(16).toString('hex');
-    const key = (await scrypt(password, salt, 64)) as Buffer;
+    const key = (await scrypt(dto.password, salt, 64)) as Buffer;
     try {
-      return await this.db.user.create({
-        data: {
-          email: email.trim().toLowerCase(),
-          name: name.trim(),
-          passwordHash: `${salt}:${key.toString('hex')}`,
-          role: 'ORGANIZER',
-        },
-        select: { id: true, name: true, role: true },
+      return await this.db.$transaction(async (tx) => {
+        // Hashing is asynchronous. Logout/revocation must win if the captured
+        // administrative Session is no longer live when this write commits.
+        const session = await assertSessionIdentity(tx, actor);
+        if (session.user.role !== 'SUPER_ADMIN') throw new ForbiddenException('FORBIDDEN');
+        return tx.user.create({
+          data: {
+            email: dto.email.trim().toLowerCase(),
+            name,
+            passwordHash: `${salt}:${key.toString('hex')}`,
+            role: 'ORGANIZER',
+          },
+          select: { id: true, name: true, role: true },
+        });
       });
     } catch (e) {
       if ((e as { code?: string }).code === 'P2002') throw new ConflictException('EMAIL_IN_USE');
       throw e;
     }
+  }
+  async loginFromAddress(email: string, password: string, address?: string) {
+    return this.attempts.run('login', email.trim().toLowerCase(), address, () =>
+      this.login(email, password),
+    );
   }
   async login(email: string, password: string) {
     const user = await this.db.user.findUnique({ where: { email: email.trim().toLowerCase() } });
@@ -138,6 +143,9 @@ export class AuthService {
   }
   async accept(token: string, name: string) {
     return this.access.accept(token, name);
+  }
+  async acceptFromAddress(token: string, name: string, address?: string) {
+    return this.attempts.run('accept', token, address, () => this.accept(token, name));
   }
   async control(user: Principal, tatamiId: string, deviceId?: string) {
     const tatami = await this.db.tatami.findUnique({

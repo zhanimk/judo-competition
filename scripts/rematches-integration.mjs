@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { createTestUser } from './test-user.mjs';
+import { createTestUser, useLegacyV3Rules } from './test-user.mjs';
 const db = new PrismaClient(),
   base = process.env.TEST_API_URL ?? 'http://127.0.0.1:4319/api/v1';
 let owner,
@@ -35,6 +35,7 @@ try {
       tatamiCount: 3,
     })
   ).id;
+  await useLegacyV3Rules(db, tournament);
   assert.equal(
     (await call(`/tournaments/${tournament}/start`, {})).body.message,
     'NO_ACTIVE_CATEGORIES',
@@ -110,7 +111,7 @@ try {
     // Only disposable QA records get accelerated rest; clocks and real tournaments are untouched.
     await db.contest.updateMany({
       where: { draw: { category: { tournamentId: tournament } }, status: 'CONFIRMED' },
-      data: { confirmedAt: new Date(Date.now() - 601000) },
+      data: { endedAt: new Date(Date.now() - 601000) },
     });
     let result = await post(`/tatamis/${row.tatamiId}/live/${row.id}/command`, {
       id: randomUUID(),
@@ -196,7 +197,7 @@ try {
     await writeFile(`tmp/pdfs/rematches-results-${lang}.pdf`, Buffer.from(await pdf.arrayBuffer()));
   }
   console.log(
-    'PASS: automatic additional rounds in mixed and round robin, frozen profile; all new formats through authenticated API, start gate, automatic queues, 41 real confirmed results, repechage/bronze/pool qualifiers, idempotent confirmation, FINISHED lifecycle, public results and RU/KK PDFs.',
+    'PASS: automatic additional rounds in mixed and round robin, frozen profile; historical v3 formats through authenticated API, start gate, automatic queues, 41 real confirmed results, repechage/bronze/pool qualifiers, idempotent confirmation, FINISHED lifecycle, public results and RU/KK PDFs.',
   );
 } finally {
   if (tournament) {

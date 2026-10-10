@@ -66,3 +66,26 @@ test('verification fails on a missing table, changed saved timer or changed uniq
     false,
   );
 });
+
+test('live sequence gaps are safe but restore must never reuse an outbox ID', () => {
+  const sequence = {
+    name: 'LiveOutbox_id_seq',
+    increment: '1',
+    maximum: '9223372036854775807',
+    ownerTable: 'LiveOutbox',
+    ownerColumn: 'id',
+    maximumReferencedValue: '9007199254740995',
+    lastValue: '9007199254740995',
+    isCalled: true,
+  };
+  const source = { schema: 'public', tables: [], sequences: [sequence], structure: {} };
+  const copy = (changes) => ({ ...source, sequences: [{ ...sequence, ...changes }] });
+  assert.equal(compareManifests(source, copy({ lastValue: '9007199254742000' })), true);
+  assert.equal(
+    compareManifests(source, copy({ lastValue: '9007199254740995', isCalled: false })),
+    false,
+  );
+  assert.equal(compareManifests(source, copy({ lastValue: '9007199254740994' })), false);
+  assert.equal(compareManifests(source, copy({ increment: '2' })), false);
+  assert.equal(compareManifests(source, { ...source, sequences: [] }), false);
+});

@@ -1,4 +1,4 @@
-import { ApiError } from '../tournaments/api.ts';
+import { isDefinitiveCommandRejection } from '../tournaments/api.ts';
 import type {
   ClubReceipt,
   DraftRow,
@@ -260,13 +260,7 @@ export async function deliverRosterCommand(
       throw new Error('ROSTER_RESPONSE_INVALID');
     return { kind: 'success', receipt };
   } catch (error) {
-    // Auth can expire after a previous delivery applied. Keep the exact name packet until its
-    // receipt or a definite validation rejection is known, including after a reload.
-    const rejected =
-      error instanceof ApiError &&
-      (command.kind === 'name'
-        ? [400, 404, 409].includes(error.status) && error.message !== 'COMMAND_ID_REUSED'
-        : error.status < 500);
+    const rejected = isDefinitiveCommandRejection(error);
     return { kind: rejected ? 'rejected' : 'retry', error };
   }
 }

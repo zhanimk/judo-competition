@@ -5,7 +5,7 @@ import { MatchList } from './match-list';
 import { useLanguage } from '../../shared/i18n/provider';
 import { ResultPlaces } from './result-places';
 import { RoundStandings } from './round-standings';
-import { placements } from '@judo/engine/draw';
+import { placements, drawProgress } from '@judo/engine/draw';
 import type { ComponentProps } from 'react';
 type Props = ComponentProps<typeof TournamentBracket> & { listView?: boolean };
 export function CompetitionDraw(props: Props) {
@@ -19,6 +19,7 @@ export function CompetitionDraw(props: Props) {
       .map((c) => [c.key, c.winnerEntryId!]),
   );
   const places = placements(draw, winners);
+  const progress = drawProgress(draw, winners);
   return (
     <>
       {draw.matches.some((m) => m.stage === 'REPECHAGE') && <RepechageFinal {...props} />}
@@ -63,20 +64,33 @@ export function CompetitionDraw(props: Props) {
           <RoundStandings draw={draw} entries={entries} contests={contests} />
         </details>
       )}
+      {progress.pendingReviews.length > 0 && (
+        <p className="info-note" role="status">
+          {text(
+            'Равенство трёх и более участников: требуется решение администратора. Места и выход из группы ожидают разрешения равенства.',
+            'Үш не одан көп қатысушының көрсеткіші тең: әкімшінің шешімі қажет. Орындар мен топтан шығу теңдік шешілгенше анықталмайды.',
+          )}
+        </p>
+      )}
       {places && <ResultPlaces places={places} entries={entries} />}
       {(round || mixed) && (
         <details className="draw-bottom-section">
           <summary>{text('Как определяются места', 'Орындар қалай анықталады')}</summary>
           <p className="field-note">
-            {draw.tieBreak === 'REMATCH'
+            {draw.tieRanking === 'WINS_ONLY'
               ? text(
-                  'Число побед → личные встречи → дополнительные встречи между участниками с равенством. Места и выход из группы ожидают их завершения.',
-                  'Жеңістер саны → өзара кездесулер → көрсеткіштері тең қатысушылардың қосымша белдесулері. Орындар мен топтан шығу олар аяқталғаннан кейін анықталады.',
+                  'Основной круг ранжируется только по числу побед. Двое с равным числом побед проводят новую схватку независимо от личной встречи. Для трёх и более администратор утверждает дополнительную процедуру; до её завершения места и выход из групп не определяются.',
+                  'Негізгі айналымда тек жеңістер саны есептеледі. Жеңістері тең екеуі бұрынғы өзара кездесуіне қарамастан қайта белдеседі. Үш не одан көп қатысушы үшін әкімші қосымша рәсімді бекітеді; ол аяқталғанша орындар мен топтан шығу анықталмайды.',
                 )
-              : text(
-                  'Число побед → победы между участниками с равным числом побед → номер жребия, опубликованный до начала. Пользовательский профиль, соответствие IJF не проверено.',
-                  'Жеңістер саны → жеңістері тең қатысушылар арасындағы жеңістер → басталғанға дейін жарияланған жеребе нөмірі. Бапталатын профиль, IJF сәйкестігі тексерілмеген.',
-                )}
+              : draw.tieBreak === 'REMATCH'
+                ? text(
+                    'Число побед → личные встречи → дополнительные встречи между участниками с равенством. Места и выход из группы ожидают их завершения.',
+                    'Жеңістер саны → өзара кездесулер → көрсеткіштері тең қатысушылардың қосымша белдесулері. Орындар мен топтан шығу олар аяқталғаннан кейін анықталады.',
+                  )
+                : text(
+                    'Число побед → победы между участниками с равным числом побед → номер жребия, опубликованный до начала. Пользовательский профиль, соответствие IJF не проверено.',
+                    'Жеңістер саны → жеңістері тең қатысушылар арасындағы жеңістер → басталғанға дейін жарияланған жеребе нөмірі. Бапталатын профиль, IJF сәйкестігі тексерілмеген.',
+                  )}
           </p>
         </details>
       )}

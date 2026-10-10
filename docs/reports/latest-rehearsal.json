@@ -1,136 +1,67 @@
 {
-  "startedAt": "2026-10-10T07:41:15.705Z",
-  "schema": "qa_rehearsal_cd75e438970e4552bbfe92f9095cea5b",
-  "passed": true,
+  "startedAt": "2026-10-10T09:49:19.476Z",
+  "schema": "qa_rehearsal_d2c3e8be8f594fcf8fb2fb6fd5934a3a",
+  "passed": false,
   "suites": [
     {
       "name": "migrations",
       "passed": true,
-      "durationMs": 833
+      "durationMs": 628
     },
     {
       "name": "migrations-repeat",
       "passed": true,
-      "durationMs": 582
+      "durationMs": 543
     },
     {
       "name": "integration",
       "passed": true,
-      "durationMs": 220
+      "durationMs": 260
     },
     {
       "name": "auth-integration",
       "passed": true,
-      "durationMs": 364
+      "durationMs": 355
+    },
+    {
+      "name": "auth-safety-integration",
+      "passed": true,
+      "durationMs": 1277
     },
     {
       "name": "roster-integration",
       "passed": true,
-      "durationMs": 1040
+      "durationMs": 1080
     },
     {
       "name": "roster-corrections-integration",
       "passed": true,
-      "durationMs": 970
+      "durationMs": 1205
     },
     {
       "name": "draw-integration",
       "passed": true,
-      "durationMs": 396
+      "durationMs": 479
     },
     {
       "name": "scheduling-integration",
       "passed": true,
-      "durationMs": 728
+      "durationMs": 893
     },
     {
       "name": "public-integration",
       "passed": true,
-      "durationMs": 318
+      "durationMs": 379
     },
     {
-      "name": "control-integration",
-      "passed": true,
-      "durationMs": 864
-    },
-    {
-      "name": "formats-integration",
-      "passed": true,
-      "durationMs": 4952
-    },
-    {
-      "name": "rematches-integration",
-      "passed": true,
-      "durationMs": 2592
-    },
-    {
-      "name": "live-integration",
-      "passed": true,
-      "durationMs": 22230
-    },
-    {
-      "name": "roster-name-integration",
-      "passed": true,
-      "durationMs": 854
-    },
-    {
-      "name": "clock-correction-integration",
-      "passed": true,
-      "durationMs": 4865
-    },
-    {
-      "name": "tatami-access-integration",
-      "passed": true,
-      "durationMs": 1643
-    },
-    {
-      "name": "access-session-race-integration",
-      "passed": true,
-      "durationMs": 453
-    },
-    {
-      "name": "draw-session-race-integration",
-      "passed": true,
-      "durationMs": 403
-    },
-    {
-      "name": "athlete-identity-integration",
-      "passed": true,
-      "durationMs": 685
-    },
-    {
-      "name": "protocol-integration",
-      "passed": true,
-      "durationMs": 6776
-    },
-    {
-      "name": "actual-process-restart-and-persistence",
-      "passed": true
+      "name": "public-snapshot-integration",
+      "passed": false,
+      "durationMs": 288
     }
   ],
-  "output": "tmp/rehearsal/qa_rehearsal_cd75e438970e4552bbfe92f9095cea5b",
-  "suiteBoundaryRestarts": 2,
-  "persistence": {
-    "tournamentId": "7b2eb9a1-6e44-4be3-a025-f1b5e441ea6a",
-    "confirmedBouts": 3,
-    "crashRestarts": 2,
-    "gracefulRestarts": 1,
-    "checks": [
-      "running hold checkpoint",
-      "fresh DB connection",
-      "paused clock recovery",
-      "session recovery",
-      "club/roster retry after crash without duplicate entries or audit",
-      "update/archive/restore original receipts and archived row after crash",
-      "assignment retry after crash without clock or audit changes",
-      "hold without duplication",
-      "confirmed result and draw recovery",
-      "confirmation retry after crash",
-      "third shido ippon",
-      "completed tournament public results",
-      "PDF after restart"
-    ]
-  },
+  "output": "tmp/rehearsal/qa_rehearsal_d2c3e8be8f594fcf8fb2fb6fd5934a3a",
+  "suiteBoundaryRestarts": 1,
+  "error": "AssertionError [ERR_ASSERTION]: public-snapshot-integration failed; see tmp/rehearsal/qa_rehearsal_d2c3e8be8f594fcf8fb2fb6fd5934a3a/public-snapshot-integration.log\n\n1 !== 0\n\n    at run (file:///Users/zhanetta/Desktop/judo%20competition/scripts/rehearsal.mjs:50:10)\n    at async file:///Users/zhanetta/Desktop/judo%20competition/scripts/rehearsal.mjs:130:5",
   "cleanedUp": true,
-  "finishedAt": "2026-10-10T07:42:16.827Z"
+  "finishedAt": "2026-10-10T09:49:27.586Z"
 }

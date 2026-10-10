@@ -18,6 +18,8 @@ export async function useLegacyRules(db, tournamentId) {
   const t = await db.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
   const rules = { ...t.rulesSnapshot, version: 'custom-2026-v2' };
   delete rules.drawPolicy;
+  delete rules.tieRanking;
+  delete rules.tieMany;
   await db.tournament.update({ where: { id: tournamentId }, data: { rulesSnapshot: rules } });
 }
 
@@ -42,4 +44,13 @@ export async function createTestEntries(db, entries) {
     if (identities.length) await tx.athlete.createMany({ data: identities });
     return tx.entry.createMany({ data });
   });
+}
+
+/** Explicit historical v3 auto-circle fixtures, never the new tournament default. */
+export async function useLegacyV3Rules(db, tournamentId) {
+  const t = await db.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+  const rules = { ...t.rulesSnapshot, version: 'custom-2026-v3' };
+  delete rules.tieRanking;
+  delete rules.tieMany;
+  await db.tournament.update({ where: { id: tournamentId }, data: { rulesSnapshot: rules } });
 }

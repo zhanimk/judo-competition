@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
 export type QueueItem = {
   round?: number;
@@ -11,6 +12,7 @@ export type QueueItem = {
 };
 export function QueueView({ items }: { items: QueueItem[] }) {
   const { text } = useLanguage();
+  const [limit, setLimit] = useState(50);
   return (
     <section className="panel" style={{ marginTop: 24 }}>
       <div className="panel-heading">
@@ -29,7 +31,7 @@ export function QueueView({ items }: { items: QueueItem[] }) {
               </tr>
             </thead>
             <tbody>
-              {items.map((m, i) => (
+              {items.slice(0, limit).map((m, i) => (
                 <tr key={m.id}>
                   <td>
                     {i + 1} · {m.key}
@@ -53,6 +55,23 @@ export function QueueView({ items }: { items: QueueItem[] }) {
               ))}
             </tbody>
           </table>
+          {items.length > 50 && (
+            <div className="panel-actions">
+              <span>
+                {text('Показано', 'Көрсетілген')}: {Math.min(items.length, limit)} / {items.length}
+              </span>
+              {limit < items.length && (
+                <button onClick={() => setLimit((n) => n + 50)}>
+                  {text('Показать следующие 50', 'Келесі 50 белдесуді көрсету')}
+                </button>
+              )}
+              {limit > 50 && (
+                <button onClick={() => setLimit(50)}>
+                  {text('Свернуть очередь', 'Кезекті жинау')}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <p className="state-box">

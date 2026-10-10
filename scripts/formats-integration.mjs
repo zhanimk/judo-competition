@@ -90,7 +90,9 @@ try {
   );
   const frozen = (await db.tournament.findUniqueOrThrow({ where: { id: tournament } }))
     .rulesSnapshot;
-  assert.equal(frozen.version, 'custom-2026-v3');
+  assert.equal(frozen.version, 'custom-2026-v4');
+  assert.equal(frozen.tieRanking, 'WINS_ONLY');
+  assert.equal(frozen.tieMany, 'ADMIN_REVIEW');
   assert.equal(frozen.drawPolicy, 'REPECHAGE_ONLY');
   for (const c of await db.category.findMany({
     where: { tournamentId: tournament },
@@ -124,7 +126,7 @@ try {
     // Only disposable QA records get accelerated rest; clocks and real tournaments are untouched.
     await db.contest.updateMany({
       where: { draw: { category: { tournamentId: tournament } }, status: 'CONFIRMED' },
-      data: { confirmedAt: new Date(Date.now() - 601000) },
+      data: { endedAt: new Date(Date.now() - 601000) },
     });
     let result = await post(`/tatamis/${row.tatamiId}/live/${row.id}/command`, {
       id: randomUUID(),

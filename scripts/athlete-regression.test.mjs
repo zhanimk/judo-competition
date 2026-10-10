@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Prisma } from '@prisma/client';
 import { applyCommand, createMatch } from '@judo/engine/match';
-import { generateDraw } from '@judo/engine/draw';
+import { generateDraw, resolveMatches } from '@judo/engine/draw';
 import { MatchesService } from '../apps/api/dist/modules/matches/matches.service.js';
 import { ControlService } from '../apps/api/dist/modules/control/control.service.js';
 import {
@@ -90,6 +90,7 @@ function fixture({
     winnerEntryId: phase === 'CONFIRMED' ? entries[0].id : null,
     resultReason: phase === 'CONFIRMED' ? 'IPPON' : null,
     confirmedAt: phase === 'CONFIRMED' ? new Date() : null,
+    endedAt: null,
     updatedAt: new Date('2026-10-09T01:00:00Z'),
     draw: {
       status: 'CONFIRMED',
@@ -98,6 +99,11 @@ function fixture({
       category: { tournamentId: tournament, homeTatamiId: mat, durationSeconds: 180 },
     },
   };
+  const pair = resolveMatches(draw, {})[0];
+  row.whiteEntryId = pair.whiteEntryId;
+  row.blueEntryId = pair.blueEntryId;
+  row.draw.id = row.drawId;
+  row.draw.version = 1;
   let saved = {
     entries,
     athletes: athleteIds.map((id) => ({ id })),
@@ -153,8 +159,9 @@ function fixture({
   const notices = [];
   const matchesWhere = (value, where = {}) => {
     if (where.OR && !where.OR.some((condition) => matchesWhere(value, condition))) return false;
+    if (where.AND && !where.AND.every((condition) => matchesWhere(value, condition))) return false;
     for (const [key, wanted] of Object.entries(where)) {
-      if (key === 'OR') continue;
+      if (key === 'OR' || key === 'AND') continue;
       if (key === 'draw') {
         if (!matchesWhere(value.draw, wanted)) return false;
       } else if (key === 'category') {
@@ -182,6 +189,7 @@ function fixture({
       findMany: async ({ where }) =>
         structuredClone(data.entries.filter((entry) => matchesWhere(entry, where))),
     },
+    tournamentCommand: { findFirst: async () => null },
     rosterCommand: { findFirst: async () => null },
     accessCommand: { findFirst: async () => null },
     session: { findUnique: async () => structuredClone(data.session) },
@@ -193,10 +201,36 @@ function fixture({
         return structuredClone(data.tournament);
       },
     },
+    drawRecord: {
+      findMany: async ({ where }) =>
+        structuredClone(
+          [...new Set(data.rows.map((value) => value.drawId))]
+            .filter((id) => where.id.in.includes(id))
+            .map((id) => {
+              const record = data.rows.find((value) => value.drawId === id).draw;
+              return {
+                id,
+                status: record.status,
+                snapshot: record.snapshot,
+                contests: data.rows.filter((value) => value.drawId === id),
+              };
+            })
+            .filter((record) => record.status === where.status),
+        ),
+    },
     contest: {
       findUnique: async ({ where }) => structuredClone(findRows(data, where)[0] ?? null),
       findFirst: async ({ where }) => structuredClone(findRows(data, where)[0] ?? null),
-      findMany: async ({ where }) => structuredClone(findRows(data, where)),
+      findMany: async ({ where }) =>
+        structuredClone(
+          findRows(data, where).map((value) => ({
+            ...value,
+            draw: {
+              ...value.draw,
+              contests: data.rows.filter((other) => other.drawId === value.drawId),
+            },
+          })),
+        ),
       aggregate: async ({ where }) => ({
         _min: { round: Math.min(...findRows(data, where).map((value) => value.round)) },
         _max: {
@@ -215,6 +249,24 @@ function fixture({
         return structuredClone(value);
       },
     },
+    category: {
+      findMany: async ({ where }) =>
+        where.tournamentId && where.tournamentId !== tournament
+          ? []
+          : [
+              {
+                ...row.draw.category,
+                id: categoryId,
+                entries: structuredClone(data.entries.slice(0, 2)),
+                draw: {
+                  ...data.rows[0].draw,
+                  contests: structuredClone(
+                    data.rows.filter((value) => value.drawId === row.drawId),
+                  ),
+                },
+              },
+            ],
+    },
     tatami: {
       findUnique: async ({ where }) => structuredClone(data.grants[where.id] ?? null),
       update: async ({ where, data: changes }) => {
@@ -232,6 +284,9 @@ function fixture({
       createMany: async ({ data: events }) => data.events.push(...structuredClone(events)),
       create: async ({ data: event }) => data.events.push(structuredClone(event)),
     },
+    drawCommand: { findFirst: async () => null },
+    protocolCommand: { findFirst: async () => null },
+    liveOutbox: { create: async () => ({ id: 1n }) },
     auditEvent: { create: async ({ data: audit }) => data.audits.push(structuredClone(audit)) },
   });
   const db = {
@@ -393,7 +448,7 @@ test('rest follows archived aliases across tournaments and the current target pr
   assert.equal((await allowed.send(allowed.command())).status, 'ACTIVE');
 });
 
-test('strict rest boundary allows equality while a newer confirmedAt is blocked', async () => {
+test('historical rest boundary allows equality while a newer confirmation is blocked', async () => {
   const fixed = Date.now();
   const originalNow = Date.now;
   Date.now = () => fixed;
@@ -504,7 +559,10 @@ test('administrative RESET repairs an incomplete pair and WAITING REMOVE keeps i
   assert.equal(h.snapshot().rows[0].state, null);
   assert.deepEqual(
     h.locks.filter((lock) => lock.query.includes('FROM "Athlete"')).map((lock) => lock.values[0]),
-    [h.snapshot().entries[0].athleteId],
+    [
+      h.snapshot().entries.find((entry) => entry.id === h.snapshot().rows[0].whiteEntryId)
+        .athleteId,
+    ],
   );
   const waiting = fixture();
   waiting.mutate((saved) => {
@@ -595,4 +653,27 @@ test('administrative offline release clears the old reservation generation and p
   assert.deepEqual(after.rows[0].state.hold, before.rows[0].state.hold);
   assert.equal(after.rows[0].state.version, before.rows[0].state.version + 1);
   assert.equal(after.grants[h.mat].controlGeneration, before.grants[h.mat].controlGeneration + 1);
+});
+
+test('rest uses sporting finish despite delayed confirmation and keeps legacy fallback', async () => {
+  const h = fixture({ foreignStatus: 'CONFIRMED', recentAgo: 1000 });
+  h.mutate((saved) => {
+    saved.rows[1].endedAt = new Date(Date.now() - 601000);
+  });
+  assert.equal((await h.send(h.command())).status, 'ACTIVE');
+  const blocked = fixture({ foreignStatus: 'CONFIRMED', recentAgo: 601000 });
+  blocked.mutate((saved) => {
+    saved.rows[1].endedAt = new Date(Date.now() - 1000);
+  });
+  await assert.rejects(blocked.send(blocked.command()), conflict('REST_REQUIRED'));
+});
+
+test('sporting finish survives confirmation and clearing the award clears finish', async () => {
+  const h = fixture({ phase: 'ACTIVE' });
+  const provisional = await h.send(h.command({ type: 'AWARD', side: 'WHITE', kind: 'IPPON' }));
+  const finish = h.snapshot().rows[0].endedAt;
+  assert.ok(finish instanceof Date);
+  await h.send(h.command({ type: 'CONFIRM' }));
+  assert.equal(h.snapshot().rows[0].endedAt.getTime(), finish.getTime());
+  assert.equal(provisional.state.status, 'PROVISIONAL');
 });

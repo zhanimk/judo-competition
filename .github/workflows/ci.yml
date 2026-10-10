@@ -1,0 +1,106 @@
+name: Verify competition platform
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verification-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18.6-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_synthetic_only
+          POSTGRES_DB: judo_ci
+          POSTGRES_INITDB_ARGS: --encoding=UTF8
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d judo_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:ci_synthetic_only@127.0.0.1:5432/judo_ci?schema=public
+      REDIS_URL: redis://127.0.0.1:6379/0
+      ALLOWED_ORIGINS: http://127.0.0.1:4318
+      COOKIE_SECURE: 'false'
+      API_REPLICAS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm audit --audit-level=high
+      - run: npm run check
+      - name: Install matching PostgreSQL restore tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-18
+          echo /usr/lib/postgresql/18/bin >> "$GITHUB_PATH"
+      # Workspace CLI scripts load this optional local file; CI configuration is inherited above.
+      - run: touch apps/api/.env
+      - run: npm run test:rehearsal
+      - name: Validate deployment configuration without secrets
+        env:
+          APP_DATABASE_PASSWORD: '00000000000000000000000000000000'
+          POSTGRES_ADMIN_PASSWORD: '11111111111111111111111111111111'
+          REDIS_PASSWORD: '22222222222222222222222222222222'
+          PUBLIC_ORIGIN: https://judo.example.invalid
+        run: docker compose -f compose.yaml -f compose.https.yaml config --quiet
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-reports
+          path: |
+            docs/reports/latest-rehearsal.json
+            docs/reports/latest-engine-audit.json
+          if-no-files-found: ignore
+  images:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: api
+          push: false
+          tags: judo-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: web
+          push: false
+          tags: judo-web:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: operations
+          push: false
+          tags: judo-operations:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,19 +1,24 @@
 {
-  "startedAt": "2026-10-09T16:08:15.026Z",
+  "startedAt": "2026-10-10T09:40:44.453Z",
   "passed": true,
-  "output": "tmp/roster-upgrade/verified-2026-10-09T16-08-15.024Z-e37c3c03",
-  "dumpPath": "tmp/roster-upgrade/verified-2026-10-09T16-08-15.024Z-e37c3c03/database.dump",
+  "output": "tmp/roster-upgrade/verified-2026-10-10T09-40-44.451Z-8c334a1f",
+  "dumpPath": "tmp/roster-upgrade/verified-2026-10-10T09-40-44.451Z-8c334a1f/database.dump",
   "schema": "public",
-  "verificationDatabase": "qa_restore_152e9569d99b43fa9c3ec05ed8c80a16",
+  "verificationDatabase": "qa_restore_0fd2633111f54eaaa3448ae74ad86f1a",
   "verificationDatabaseRemoved": true,
   "versions": {
     "server": "180003",
     "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
     "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
   },
-  "dumpBytes": 90002,
-  "dumpSha256": "fe3bd7e5b6da36a30c7c8cde08e17e5bd29036f5ba44ce4f93680003e2c09292",
+  "dumpBytes": 93583,
+  "dumpSha256": "7e0c35a6f3df7ed0eb9ac4e9ba67af8390235d19a2f9ee6fec32d9ded4c3e6af",
   "tables": [
+    {
+      "name": "AccessCommand",
+      "rows": 0,
+      "matched": true
+    },
     {
       "name": "Athlete",
       "rows": 34,
@@ -66,7 +71,7 @@
     },
     {
       "name": "Session",
-      "rows": 23,
+      "rows": 25,
       "matched": true
     },
     {
@@ -86,14 +91,14 @@
     },
     {
       "name": "_prisma_migrations",
-      "rows": 14,
+      "rows": 15,
       "matched": true
     }
   ],
   "schemaStructureMatched": true,
   "additionalValidation": {
     "passed": true,
-    "oldTablesPreserved": 15,
+    "oldTablesPreserved": 16,
     "oldColumnValuesPreserved": true,
     "oldEntryAndDrawIdsPreserved": true,
     "legacyClubLinksVerified": true,
@@ -108,5 +113,5 @@
     "accessControlDefaultsVerified": true,
     "historicalAccessAndAccountsPreserved": true
   },
-  "finishedAt": "2026-10-09T16:08:16.517Z"
+  "finishedAt": "2026-10-10T09:40:46.304Z"
 }

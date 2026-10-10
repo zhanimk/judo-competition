@@ -15,12 +15,13 @@ import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { Prisma, type Contest } from '@prisma/client';
 import { createMatch, applyCommand, type MatchState, type Command } from '@judo/engine/match';
-import { resolveMatches, appendRematches, type Draw } from '@judo/engine/draw';
+import { propagateDraw, tournamentComplete } from '../draws/draw-propagation.js';
 import { DatabaseService } from '../../database/database.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/auth.types.js';
 import { assertActivePrincipal, assertTatamiControl } from '../auth/access-guards.js';
 import { LiveService } from './live.service.js';
+import { enqueueLive } from './live-outbox.js';
 import { MatchCommandDto } from './matches.dto.js';
 import { assertUnusedCommandIds } from './command-ids.js';
 import { lockContestAthletes, requireAvailableAthletes } from './athlete-guards.js';
@@ -176,6 +177,11 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
                 payload,
               },
             });
+            await enqueueLive(tx, {
+              tournamentId: item.draw.category.tournamentId,
+              tatamiId: item.tatamiId ?? undefined,
+              kind: 'state',
+            });
             return true;
           }
           // A valid offline lease owns its own clock and event journal. Only
@@ -193,6 +199,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
               clockAnchorMs: at,
               clockEpoch: this.epoch,
               ...(recovery || terminal ? { revision: { increment: 1 } } : {}),
+              ...(state.outcome ? { endedAt: row.endedAt ?? new Date() } : { endedAt: null }),
             },
           });
           if (recovery)
@@ -234,6 +241,12 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
               },
             });
           }
+          if (recovery || terminal)
+            await enqueueLive(tx, {
+              tournamentId: item.draw.category.tournamentId,
+              tatamiId: item.tatamiId ?? undefined,
+              kind: 'state',
+            });
           return true;
         });
         if (changed)
@@ -247,19 +260,19 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       this.ticking = false;
     }
   }
-  async view(tatamiId: string) {
-    const mat = await this.db.tatami.findUnique({
+  async view(tatamiId: string, db: Prisma.TransactionClient = this.db) {
+    const mat = await db.tatami.findUnique({
       where: { id: tatamiId },
       include: { tournament: { select: { id: true, name: true, status: true } } },
     });
     if (!mat) throw new NotFoundException('TATAMI_NOT_FOUND');
-    const row = await this.db.contest.findFirst({
+    const row = await db.contest.findFirst({
       where: { tatamiId, status: 'ACTIVE' },
       include: {
         draw: { include: { category: { include: { entries: { where: { archivedAt: null } } } } } },
       },
     });
-    const recent = await this.db.contest.findFirst({
+    const recent = await db.contest.findFirst({
       where: { tatamiId, status: 'CONFIRMED' },
       orderBy: { confirmedAt: 'desc' },
       include: {
@@ -340,7 +353,18 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         tournamentId: access.tournamentId,
         tatamiId,
       });
-      await tx.$queryRaw`SELECT id FROM "Contest" WHERE id=${id} FOR UPDATE`;
+      const lookup = await tx.contest.findUnique({
+        where: { id },
+        include: { draw: { include: { category: true } } },
+      });
+      if (
+        !lookup ||
+        lookup.draw.categoryId === undefined ||
+        lookup.draw.category.tournamentId !== access.tournamentId
+      )
+        throw new NotFoundException('MATCH_NOT_FOUND');
+      await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${lookup.draw.categoryId} AND "tournamentId"=${access.tournamentId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM "Contest" WHERE "drawId"=${lookup.drawId} ORDER BY id FOR UPDATE`;
       const row = await tx.contest.findUnique({
         where: { id },
         include: { draw: { include: { category: true } } },
@@ -419,8 +443,8 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
           throw new ConflictException('PREVIOUS_ROUND_PENDING');
         const first = (await readyQueue(tx, tatamiId))[0];
         if (first?.id !== id) throw new ConflictException('QUEUE_ORDER');
-        // Still counted from confirmedAt; the target tournament's saved profile
-        // applies to all aliases of these athletes, including other tournaments.
+        // Rest starts at the server-observed sporting finish; historical bouts
+        // without a finish timestamp conservatively fall back to confirmation.
         await requireAvailableAthletes(tx, row, athletes, {
           restMs: profile(tournament.rulesSnapshot).restMs,
         });
@@ -441,18 +465,29 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
           : this.advance(row, at);
         await this.recordHoldScore(tx, row, state);
       }
+      const finishingAt = new Date();
+      let endedAt = state.outcome ? (row.endedAt ?? finishingAt) : null;
+      const apply = (command: Command) => {
+        const beforeOutcome = state.outcome;
+        state = applyCommand(state, command);
+        endedAt = state.outcome
+          ? beforeOutcome && isDeepStrictEqual(beforeOutcome, state.outcome)
+            ? endedAt
+            : finishingAt
+          : null;
+        state.receipts = {};
+      };
       try {
         if (dto.type === 'OFFLINE_OPEN') {
           if (!['PAUSED', 'DECISION', 'PROVISIONAL'].includes(state.status) || state.hold)
             throw new Error('PAUSE_REQUIRED');
         } else if (offline) {
           for (const event of events) {
-            state = applyCommand(state, event as Command);
-            state.receipts = {};
+            apply(event as Command);
           }
           if (dto.type === 'OFFLINE_RELEASE' && (state.status === 'RUNNING' || state.hold))
             throw new Error('PAUSE_REQUIRED');
-        } else state = applyCommand(state, { ...dto, expectedVersion: state.version } as Command);
+        } else apply({ ...dto, expectedVersion: state.version } as Command);
       } catch (e) {
         throw new ConflictException((e as Error).message);
       }
@@ -484,6 +519,8 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
           winnerEntryId: winner,
           resultReason: confirmed ? state.outcome!.reason : null,
           confirmedAt: confirmed ? new Date() : null,
+          // Offline event timestamps are untrusted: use server receipt time.
+          endedAt,
         },
       });
       await tx.tatami.update({
@@ -529,68 +566,9 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         const homeTatamiId = row.draw.category.homeTatamiId ?? tatamiId;
         if (!row.draw.category.homeTatamiId)
           await tx.category.update({ where: { id: row.draw.categoryId }, data: { homeTatamiId } });
-        let all = await tx.contest.findMany({ where: { drawId: row.drawId } });
-        const winners = Object.fromEntries(
-          all
-            .filter((c) => c.status === 'CONFIRMED' && c.winnerEntryId)
-            .map((c) => [c.key, c.winnerEntryId!]),
-        );
-        const beforeDraw = row.draw.snapshot as unknown as Draw;
-        const draw = appendRematches(beforeDraw, winners);
-        if (draw !== beforeDraw) {
-          await tx.drawRecord.update({ where: { id: row.drawId }, data: { snapshot: json(draw) } });
-          const added = draw.matches.filter(
-            (m) => !beforeDraw.matches.some((old) => old.id === m.id),
-          );
-          await tx.contest.createMany({
-            data: added.map((m) => ({
-              drawId: row.drawId,
-              key: m.id,
-              round: m.round,
-              status: 'WAITING',
-            })),
-          });
-          await tx.auditEvent.create({
-            data: {
-              actorId: user.id,
-              tournamentId: access.tournamentId,
-              entityId: row.drawId,
-              action: 'TIEBREAK_CREATED',
-              payload: json({ matches: added }),
-            },
-          });
-          all = await tx.contest.findMany({ where: { drawId: row.drawId } });
-        }
-        const resolved = resolveMatches(draw, winners);
-        for (const m of resolved) {
-          const target = all.find((c) => c.key === m.id)!;
-          if (target.status === 'WAITING' && m.ready) {
-            const last = await tx.contest.aggregate({
-              where: { tatamiId: homeTatamiId },
-              _max: { queueOrder: true },
-            });
-            await tx.contest.update({
-              where: { id: target.id },
-              data: {
-                whiteEntryId: m.whiteEntryId,
-                blueEntryId: m.blueEntryId,
-                status: 'READY',
-                tatamiId: homeTatamiId,
-                queueOrder: (last._max.queueOrder ?? 0) + 1,
-              },
-            });
-          }
-        }
+        await propagateDraw(tx, row.draw, homeTatamiId, user.id, access.tournamentId);
       }
-      if (
-        confirmed &&
-        !(await tx.contest.count({
-          where: {
-            draw: { category: { tournamentId: access.tournamentId } },
-            status: { not: 'CONFIRMED' },
-          },
-        }))
-      ) {
+      if (confirmed && (await tournamentComplete(tx, access.tournamentId))) {
         await tx.tournament.update({
           where: { id: access.tournamentId },
           data: { status: 'FINISHED' },
@@ -605,6 +583,11 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
           },
         });
       }
+      await enqueueLive(tx, {
+        tournamentId: access.tournamentId,
+        tatamiId,
+        kind: confirmed ? 'result' : 'state',
+      });
       return response;
     });
     this.live.notify({

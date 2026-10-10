@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import type { PublicTournament } from './public-hub';
-import { finalCategoryPlaces } from './results-model';
+import { categoryProgress, finalCategoryPlaces } from './results-model';
 import { ResultPlaces } from '../draws/result-places';
 import { ResultsTable } from '../live/results-table';
 import { useLanguage } from '../../shared/i18n/provider';
@@ -12,6 +12,7 @@ export function PublicResults({ tournament }: { tournament: PublicTournament }) 
   const categories = tournament.categories.map((c) => ({
     ...c,
     places: c.draw ? finalCategoryPlaces(c.draw.snapshot, c.draw.contests) : null,
+    progress: c.draw ? categoryProgress(c.draw.snapshot, c.draw.contests) : null,
   }));
   categories.sort((a, b) => Number(b.places !== null) - Number(a.places !== null));
   const completed = categories.filter((c) => c.places !== null).length;
@@ -98,7 +99,11 @@ export function PublicResults({ tournament }: { tournament: PublicTournament }) 
                   {c.places
                     ? text('Итоги подтверждены', 'Қорытынды расталды')
                     : c.draw
-                      ? text('Ещё идут встречи', 'Белдесулер жалғасуда')
+                      ? c.progress?.phase === 'ADMIN_REVIEW'
+                        ? text('Ожидается решение администратора', 'Әкімшінің шешімі күтілуде')
+                        : c.progress?.phase === 'TIEBREAK'
+                          ? text('Дополнительные схватки', 'Қосымша белдесулер')
+                          : text('Ещё идут встречи', 'Белдесулер жалғасуда')
                       : text('Результаты не опубликованы', 'Нәтижелер жарияланбаған')}
                 </span>
               </header>
@@ -114,6 +119,14 @@ export function PublicResults({ tournament }: { tournament: PublicTournament }) 
                 </>
               ) : c.draw ? (
                 <div className="category-progress">
+                  {c.progress?.phase === 'ADMIN_REVIEW' && (
+                    <p className="field-note">
+                      {text(
+                        'Равное число побед у трёх или более участников. Итоговые места появятся после решения администратора и завершения дополнительных встреч.',
+                        'Үш немесе одан көп қатысушының жеңіс саны тең. Қорытынды орындар әкімші шешімі мен қосымша белдесулер аяқталғаннан кейін көрсетіледі.',
+                      )}
+                    </p>
+                  )}
                   <progress
                     max={Math.max(1, total)}
                     value={finished}

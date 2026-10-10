@@ -451,7 +451,7 @@ try {
   assert.deepEqual(await ok(sportingPath(winner.context), winner.payload), winner.response.body);
   await db.contest.update({
     where: { id: winner.context.contest.id },
-    data: { confirmedAt: new Date(Date.now() - 601000) },
+    data: { endedAt: new Date(Date.now() - 601000) },
   });
   const reservationRace = await Promise.all([
     call(sportingPath(loser.context), await sportingPayload(loser.context, 'START')),

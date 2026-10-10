@@ -178,14 +178,14 @@ async function assertStale(categoryId, previous) {
   return current;
 }
 
-async function waitForCategoryBlock(blockerPids, excludedPids = []) {
+async function waitForTournamentBlock(blockerPids, excludedPids = []) {
   const deadline = Date.now() + 3000;
   while (Date.now() < deadline) {
     const waiting = await db.$queryRaw`
       SELECT pid, pg_blocking_pids(pid) AS blockers
       FROM pg_stat_activity
       WHERE datname = current_database() AND usename = current_user
-        AND query LIKE '%SELECT id FROM "Category"%'
+        AND query LIKE '%SELECT id FROM "Tournament"%'
     `;
     const blocked = waiting.find(
       (row) =>
@@ -194,7 +194,7 @@ async function waitForCategoryBlock(blockerPids, excludedPids = []) {
     if (blocked) return blocked.pid;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  assert.fail('both HTTP commands must reach the real PostgreSQL category lock queue');
+  assert.fail('both HTTP commands must reach the real PostgreSQL tournament lock queue');
 }
 
 async function correctionConfirmRace(winner) {
@@ -223,19 +223,19 @@ async function correctionConfirmRace(winner) {
   const pending = [];
   const order = [winner, winner === 'confirm' ? 'correction' : 'confirm'];
   try {
-    // The suite holds only its own category. Start both HTTP requests while it
+    // The suite holds only its own tournament. Start both HTTP requests while it
     // is held and observe PostgreSQL's actual lock queue before releasing it.
     // FIFO tuple locking then exercises both possible serializations reliably.
     await db.$transaction(
       async (tx) => {
         const [{ pid }] = await tx.$queryRaw`SELECT pg_backend_pid() AS pid`;
-        await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${raceCategory.id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
         pending.push(requests[order[0]]());
         pending[0].catch(() => {});
-        const firstPid = await waitForCategoryBlock([pid]);
+        const firstPid = await waitForTournamentBlock([pid]);
         pending.push(requests[order[1]]());
         pending[1].catch(() => {});
-        await waitForCategoryBlock([pid, firstPid], [firstPid]);
+        await waitForTournamentBlock([pid, firstPid], [firstPid]);
       },
       { timeout: 10000 },
     );

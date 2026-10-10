@@ -1,3 +1,4 @@
+import { fixtureRequest } from './test-access.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
@@ -9,11 +10,18 @@ const users = [];
 let tournament;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function call(path, data, cookie = '') {
-  const response = await fetch(base + path, {
-    method: data === undefined ? 'GET' : 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Judo-Client': 'web', Cookie: cookie },
-    body: data === undefined ? undefined : JSON.stringify(data),
-  });
+  const legacyAdministration =
+    path === '/tournaments' ||
+    /^\/tournaments\/[^/]+\/(categories|start|schedule|publish)$/.test(path) ||
+    /^\/categories\/[^/]+\/draw\/(preview|confirm|publication)$/.test(path);
+  const response =
+    legacyAdministration && data !== undefined
+      ? await fixtureRequest(base, path, data, cookie)
+      : await fetch(base + path, {
+          method: data === undefined ? 'GET' : 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Judo-Client': 'web', Cookie: cookie },
+          body: data === undefined ? undefined : JSON.stringify(data),
+        });
   return {
     status: response.status,
     body: await response.json(),

@@ -88,8 +88,18 @@ export async function requireAvailableAthletes(
       where: {
         id: { not: row.id },
         status: 'CONFIRMED',
-        confirmedAt: { gt: new Date(Date.now() - options.restMs) },
-        OR: participants,
+        AND: [
+          { OR: participants },
+          {
+            OR: [
+              { endedAt: { gt: new Date(Date.now() - options.restMs) } },
+              {
+                endedAt: null,
+                confirmedAt: { gt: new Date(Date.now() - options.restMs) },
+              },
+            ],
+          },
+        ],
       },
       select: { id: true },
     })

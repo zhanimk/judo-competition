@@ -4,11 +4,13 @@ export type Profile = Omit<Rules, 'durationMs'> & {
   drawPolicy?: 'REPECHAGE_ONLY';
   official: false;
   tieBreak: 'PUBLISHED_LOT' | 'REMATCH';
+  tieRanking?: 'WINS_ONLY';
+  tieMany?: 'ADMIN_REVIEW';
   restMs: number;
   categories?: Record<string, { durationSeconds: number; format: string; resolvedFormat?: string }>;
   approvedAt?: string;
 };
-export const currentProfile = (): Profile => ({
+export const legacyProfile = (): Profile => ({
   version: 'custom-2026-v3',
   drawPolicy: 'REPECHAGE_ONLY',
   official: false,
@@ -23,7 +25,14 @@ export const currentProfile = (): Profile => ({
     { ms: 20000, score: 'IPPON' },
   ],
 });
-export const profile = (value: unknown): Profile => (value as Profile) ?? currentProfile();
+export const currentProfile = (): Profile => ({
+  ...legacyProfile(),
+  version: 'custom-2026-v4',
+  tieRanking: 'WINS_ONLY',
+  tieMany: 'ADMIN_REVIEW',
+});
+// A missing historical snapshot must never silently acquire newer sporting rules.
+export const profile = (value: unknown): Profile => (value as Profile) ?? legacyProfile();
 export function matchRules(value: unknown, categoryId: string, durationSeconds: number): Rules {
   const p = profile(value);
   return {

@@ -1,10 +1,11 @@
+import { enqueueLive } from '../matches/live-outbox.js';
 import { drawFormat, type Draw } from '@judo/engine/draw';
 import { currentProfile, profile } from '../rules/profile.js';
 import { scheduleCategories } from './scheduling.js';
 import { LiveService } from '../matches/live.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/auth.types.js';
-import { assertActivePrincipal } from '../auth/access-guards.js';
+import { assertSessionIdentity, lockAdminMutation } from '../auth/access-guards.js';
 import { requireCompetitionCategories } from './active-categories.js';
 import { ForbiddenException } from '@nestjs/common';
 import {
@@ -15,21 +16,92 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../../database/database.service.js';
-import { CreateTournamentDto, CreateCategoryDto, CreateEntryDto } from './dto.js';
-import { cleanName, normalizedName } from '../roster/roster-validation.js';
-import { invalidatePreviewDraws } from '../roster/draw-invalidation.js';
+import {
+  AdministrationCommandDto,
+  CreateTournamentDto,
+  CreateCategoryDto,
+  CreateEntryDto,
+} from './dto.js';
+import { RosterService } from '../roster/roster.service.js';
+import { assertUnusedCommandIds } from '../matches/command-ids.js';
+import { isDeepStrictEqual } from 'node:util';
+const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 @Injectable()
 export class TournamentsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly live: LiveService,
     private readonly auth: AuthService,
+    private readonly roster: RosterService,
   ) {}
-  async start(id: string, user: Principal) {
+  private async receipt(
+    tx: Prisma.TransactionClient,
+    tournamentId: string | null,
+    dto: { id: string },
+    type: string,
+    user: Principal,
+  ) {
+    const receipt = await tx.tournamentCommand.findUnique({ where: { id: dto.id } });
+    if (!receipt) return null;
+    if (
+      receipt.actorId !== user.id ||
+      receipt.type !== type ||
+      (tournamentId !== null && receipt.tournamentId !== tournamentId) ||
+      !isDeepStrictEqual(receipt.command, json(dto))
+    )
+      throw new ConflictException('COMMAND_ID_REUSED');
+    return receipt;
+  }
+  private async requireRevision(
+    tx: Prisma.TransactionClient,
+    id: string,
+    dto: AdministrationCommandDto,
+  ) {
+    const tournament = await tx.tournament.findUniqueOrThrow({ where: { id } });
+    if (tournament.administrationRevision !== dto.expectedRevision)
+      throw new ConflictException('ADMINISTRATION_STALE');
+    await assertUnusedCommandIds(tx, [dto.id], null);
+    return tournament;
+  }
+  private async record(
+    tx: Prisma.TransactionClient,
+    tournamentId: string,
+    dto: { id: string },
+    type: string,
+    user: Principal,
+    response: unknown,
+    kind: 'roster' | 'queue' | 'protocol',
+  ) {
+    await tx.tournamentCommand.create({
+      data: {
+        id: dto.id,
+        tournamentId,
+        actorId: user.id,
+        type,
+        command: json(dto),
+        response: json(response),
+      },
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: user.id,
+        tournamentId,
+        entityId: tournamentId,
+        action: 'ADMINISTRATION_' + type,
+        payload: json({ command: dto, response }),
+      },
+    });
+    await enqueueLive(tx, { tournamentId, kind });
+    return json(response);
+  }
+  async start(id: string, dto: AdministrationCommandDto, user: Principal) {
     await this.auth.owner(user, id);
     const result = await this.db.$transaction(
       async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
+        await lockAdminMutation(tx, user, id);
+        const receipt = await this.receipt(tx, id, dto, 'START', user);
+        if (receipt) return receipt.response;
+        await this.requireRevision(tx, id, dto);
         const t = await tx.tournament.findUniqueOrThrow({
           where: { id },
           include: {
@@ -43,16 +115,28 @@ export class TournamentsService {
             tatamis: { orderBy: { number: 'asc' } },
           },
         });
-        for (const mat of [...t.tatamis].sort((a, b) => a.id.localeCompare(b.id)))
-          await tx.$queryRaw`SELECT id FROM "Tatami" WHERE id=${mat.id} FOR UPDATE`;
-        await assertActivePrincipal(tx, user, { tournamentId: id });
-        if (t.status === 'RUNNING' || t.status === 'FINISHED') return { status: t.status };
+        if (t.status === 'RUNNING' || t.status === 'FINISHED') {
+          const updated = await tx.tournament.update({
+            where: { id },
+            data: { administrationRevision: { increment: 1 } },
+          });
+          return this.record(
+            tx,
+            id,
+            dto,
+            'START',
+            user,
+            { status: updated.status, administrationRevision: updated.administrationRevision },
+            'queue',
+          );
+        }
         const categories = requireCompetitionCategories(t.categories);
         await scheduleCategories(tx, id, user);
-        await tx.tournament.update({
+        const updated = await tx.tournament.update({
           where: { id },
           data: {
             status: 'RUNNING',
+            administrationRevision: { increment: 1 },
             rulesSnapshot: JSON.parse(
               JSON.stringify({
                 ...profile(t.rulesSnapshot),
@@ -80,45 +164,74 @@ export class TournamentsService {
             payload: {},
           },
         });
-        return { status: 'RUNNING' };
+        return this.record(
+          tx,
+          id,
+          dto,
+          'START',
+          user,
+          { status: updated.status, administrationRevision: updated.administrationRevision },
+          'queue',
+        );
       },
       { timeout: 30000 },
     );
     this.live.notify({ kind: 'queue', tournamentId: id });
     return result;
   }
-  async schedule(id: string, user: Principal) {
+  async schedule(id: string, dto: AdministrationCommandDto, user: Principal) {
     await this.auth.owner(user, id);
     const result = await this.db.$transaction(
       async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-        return scheduleCategories(tx, id, user);
+        await lockAdminMutation(tx, user, id);
+        const receipt = await this.receipt(tx, id, dto, 'SCHEDULE', user);
+        if (receipt) return receipt.response;
+        await this.requireRevision(tx, id, dto);
+        const response = await scheduleCategories(tx, id, user);
+        const updated = await tx.tournament.update({
+          where: { id },
+          data: { administrationRevision: { increment: 1 } },
+        });
+        return this.record(
+          tx,
+          id,
+          dto,
+          'SCHEDULE',
+          user,
+          { ...response, administrationRevision: updated.administrationRevision },
+          'queue',
+        );
       },
       { timeout: 30000 },
     );
     this.live.notify({ kind: 'queue', tournamentId: id });
     return result;
   }
-  async publish(id: string, user: Principal) {
+  async publish(id: string, dto: AdministrationCommandDto, user: Principal) {
     await this.auth.owner(user, id);
     return this.db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-      const t = await tx.tournament.findUniqueOrThrow({ where: { id } });
-      if (t.publishedAt) return t;
+      await lockAdminMutation(tx, user, id);
+      const receipt = await this.receipt(tx, id, dto, 'PUBLISH', user);
+      if (receipt) return receipt.response;
+      const t = await this.requireRevision(tx, id, dto);
       const result = await tx.tournament.update({
         where: { id },
-        data: { publishedAt: new Date() },
-      });
-      await tx.auditEvent.create({
         data: {
-          actorId: user.id,
-          tournamentId: id,
-          entityId: id,
-          action: 'TOURNAMENT_PUBLISHED',
-          payload: {},
+          publishedAt: t.publishedAt ?? new Date(),
+          administrationRevision: { increment: 1 },
         },
       });
-      return result;
+      if (!t.publishedAt)
+        await tx.auditEvent.create({
+          data: {
+            actorId: user.id,
+            tournamentId: id,
+            entityId: id,
+            action: 'TOURNAMENT_PUBLISHED',
+            payload: {},
+          },
+        });
+      return this.record(tx, id, dto, 'PUBLISH', user, result, 'protocol');
     });
   }
   list(user: Principal) {
@@ -171,7 +284,7 @@ export class TournamentsService {
       })),
     };
   }
-  create(dto: CreateTournamentDto, user: Principal) {
+  async create(dto: CreateTournamentDto, user: Principal) {
     if (!['ORGANIZER', 'SUPER_ADMIN'].includes(user.role))
       throw new ForbiddenException('FORBIDDEN');
     for (const v of [dto.startDate, dto.endDate])
@@ -180,21 +293,38 @@ export class TournamentsService {
     if (dto.endDate < dto.startDate) throw new BadRequestException('Дата окончания раньше начала');
     if (!dto.name.trim() || !dto.city.trim() || !dto.venue.trim())
       throw new BadRequestException('Заполните обязательные поля');
-    return this.db.tournament.create({
-      data: {
-        ...dto,
-        rulesSnapshot: JSON.parse(JSON.stringify(currentProfile())),
-        ownerId: user.id,
-        name: dto.name.trim(),
-        city: dto.city.trim(),
-        venue: dto.venue.trim(),
-        tatamis: { create: Array.from({ length: dto.tatamiCount }, (_, i) => ({ number: i + 1 })) },
-      },
-    });
+    return this.db
+      .$transaction(async (tx) => {
+        await assertSessionIdentity(tx, user);
+        const receipt = await this.receipt(tx, null, dto, 'CREATE', user);
+        if (receipt) return receipt.response;
+        await assertUnusedCommandIds(tx, [dto.id], null);
+        const { id: commandId, ...fields } = dto;
+        // The newly inserted row is exclusively owned by this transaction. No
+        // other mutation/outbox writer can lock this Tournament before commit.
+        const result = await tx.tournament.create({
+          data: {
+            ...fields,
+            rulesSnapshot: json(currentProfile()),
+            ownerId: user.id,
+            name: dto.name.trim(),
+            city: dto.city.trim(),
+            venue: dto.venue.trim(),
+            tatamis: {
+              create: Array.from({ length: dto.tatamiCount }, (_, i) => ({ number: i + 1 })),
+            },
+          },
+        });
+        return this.record(tx, result.id, dto, 'CREATE', user, result, 'roster');
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+          throw new ConflictException('COMMAND_ID_REUSED');
+        throw error;
+      });
   }
   async category(id: string, dto: CreateCategoryDto, user: Principal) {
-    const t = await this.get(id, user);
-    if (t.status !== 'DRAFT') throw new ConflictException('Настройки турнира заблокированы');
+    await this.auth.owner(user, id);
     const upperBound = dto.maxWeightGrams !== null && dto.minWeightGrams == null;
     const lowerBound = dto.maxWeightGrams === null && dto.minWeightGrams != null;
     if (!upperBound && !lowerBound) throw new BadRequestException('INVALID_WEIGHT_BOUNDS');
@@ -203,17 +333,42 @@ export class TournamentsService {
     if (!dto.name.trim()) throw new BadRequestException('Укажите название');
     try {
       return await this.db.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-        const current = await tx.tournament.findUniqueOrThrow({ where: { id } });
+        await lockAdminMutation(tx, user, id);
+        const receipt = await this.receipt(tx, id, dto, 'CATEGORY', user);
+        if (receipt) return receipt.response;
+        const current = await this.requireRevision(tx, id, dto);
         if (current.status !== 'DRAFT')
           throw new ConflictException('Настройки турнира заблокированы');
         const policy = profile(current.rulesSnapshot).drawPolicy;
         const format = dto.format ?? (policy ? 'REPECHAGE' : 'SINGLE_ELIMINATION');
         if (policy && format === 'SINGLE_ELIMINATION')
           throw new BadRequestException('FORMAT_UNSUPPORTED');
-        return tx.category.create({
-          data: { ...dto, format, name: dto.name.trim(), tournamentId: id },
+        const { id: commandId, expectedRevision, ...fields } = dto;
+        const category = await tx.category.create({
+          data: { ...fields, format, name: dto.name.trim(), tournamentId: id },
         });
+        const updated = await tx.tournament.update({
+          where: { id },
+          data: { administrationRevision: { increment: 1 } },
+        });
+        await tx.auditEvent.create({
+          data: {
+            actorId: user.id,
+            tournamentId: id,
+            entityId: category.id,
+            action: 'CATEGORY_CREATED',
+            payload: JSON.parse(JSON.stringify(dto)),
+          },
+        });
+        return this.record(
+          tx,
+          id,
+          dto,
+          'CATEGORY',
+          user,
+          { ...category, administrationRevision: updated.administrationRevision },
+          'roster',
+        );
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
@@ -222,70 +377,6 @@ export class TournamentsService {
     }
   }
   async entry(id: string, categoryId: string, dto: CreateEntryDto, user: Principal) {
-    await this.auth.owner(user, id);
-    if (!dto.firstName.trim() || !dto.lastName.trim() || !dto.club.trim())
-      throw new BadRequestException('Заполните данные спортсмена');
-    const result = await this.db.$transaction(async (tx) => {
-      // All roster mutations lock tournament before categories. Draw confirmation
-      // also takes the category lock, so admission cannot partially change a draw.
-      await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-      await tx.$queryRaw`SELECT id FROM "Category" WHERE id = ${categoryId} FOR UPDATE`;
-      const c = await tx.category.findFirst({
-        where: { id: categoryId, tournamentId: id },
-        include: { tournament: true },
-      });
-      if (!c) throw new NotFoundException('Категория не найдена');
-      if (c.tournament.status !== 'DRAFT') throw new ConflictException('Состав заблокирован');
-      if (await tx.drawRecord.findFirst({ where: { categoryId, status: 'CONFIRMED' } }))
-        throw new ConflictException('DRAW_LOCKED');
-      if (dto.birthYear < c.birthYearFrom || dto.birthYear > c.birthYearTo)
-        throw new BadRequestException('Год рождения не соответствует категории');
-      if ((await tx.entry.count({ where: { categoryId, archivedAt: null } })) >= 128)
-        throw new ConflictException('В категории уже 128 участников');
-      const club = await tx.club.upsert({
-        where: {
-          tournamentId_normalizedName: {
-            tournamentId: id,
-            normalizedName: normalizedName(dto.club),
-          },
-        },
-        update: {},
-        create: {
-          tournamentId: id,
-          name: cleanName(dto.club),
-          normalizedName: normalizedName(dto.club),
-        },
-      });
-      const athlete = await tx.athlete.create({ data: { ownerId: c.tournament.ownerId } });
-      const entry = await tx.entry.create({
-        data: {
-          ...dto,
-          firstName: dto.firstName.trim(),
-          lastName: dto.lastName.trim(),
-          club: dto.club.trim(),
-          categoryId,
-          clubId: club.id,
-          gender: c.gender,
-          athleteId: athlete.id,
-        },
-      });
-      const updated = await tx.tournament.update({
-        where: { id },
-        data: { rosterRevision: { increment: 1 } },
-      });
-      await invalidatePreviewDraws(tx, id, [categoryId], user.id, { type: 'ENTRY_ADDED' });
-      await tx.auditEvent.create({
-        data: {
-          actorId: user.id,
-          tournamentId: id,
-          entityId: entry.id,
-          action: 'ENTRY_ADDED',
-          payload: JSON.parse(JSON.stringify({ revision: updated.rosterRevision, entry })),
-        },
-      });
-      return entry;
-    });
-    this.live.notify({ kind: 'result', tournamentId: id });
-    return result;
+    return this.roster.admitSingle(id, categoryId, dto, user);
   }
 }

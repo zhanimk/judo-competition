@@ -45,6 +45,7 @@ async function fixture(label) {
   const tournament = await ok(
     '/tournaments',
     {
+      id: randomUUID(),
       name: 'QA · Assignment Session race · ' + label,
       city: 'QA',
       venue: 'Isolated rehearsal',
@@ -59,6 +60,8 @@ async function fixture(label) {
   const category = await ok(
     `/tournaments/${tournament.id}/categories`,
     {
+      id: randomUUID(),
+      expectedRevision: tournament.administrationRevision,
       name: 'QA Assignment race U15',
       gender: 'MALE',
       birthYearFrom: 2012,
@@ -93,8 +96,22 @@ async function fixture(label) {
     },
     cookie,
   );
-  const preview = await ok(`/categories/${category.id}/draw/preview`, {}, cookie);
-  await ok(`/categories/${category.id}/draw/confirm`, { version: preview.version }, cookie);
+  const preview = await ok(
+    `/categories/${category.id}/draw/preview`,
+    {
+      id: randomUUID(),
+      expectedVersion: 0,
+    },
+    cookie,
+  );
+  await ok(
+    `/categories/${category.id}/draw/confirm`,
+    {
+      id: randomUUID(),
+      version: preview.version,
+    },
+    cookie,
+  );
   const contest = await db.contest.findFirstOrThrow({
     where: { draw: { categoryId: category.id }, status: 'READY' },
   });
@@ -141,6 +158,14 @@ async function snapshot(c) {
       orderBy: { id: 'asc' },
     }),
     rosterCommands: await db.rosterCommand.findMany({
+      where: { tournamentId: c.tournamentId },
+      orderBy: { id: 'asc' },
+    }),
+    drawCommands: await db.drawCommand.findMany({
+      where: { tournamentId: c.tournamentId },
+      orderBy: { id: 'asc' },
+    }),
+    tournamentCommands: await db.tournamentCommand.findMany({
       where: { tournamentId: c.tournamentId },
       orderBy: { id: 'asc' },
     }),
@@ -236,7 +261,16 @@ async function race(order) {
       updatedAt: after.contest.updatedAt,
     });
     assert.deepEqual(after.category, { ...before.category, homeTatamiId: c.matId });
-    for (const key of ['tournament', 'mat', 'draw', 'entries', 'accessCommands', 'rosterCommands'])
+    for (const key of [
+      'tournament',
+      'mat',
+      'draw',
+      'entries',
+      'accessCommands',
+      'rosterCommands',
+      'drawCommands',
+      'tournamentCommands',
+    ])
       assert.deepEqual(after[key], before[key], key + ' is unchanged by assignment/logout');
 
     // Exact retry from the logged-out cookie is denied. A new live session of

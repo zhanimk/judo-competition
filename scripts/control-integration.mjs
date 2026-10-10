@@ -386,6 +386,7 @@ try {
   assert.equal((await row(a)).state.status, 'PROVISIONAL');
   assert.equal((await row(final)).status, 'WAITING');
   assert.equal((await row(final)).tatamiId, null);
+  const invalidatedFinal = await row(final);
   assert.equal((await publicDraw()).contests.filter((c) => c.status === 'CONFIRMED').length, 1);
   await sporting(a, 'REVOKE', { awardId: saved.awards.filter((a) => a.active).at(-1).id });
   await sporting(a, 'AWARD', { side: 'BLUE', kind: 'IPPON' });
@@ -393,11 +394,14 @@ try {
   const corrected = await row(a),
     ready = await row(final);
   assert.ok([ready.whiteEntryId, ready.blueEntryId].includes(corrected.blueEntryId));
-  assert.equal(ready.revision, 1);
+  assert.ok(
+    ready.revision > invalidatedFinal.revision,
+    'promoting a changed pair preserves monotonic revision',
+  );
   const stale = await adminPayload(a, 'REOPEN');
   await db.contest.updateMany({
     where: { drawId: d.id, status: 'CONFIRMED' },
-    data: { confirmedAt: new Date(Date.now() - 601000) },
+    data: { endedAt: new Date(Date.now() - 601000) },
   });
   await sporting(final, 'START');
   assert.equal(

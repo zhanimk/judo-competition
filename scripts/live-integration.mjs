@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { PrismaClient } from '@prisma/client';
-import WebSocket from 'ws';
+import { liveSocket, connectLive } from './test-live.mjs';
 import { createTestUser, useLegacyRules } from './test-user.mjs';
 import { tally, scoreboardScores } from '@judo/engine/match';
 const db = new PrismaClient(),
@@ -118,25 +118,14 @@ try {
     ).status,
     201,
   );
-  const url = new URL(`${base}/live`);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  url.searchParams.set('tournamentId', tournament);
-  await new Promise((resolve, reject) => {
-    const ws = new WebSocket(url, { origin: 'http://127.0.0.1:4318' });
-    ws.on('open', () => {
-      ws.close();
-      reject(new Error('private WS allowed'));
-    });
-    ws.on('error', resolve);
-  });
+  const denied = liveSocket(base, tournament);
+  await assert.rejects(connectLive(denied), /LIVE_ACCESS_DENIED/);
+  denied.disconnect();
   await call(`/tournaments/${tournament}/publish`, {});
   await call(`/categories/${cat.id}/draw/publication`, { published: true, expectedRevision: 0 });
-  socket = new WebSocket(url, { origin: 'http://127.0.0.1:4318' });
-  socket.on('message', (v) => notices.push(JSON.parse(v.toString())));
-  await new Promise((r, j) => {
-    socket.on('open', r);
-    socket.on('error', j);
-  });
+  socket = liveSocket(base, tournament);
+  socket.on('notice', (v) => notices.push(v));
+  await connectLive(socket);
   const m0 = mats[0].id,
     m1 = mats[1].id,
     a = opening[0].id,
@@ -163,9 +152,13 @@ try {
     'TOURNAMENT_NOT_STARTED',
   );
   assert.equal((await call(`/tournaments/${tournament}/start`, {}, op)).status, 403);
+  const startIntent = {
+    id: randomUUID(),
+    expectedRevision: (await call(`/tournaments/${tournament}`)).body.administrationRevision,
+  };
   const startTournament = await Promise.all([
-    call(`/tournaments/${tournament}/start`, {}),
-    call(`/tournaments/${tournament}/start`, {}),
+    call(`/tournaments/${tournament}/start`, startIntent),
+    call(`/tournaments/${tournament}/start`, startIntent),
   ]);
   assert.deepEqual(
     startTournament.map((r) => r.status),
@@ -334,7 +327,7 @@ try {
   // Advance only the disposable fixture's rest eligibility, never the live clock.
   await db.contest.updateMany({
     where: { drawId: d.id, status: 'CONFIRMED' },
-    data: { confirmedAt: new Date(Date.now() - 601000) },
+    data: { endedAt: new Date(Date.now() - 601000) },
   });
   r = await command(m0, final.id, 'START', final.revision);
   assert.equal(r.status, 201);

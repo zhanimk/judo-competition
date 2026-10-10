@@ -33,3 +33,14 @@ export async function request<T>(path: string, data?: unknown, signal?: AbortSig
     );
   return result;
 }
+
+/** Authorization/overload failures on a retry cannot disprove an earlier commit. */
+export function isDefinitiveCommandRejection(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    ![401, 403, 408, 429].includes(error.status) &&
+    error.message !== 'COMMAND_ID_REUSED'
+  );
+}

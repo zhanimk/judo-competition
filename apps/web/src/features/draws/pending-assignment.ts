@@ -1,4 +1,4 @@
-import { ApiError } from '../tournaments/api.ts';
+import { isDefinitiveCommandRejection } from '../tournaments/api.ts';
 
 export type AssignmentPayload = {
   id: string;
@@ -93,7 +93,7 @@ export async function deliverPendingAssignment(
     return { kind: 'success', receipt };
   } catch (error) {
     return {
-      kind: error instanceof ApiError && error.status < 500 ? 'rejected' : 'retry',
+      kind: isDefinitiveCommandRejection(error) ? 'rejected' : 'retry',
       error,
     };
   }

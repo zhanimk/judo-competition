@@ -6,6 +6,9 @@ datasource db {
  url = env("DATABASE_URL")
 }
 model Tournament {
+ administrationRevision Int @default(0)
+ tournamentCommands TournamentCommand[]
+ protocolRevision Int @default(0)
  rulesSnapshot Json?
  id String @id @default(uuid())
  name String
@@ -26,8 +29,24 @@ model Tournament {
  clubs Club[]
  rosterCommands RosterCommand[]
  accessCommands AccessCommand[]
+ drawCommands DrawCommand[]
+ protocolArtifacts ProtocolArtifact[]
+ protocolCommands ProtocolCommand[]
+ liveOutbox LiveOutbox[]
+}
+model TournamentCommand {
+ id String @id
+ tournamentId String
+ tournament Tournament @relation(fields:[tournamentId],references:[id],onDelete:Cascade)
+ actorId String
+ type String
+ command Json
+ response Json
+ createdAt DateTime @default(now())
+ @@index([tournamentId,createdAt])
 }
 model Category {
+ drawCommands DrawCommand[]
  homeTatamiId String?
  homeTatami Tatami? @relation(fields:[homeTatamiId],references:[id],onDelete:Restrict)
  id String @id @default(uuid())
@@ -179,6 +198,7 @@ model DrawRecord {
  contests Contest[]
 }
 model Contest {
+ endedAt DateTime?
  offlineControlGeneration Int?
  offlineSessionId String?
  offlineActorId String?
@@ -204,6 +224,69 @@ model Contest {
  events MatchEvent[]
  @@unique([drawId,key])
  @@unique([tatamiId,queueOrder])
+}
+
+model DrawCommand {
+ id String @id
+ tournamentId String
+ tournament Tournament @relation(fields:[tournamentId],references:[id],onDelete:Cascade)
+ categoryId String
+ category Category @relation(fields:[categoryId],references:[id],onDelete:Cascade)
+ actorId String
+ type String
+ command Json
+ response Json
+ createdAt DateTime @default(now())
+ @@index([tournamentId,createdAt])
+ @@index([categoryId,createdAt])
+}
+
+model ProtocolArtifact {
+ id String @id @default(uuid())
+ tournamentId String
+ tournament Tournament @relation(fields:[tournamentId],references:[id],onDelete:Cascade)
+ version Int
+ kind String
+ lang String
+ categoryIds Json
+ scope String
+ source Json
+ sha256 String
+ byteSize Int
+ bytes Bytes
+ createdById String
+ createdAt DateTime @default(now())
+ publishedAt DateTime?
+ @@unique([tournamentId,version])
+ @@index([tournamentId,publishedAt,version])
+}
+
+model ProtocolCommand {
+ id String @id
+ tournamentId String
+ tournament Tournament @relation(fields:[tournamentId],references:[id],onDelete:Cascade)
+ artifactId String?
+ actorId String
+ type String
+ command Json
+ response Json
+ createdAt DateTime @default(now())
+ @@index([tournamentId,createdAt])
+}
+
+model LiveOutbox {
+ id BigInt @id @default(autoincrement())
+ tournamentId String
+ tournament Tournament @relation(fields:[tournamentId],references:[id],onDelete:Cascade)
+ tatamiId String?
+ kind String
+ createdAt DateTime @default(now())
+ publishedAt DateTime?
+ attempts Int @default(0)
+ nextAttemptAt DateTime @default(now())
+ lastError String?
+ @@index([tournamentId,id])
+ @@index([publishedAt,nextAttemptAt,id])
 }
 model AuditEvent {
  id String @id @default(uuid())

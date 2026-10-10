@@ -27,7 +27,15 @@ export type Category = {
   _count?: { entries: number };
 };
 export type Tournament = {
-  rulesSnapshot?: { version: string; tieBreak: string; drawPolicy?: string; approvedAt?: string };
+  administrationRevision: number;
+  rulesSnapshot?: {
+    version: string;
+    tieBreak: string;
+    drawPolicy?: string;
+    tieRanking?: 'WINS_ONLY';
+    tieMany?: 'ADMIN_REVIEW';
+    approvedAt?: string;
+  };
   id: string;
   name: string;
   city: string;

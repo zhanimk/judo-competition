@@ -122,6 +122,7 @@ function harness({
                 .filter((entry) => entry.athleteId === values[0])
                 .map((entry) => ({ id: entry.athleteId }))
             : [],
+        tournamentCommand: { findFirst: async () => null },
         rosterCommand: { findFirst: async () => null },
         accessCommand: {
           findFirst: async ({ where }) =>
@@ -182,6 +183,9 @@ function harness({
           },
           create: async ({ data }) => staged.events.push(structuredClone(data)),
         },
+        drawCommand: { findFirst: async () => null },
+        protocolCommand: { findFirst: async () => null },
+        liveOutbox: { create: async () => ({ id: 1n }) },
         auditEvent: {
           create: async ({ data }) => {
             if (failAudit) throw new Error('audit unavailable');
@@ -425,8 +429,11 @@ test('administrative commands also reject IDs reserved by a legacy offline packe
   let writes = 0;
   const tx = {
     $queryRaw: async () => [],
+    tournamentCommand: { findFirst: async () => null },
     rosterCommand: { findFirst: async () => null },
     accessCommand: { findFirst: async () => null },
+    drawCommand: { findFirst: async () => null },
+    protocolCommand: { findFirst: async () => null },
     session: {
       findUnique: async () => ({
         id: actor.sessionId,
@@ -511,24 +518,20 @@ test('online commands cannot silently discard an offline event journal', async (
   assert.deepEqual(h.snapshot(), before);
 });
 
-test('LIVE heartbeat releases unresponsive connections and retains clients that answer pong', async () => {
-  const live = new LiveService({}, {});
+test('LIVE authorization sweep disconnects revoked private access without touching authorized clients', async () => {
+  const live = new LiveService({}, {}, {}, {});
   live.allowed = async () => true;
-  const calls = { ping: 0, terminate: 0 };
+  const calls = { disconnect: 0 };
   const socket = {
-    readyState: 1,
-    ping: () => calls.ping++,
-    terminate: () => calls.terminate++,
+    disconnect: () => calls.disconnect++,
   };
-  const client = { tournamentId: tournament, req: {}, alive: true };
+  const client = { tournamentId: tournament, req: {}, syncing: false, queued: [] };
   live.sockets.set(socket, client);
-  await live.heartbeat();
-  assert.deepEqual(calls, { ping: 1, terminate: 0 });
-  client.alive = true; // The socket's pong listener marks this on real connections.
-  await live.heartbeat();
-  assert.deepEqual(calls, { ping: 2, terminate: 0 });
-  await live.heartbeat();
-  assert.deepEqual(calls, { ping: 2, terminate: 1 });
+  await live.revalidate();
+  assert.equal(calls.disconnect, 0);
+  live.allowed = async () => false;
+  await live.revalidate();
+  assert.equal(calls.disconnect, 1);
 });
 
 test('new sporting mutations require the exact device and control generation without any bypass', async () => {

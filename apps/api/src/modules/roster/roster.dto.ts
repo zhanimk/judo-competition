@@ -46,6 +46,18 @@ export class CreateClubDto {
   @IsString() @Length(2, 120) name!: string;
 }
 
+/** Compatibility route for one athlete and an explicitly named club. */
+export class SingleEntryCommitDto {
+  @IsUUID() id!: string;
+  @IsInt() @Min(0) @Max(Number.MAX_SAFE_INTEGER) expectedRosterRevision!: number;
+  @IsString() @Length(1, 80) firstName!: string;
+  @IsString() @Length(1, 80) lastName!: string;
+  @IsString() @Length(2, 120) club!: string;
+  @IsInt() @Min(1900) @Max(2100) birthYear!: number;
+  @IsOptional() @IsUUID() athleteId?: string;
+  @IsOptional() @IsBoolean() duplicateConfirmed?: boolean;
+}
+
 function TrimmedReason() {
   return (object: object, propertyName: string) =>
     registerDecorator({

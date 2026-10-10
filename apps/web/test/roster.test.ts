@@ -69,6 +69,7 @@ function tournament(): Tournament {
     endDate: '',
     tatamiCount: 1,
     status: 'DRAFT',
+    administrationRevision: 0,
     rosterRevision: 4,
     clubs: [{ id: clubId, name: 'Клуб', _count: { entries: 0 } }],
     categories: [structuredClone(category)],

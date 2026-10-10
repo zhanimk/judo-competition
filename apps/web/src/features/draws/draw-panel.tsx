@@ -9,6 +9,14 @@ import { pollSnapshots } from '../../shared/live/snapshot-poller';
 import { useEffect, useRef, useState } from 'react';
 import { drawFormat, type Draw } from '@judo/engine/draw';
 
+import {
+  clearPendingDraw,
+  deliverPendingDraw,
+  readPendingDraw,
+  savePendingDraw,
+  type PendingDraw,
+} from './pending-draw';
+import { TiebreakReview } from './tiebreak-review';
 import { ProtocolDownload } from './protocol-download';
 import { CompetitionDraw } from './competition-draw';
 import { request } from '../tournaments/api';
@@ -42,9 +50,13 @@ type SavedDraw = {
 export function DrawPanel({
   tournament,
   onUpdate,
+  administrationBlocked = false,
+  onSchedule,
 }: {
   tournament: Tournament;
   onUpdate: () => Promise<void>;
+  administrationBlocked?: boolean;
+  onSchedule: () => Promise<void>;
 }) {
   const { text, locale } = useLanguage();
   const [refresh, setRefresh] = useState(0);
@@ -63,11 +75,16 @@ export function DrawPanel({
     [loadError, setLoadError] = useState(''),
     [pending, setPending] = useState<PendingAssignment | null>(null),
     [pendingRestored, setPendingRestored] = useState(false),
-    [storageError, setStorageError] = useState(false);
+    [storageError, setStorageError] = useState(false),
+    [tiePending, setTiePending] = useState(false),
+    [pendingDraw, setPendingDraw] = useState<PendingDraw | null>(null);
   const pendingRef = useRef<PendingAssignment | null>(null),
+    pendingDrawRef = useRef<PendingDraw | null>(null),
     mutationLock = useRef(false),
     snapshotGeneration = useRef(0);
-  const blocked = busy || !!pending || !pendingRestored || storageError;
+  const externalBlocked =
+    administrationBlocked || busy || !!pending || !!pendingDraw || !pendingRestored || storageError;
+  const blocked = externalBlocked || tiePending;
 
   const DrawView = CompetitionDraw;
   const category = tournament.categories.find((c) => c.id === categoryId);
@@ -80,21 +97,27 @@ export function DrawPanel({
       const saved = readPendingAssignment(sessionStorage, tournament.id);
       pendingRef.current = saved;
       setPending(saved);
-      setCategoryId(saved?.categoryId ?? tournament.categories[0]?.id ?? '');
+      const savedDraw = readPendingDraw(sessionStorage, tournament.id);
+      if (saved && savedDraw) throw new Error('MULTIPLE_PENDING_COMMANDS');
+      pendingDrawRef.current = savedDraw;
+      setPendingDraw(savedDraw);
+      setCategoryId(
+        saved?.categoryId ?? savedDraw?.categoryId ?? tournament.categories[0]?.id ?? '',
+      );
       setPendingRestored(true);
     } catch {
       setStorageError(true);
     }
   }, [tournament.id]);
   useEffect(() => {
-    if (!pending) return;
+    if (!pending && !pendingDraw) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [!!pending]);
+  }, [!!pending, !!pendingDraw]);
   useEffect(() => {
     setDraw(null);
     setLoading(true);
@@ -147,7 +170,16 @@ export function DrawPanel({
     }
   }
   async function assign(matchId: string) {
-    if (mutationLock.current || pendingRef.current || !pendingRestored || storageError) return;
+    if (
+      mutationLock.current ||
+      pendingRef.current ||
+      pendingDrawRef.current ||
+      administrationBlocked ||
+      !pendingRestored ||
+      storageError ||
+      tiePending
+    )
+      return;
     const match = draw?.contests.find((contest) => contest.id === matchId);
     if (!match || match.status !== 'READY' || draw?.status !== 'CONFIRMED' || !tatamiId) return;
     const command: PendingAssignment = {
@@ -229,77 +261,101 @@ export function DrawPanel({
       await finishMutation();
     }
   }
-  async function action(kind: 'preview' | 'confirm') {
-    if (mutationLock.current || pendingRef.current || !pendingRestored || storageError) return;
+  async function executeDraw(command: PendingDraw) {
+    if (mutationLock.current || pendingDrawRef.current?.payload.id !== command.payload.id) return;
     mutationLock.current = true;
     snapshotGeneration.current++;
     setBusy(true);
     setError('');
     try {
-      const result = await request<SavedDraw>(
-        `/categories/${categoryId}/draw/${kind}`,
-        kind === 'confirm' ? { version: draw?.version } : {},
-      );
-      snapshotGeneration.current++;
-      setDraw(result);
-    } catch (e) {
-      const code = (e as Error).message;
-      setError(
-        code === 'REPECHAGE_MIN_8'
-          ? text(
-              'Утешение от четвертьфинала: нужно 8–128 участников.',
-              'Ширек финалдан жұбаныш: 8–128 қатысушы қажет.',
-            )
-          : code === 'MIXED_MIN_4'
-            ? text(
-                'Группы и плей-офф: нужно 4–128 участников.',
-                'Топтар мен плей-офф: 4–128 қатысушы қажет.',
-              )
-            : code === 'DRAW_ENTRIES_CHANGED'
-              ? text(
-                  'Состав изменился. Создайте новый предварительный просмотр.',
-                  'Қатысушылар өзгерді. Алдын ала қарауды қайта жасаңыз.',
-                )
-              : code === 'DRAW_ENTRY_COUNT'
-                ? text('Нужно от 2 до 128 участников.', '2–128 қатысушы қажет.')
-                : code === 'DRAW_STALE'
-                  ? text(
-                      'Сетка обновлена в другом окне. Перезагрузите страницу.',
-                      'Тор басқа терезеде өзгерді. Бетті жаңартыңыз.',
-                    )
-                  : text(
-                      'Действие отклонено. Обновите страницу и проверьте состояние сетки.',
-                      'Әрекет қабылданбады. Бетті жаңартып, тордың күйін тексеріңіз.',
-                    ),
-      );
-    } finally {
-      await finishMutation();
-    }
-  }
-  async function publication() {
-    if (!draw || mutationLock.current || pendingRef.current || !pendingRestored || storageError)
-      return;
-    mutationLock.current = true;
-    snapshotGeneration.current++;
-    setBusy(true);
-    setError('');
-    try {
-      const result = await request<SavedDraw>(`/categories/${categoryId}/draw/publication`, {
-        published: !draw.publishedAt,
-        expectedRevision: draw.publicationRevision,
-      });
-      snapshotGeneration.current++;
-      setDraw(result);
+      const result = await deliverPendingDraw(command, (path, payload) => request(path, payload));
+      if (result.kind !== 'retry') {
+        clearPendingDraw(sessionStorage, command);
+        pendingDrawRef.current = null;
+        setPendingDraw(null);
+      }
+      if (result.kind === 'retry') {
+        setError(
+          text(
+            'Ответ не получен. Изменение могло сохраниться. Повторите исходную команду ниже для проверки результата.',
+            'Жауап алынбады. Өзгеріс сақталған болуы мүмкін. Нәтижесін тексеру үшін төмендегі бастапқы команданы қайталаңыз.',
+          ),
+        );
+      } else if (result.kind === 'rejected') {
+        const code = result.error instanceof Error ? result.error.message : '';
+        setError(
+          text(
+            'Действие отклонено. Проверьте обновлённую сетку: ',
+            'Әрекет қабылданбады. Жаңартылған торды тексеріңіз: ',
+          ) + code,
+        );
+      }
+      // A saved receipt can describe an older version. Reload current server
+      // state instead of replacing the screen with its historical response.
     } catch {
       setError(
         text(
-          'Публикация не изменена. Обновите страницу и повторите.',
-          'Жарияланым өзгермеді. Бетті жаңартып, қайталаңыз.',
+          'Не удалось очистить исходную команду. Повторите её для проверки результата.',
+          'Бастапқы команданы тазалау мүмкін болмады. Нәтижесін тексеру үшін қайталаңыз.',
         ),
       );
     } finally {
       await finishMutation();
     }
+  }
+  async function action(kind: 'preview' | 'confirm' | 'publication') {
+    if (
+      mutationLock.current ||
+      pendingRef.current ||
+      pendingDrawRef.current ||
+      !pendingRestored ||
+      storageError ||
+      tiePending ||
+      administrationBlocked ||
+      !categoryId
+    )
+      return;
+    if (kind !== 'preview' && !draw) return;
+    const base = { tournamentId: tournament.id, categoryId };
+    const id = crypto.randomUUID();
+    const command: PendingDraw =
+      kind === 'preview'
+        ? { ...base, operation: kind, payload: { id, expectedVersion: draw?.version ?? 0 } }
+        : kind === 'confirm'
+          ? { ...base, operation: kind, payload: { id, version: draw!.version } }
+          : {
+              ...base,
+              operation: kind,
+              payload: {
+                id,
+                expectedRevision: draw!.publicationRevision,
+                published: !draw!.publishedAt,
+              },
+            };
+    try {
+      savePendingDraw(sessionStorage, command);
+      pendingDrawRef.current = command;
+      setPendingDraw(command);
+    } catch {
+      setError(
+        text(
+          'Команда не отправлена: не удалось сохранить её на устройстве.',
+          'Команда жіберілмеді: оны құрылғыда сақтау мүмкін болмады.',
+        ),
+      );
+      return;
+    }
+    await executeDraw(command);
+  }
+  function exportDraw(command: PendingDraw) {
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(command, null, 2)], { type: 'application/json' }),
+    );
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `judo-draw-command-${command.payload.id}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
   return (
     <section className="draw-workspace">
@@ -310,11 +366,11 @@ export function DrawPanel({
         </div>
         <ProtocolDownload tournamentId={tournament.id} categoryId={categoryId || undefined} />
       </header>
-      <TatamiPlan tournament={tournament} onUpdate={onUpdate} disabled={blocked} />
+      <TatamiPlan tournament={tournament} onSchedule={onSchedule} disabled={blocked} />
       {storageError && (
         <p role="alert" className="error-box">
           {text(
-            'Не удалось восстановить сохранённое назначение. Новые изменения заблокированы: проверьте доступ к хранилищу браузера и перезагрузите страницу.',
+            'Не удалось восстановить сохранённые команды. Новые изменения заблокированы: проверьте доступ к хранилищу браузера и перезагрузите страницу.',
             'Сақталған тағайындауды қалпына келтіру мүмкін болмады. Жаңа өзгерістер бұғатталған: браузер қоймасына рұқсатты тексеріп, бетті қайта жүктеңіз.',
           )}
         </p>
@@ -339,6 +395,27 @@ export function DrawPanel({
             onClick={() => void executeAssignment(pending)}
           >
             {text('Повторить сохранённое назначение', 'Сақталған тағайындауды қайталау')}
+          </button>
+        </section>
+      )}
+      {pendingDraw && (
+        <section className="panel" role="status">
+          <p>
+            {text(
+              'Команда жеребьёвки ожидает ответа сервера.',
+              'Жеребе командасы сервер жауабын күтуде.',
+            )}{' '}
+            {tournament.categories.find((item) => item.id === pendingDraw.categoryId)?.name ??
+              pendingDraw.categoryId}
+          </p>
+          <button
+            disabled={busy || !pendingRestored || storageError || administrationBlocked}
+            onClick={() => void executeDraw(pendingDraw)}
+          >
+            {text('Проверить сохранённую команду', 'Сақталған команданы тексеру')}
+          </button>{' '}
+          <button onClick={() => exportDraw(pendingDraw)}>
+            {text('Скачать команду', 'Команданы жүктеу')}
           </button>
         </section>
       )}
@@ -494,7 +571,7 @@ export function DrawPanel({
                     </p>
                     <button
                       disabled={blocked || draw?.status !== 'CONFIRMED'}
-                      onClick={publication}
+                      onClick={() => void action('publication')}
                     >
                       {draw?.publishedAt
                         ? text('Скрыть сетку', 'Торды жасыру')
@@ -585,6 +662,18 @@ export function DrawPanel({
           )}
         </div>
       </div>
+      <TiebreakReview
+        tournamentId={tournament.id}
+        categoryId={categoryId}
+        entries={tournament.categories.flatMap((category) => category.entries ?? [])}
+        disabled={externalBlocked}
+        onPendingChange={setTiePending}
+        onSelectCategory={setCategoryId}
+        onUpdated={() => {
+          setRefresh((v) => v + 1);
+          void onUpdate();
+        }}
+      />
       <Link
         className="back-link"
         href={`/tournaments/${tournament.id}/control`}

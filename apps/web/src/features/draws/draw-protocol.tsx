@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { drawFormat, type Draw, type Slot } from '@judo/engine/draw';
 import { formatLabel } from './format-label';
+import { protocolDrawView } from './protocol-view';
 import { ProtocolDownload } from './protocol-download';
 import { AuthGate } from '../auth/auth-gate';
 import { request } from '../tournaments/api';
@@ -115,6 +116,10 @@ function ProtocolContent({ tournamentId }: { tournamentId: string }) {
             {data.tournament.categories.map((c) => {
               const d = data.draws[c.id],
                 entries = c.entries ?? [];
+              const view =
+                d && d.status !== 'STALE'
+                  ? protocolDrawView(d.snapshot, d.status, d.contests ?? [])
+                  : null;
               const club = (slot: Slot) =>
                 'entryId' in slot
                   ? entries
@@ -173,7 +178,45 @@ function ProtocolContent({ tournamentId }: { tournamentId: string }) {
                     </p>
                   ) : (
                     <>
-                      <ResultsTable entries={entries} contests={d.contests ?? []} />
+                      <ResultsTable entries={entries} contests={d.contests ?? []} printAll />
+                      {!!view?.pendingReviews.length && (
+                        <p className="protocol-notice" role="status">
+                          {text(
+                            'Равенство трёх и более участников: требуется решение администратора. Итоговые места и выход из групп ожидают завершения дополнительной процедуры.',
+                            'Үш не одан көп қатысушының көрсеткіші тең: әкімшінің шешімі қажет. Қорытынды орындар мен топтан шығу қосымша рәсім аяқталғаннан кейін анықталады.',
+                          )}
+                        </p>
+                      )}
+                      {view?.places && (
+                        <>
+                          <h3>{text('Итоговые места', 'Қорытынды орындар')}</h3>
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>{text('Место', 'Орын')}</th>
+                                <th>{text('Спортсмен', 'Спортшы')}</th>
+                                <th>{text('Клуб', 'Клуб')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {view.places.map((place) => {
+                                const entry = entries.find((e) => e.id === place.entryId);
+                                return (
+                                  <tr key={place.entryId}>
+                                    <td>{place.place}</td>
+                                    <td>
+                                      {entry
+                                        ? `${entry.lastName} ${entry.firstName}`
+                                        : text('Нет данных', 'Дерек жоқ')}
+                                    </td>
+                                    <td>{entry?.club ?? '—'}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </>
+                      )}
                       <h3>{text('Пары по раундам', 'Айналымдар бойынша жұптар')}</h3>
                       <p>
                         {d.status === 'CONFIRMED'
@@ -204,7 +247,7 @@ function ProtocolContent({ tournamentId }: { tournamentId: string }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {d.snapshot.matches.map((m) => {
+                          {view?.matches.map((m) => {
                             const same = club(m.white) && club(m.white) === club(m.blue);
                             return (
                               <tr key={m.id}>

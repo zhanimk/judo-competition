@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createMatch, type Rules } from '@judo/engine/match';
+import { applyCommand, createMatch, type Rules } from '@judo/engine/match';
 import { mergeCommandResponse } from '../src/features/live/command-response.ts';
 import type { View } from '../src/features/live/live-board';
 
@@ -50,4 +50,32 @@ test('a current command receipt updates scores and a current confirmation clears
     state,
   })!;
   assert.equal(confirmed.currentMatch, null);
+});
+
+test('a replayed receipt cannot rewind clock ticks that advanced state at the same contest revision', () => {
+  const view = fixture();
+  const start = applyCommand(view.currentMatch!.state, {
+    id: 'start',
+    expectedVersion: 0,
+    type: 'START',
+  });
+  const advanced = applyCommand(start, {
+    id: 'tick',
+    expectedVersion: start.version,
+    type: 'ADVANCE',
+    ms: 25000,
+  });
+  view.currentMatch!.state = advanced;
+  const receipt = { revision: view.currentMatch!.revision, status: 'ACTIVE', state: start };
+  assert.equal(mergeCommandResponse(view, 'match', receipt), view);
+  assert.equal(view.currentMatch!.state.elapsedMs, 25000);
+  const newer = applyCommand(advanced, {
+    id: 'stop',
+    expectedVersion: advanced.version,
+    type: 'STOP',
+  });
+  assert.equal(
+    mergeCommandResponse(view, 'match', { ...receipt, state: newer })?.currentMatch?.state.status,
+    'PAUSED',
+  );
 });

@@ -1,28 +1,29 @@
 'use client';
 import { useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
-import { request } from './api';
+import { startReadiness } from './start-readiness';
 import type { Tournament } from './types';
 export function TatamiPlan({
   tournament: t,
-  onUpdate,
+  onSchedule,
   disabled = false,
 }: {
   tournament: Tournament;
-  onUpdate: () => Promise<void>;
+  onSchedule: () => Promise<void>;
   disabled?: boolean;
 }) {
   const { text } = useLanguage();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
-  const confirmed = t.categories.filter((c) => c.draw?.status === 'CONFIRMED').length;
-  const pinned = t.categories.filter((c) => c.homeTatamiId).length;
+  const active = startReadiness(t.categories).active;
+  const confirmed = active.filter((c) => c.draw?.status === 'CONFIRMED').length;
+  const pinned = active.filter((c) => c.homeTatamiId).length;
   async function distribute() {
+    if (busy || disabled) return;
     setBusy(true);
     setError('');
     try {
-      await request(`/tournaments/${t.id}/schedule`, {});
-      await onUpdate();
+      await onSchedule();
     } catch {
       setError(
         text(
@@ -35,11 +36,11 @@ export function TatamiPlan({
     }
   }
   return (
-    <details className="tatami-plan" open={pinned < t.categories.length}>
+    <details className="tatami-plan" open={pinned < active.length}>
       <summary>
         <span>{text('Распределение по татами', 'Татамиге бөлу')}</span>
         <span>
-          {pinned} / {t.categories.length} {text('категорий закреплено', 'санат бекітілді')}
+          {pinned} / {active.length} {text('категорий закреплено', 'санат бекітілді')}
         </span>
       </summary>
       <div className="tatami-plan-body">
@@ -61,8 +62,8 @@ export function TatamiPlan({
             disabled={
               disabled ||
               busy ||
-              !t.categories.length ||
-              confirmed !== t.categories.length ||
+              !active.length ||
+              confirmed !== active.length ||
               t.status === 'FINISHED'
             }
             onClick={distribute}
@@ -77,7 +78,7 @@ export function TatamiPlan({
             {error}
           </p>
         )}
-        {confirmed < t.categories.length && (
+        {confirmed < active.length && (
           <p className="field-note">
             {text(
               'Сначала подтвердите все сетки. При запуске турнира распределение выполняется автоматически.',

@@ -1,0 +1,108 @@
+# Развёртывание и эксплуатация
+
+Этот документ описывает конфигурацию запуска. Проверки кода и изолированной БД не заменяют репетицию на сервере и оборудовании зала. Публичный домен, сертификаты, внешняя площадка и эксплуатационные RPO/RTO согласуются перед реальным развёртыванием.
+
+## Топология
+
+В зале работает один API, Next.js, PostgreSQL 18 и Redis. Nginx принимает запросы одного origin и направляет `/api/v1/`, включая Socket.IO, в API. PostgreSQL и Redis не публикуют порты хоста. Redis используется для доставки LIVE, а подтверждённые состояния, receipts, аудит и outbox остаются в PostgreSQL.
+
+Один экземпляр API обязателен: текущие таймеры имеют локального владельца clockEpoch. Redis adapter сам по себе не делает несколько владельцев таймера безопасными. Конфигурация отклоняет `API_REPLICAS`, отличный от `1`; не запускать дополнительные API вручную. Копия API после перезапуска ставит ранее работавшие таймеры на контролируемую паузу, требующую сверки. Локальный сервер продолжает работу при потере внешнего интернета; отдельная реплика публикации на внешнем сайте в эту топологию не входит.
+
+В Docker используется `/var/lib/postgresql`, соответствующий layout PostgreSQL 18. На пустой БД init создаёт `judo_app` без superuser/createdb/createrole; миграции и API используют эту роль. Проверка резервной копии запускается отдельно под административной ролью, поскольку создаёт одноразовую БД восстановления. Повторный init не меняет существующие роли/пароли. Изменение пароля действующей БД требует отдельной SQL-операции и обновления конфигурации. [Официальный PostgreSQL image](https://hub.docker.com/_/postgres), [порядок запуска Compose](https://docs.docker.com/compose/how-tos/startup-order/).
+
+## Конфигурация
+
+Скопировать `deploy/.env.example` в закрытый `.env.production` в корне. Для трёх разных паролей использовать отдельно `openssl rand -hex 32`; сохранить значения в приватном файле, `chmod 600 .env.production`. Не выводить полный `docker compose config`: после подстановки он содержит пароли. Проверка без вывода значений — `config --quiet`.
+
+| Переменная                     | Значение                                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------------------------- |
+| `PUBLIC_ORIGIN`                | Точный адрес интерфейса: схема, хост и порт, без пути и завершающего `/`                      |
+| `POSTGRES_ADMIN_PASSWORD`      | Отдельный пароль служебной роли; требуется для проверки восстановления                        |
+| `APP_DATABASE_PASSWORD`        | Отдельный hex-пароль минимум 32 символа для API/миграций                                      |
+| `REDIS_PASSWORD`               | Отдельный hex-пароль Redis                                                                    |
+| `BIND_ADDRESS`                 | `127.0.0.1` за внешним HTTPS-прокси; адрес интерфейса LAN либо `0.0.0.0` для собственного TLS |
+| `HTTP_PORT`                    | `8080` за внешним прокси; `80` при собственном TLS                                            |
+| `COOKIE_SECURE`                | `true` для HTTPS; для явно выбранного HTTP в закрытой LAN требуется `false`                   |
+| `JUDO_IMAGE_TAG`               | Версия проверенного образа для данного выпуска                                                |
+| `BACKUP_ENCRYPTION_KEY_SOURCE` | Путь к отдельному приватному файлу ключа; по умолчанию `./deploy/secrets/backup.key`          |
+
+При нативном запуске API читает `API_HOST`, `PORT`, `ALLOWED_ORIGINS` (список точных origin через запятую), `REDIS_URL`, `COOKIE_SECURE`, `TRUST_PROXY` и `API_REPLICAS`. Production требует явных origin и Redis; по умолчанию cookie Secure. `TRUST_PROXY=false` для прямого доступа, `1` только когда прямой порт API недоступен и перед ним ровно один доверенный прокси. Допустимы явные IP/CIDR. Не доверять произвольным forwarded-заголовкам от интернета. Session-cookie остаётся HttpOnly/SameSite=Strict; HTTPS предоставляет защищённый контекст для автономного приложения и service worker.
+
+Web использует относительные HTTP-пути и тот же origin для Socket.IO. `API_INTERNAL_URL` — внутренний адрес API для Next.js rewrites; в Compose он равен `http://api:4319`. Для отдельного origin LIVE можно задать `NEXT_PUBLIC_LIVE_URL` при сборке; runtime env не меняет уже собранный browser bundle. Локальная разработка сохраняет loopback defaults в `apps/api/.env.example`.
+
+## Запуск
+
+Сначала выбрать один вариант HTTPS и установить сертификаты. Никакие команды этого раздела не выполнялись на внешней площадке.
+
+За уже настроенным внешним HTTPS-прокси использовать базовый Compose: внешний прокси направляет HTTPS-адрес из `PUBLIC_ORIGIN` на закрытый loopback HTTP-порт Nginx, поддерживает WebSocket Upgrade, не буферизует LIVE и ждёт не менее 75 секунд. Внешний прокси и Nginx должны быть единственным путём к API; порты API/PostgreSQL/Redis наружу не открывать.
+
+```sh
+docker compose --env-file .env.production config --quiet
+docker compose --env-file .env.production build
+docker compose --env-file .env.production up -d
+docker compose --env-file .env.production ps
+```
+
+Для собственного TLS положить сертификат и ключ в `deploy/certificates/fullchain.pem` и `privkey.pem`; каталог исключён из Git и build context. Сертификат должен быть доверенным устройствам зала и соответствовать имени/IP в `PUBLIC_ORIGIN`. Выставить HTTP_PORT=80, HTTPS_PORT=443 и нужный BIND_ADDRESS; запустить:
+
+```sh
+docker compose --env-file .env.production -f compose.yaml -f compose.https.yaml config --quiet
+docker compose --env-file .env.production -f compose.yaml -f compose.https.yaml build
+docker compose --env-file .env.production -f compose.yaml -f compose.https.yaml up -d
+```
+
+Миграции выполняет отдельный `migrate`, API ждёт их успешного окончания и готового Redis, web ждёт API. Изменения существующей БД устанавливать после проверенной копии, с тем же набором миграций и без `migrate reset`. Для production закрепить выбранные базовые образы по digest после проверки обновлений; tags в репозитории задают семейства совместимых образов. [Запуск Next.js на собственном сервере](https://nextjs.org/docs/app/getting-started/deploying), [Socket.IO за прокси](https://socket.io/docs/v4/reverse-proxy/).
+
+Первый администратор создаётся один раз на пустом User store. Подготовить отдельный приватный файл с паролем 12–200 символов, доступный пользователю контейнера. Выполнить `scripts/bootstrap-production-admin.mjs` в одноразовом API-контейнере с `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_PASSWORD_FILE` и `BOOTSTRAP_ADMIN_REASON` (причина 3–500 символов с ответственным за первоначальную настройку), смонтировав файл read-only. Создание и global audit `INITIAL_ADMIN_CREATED` выполняются одной транзакцией с блокировкой первого provisioning. Скрипт не печатает пароль и не переписывает существующие аккаунты. После входа администратор создаёт обычные административные аккаунты и выдаёт ссылки доступа судьям татами. Исторический `bootstrap-accounts.mjs` выводит сгенерированные пароли и не применяется для публичного production запуска.
+
+## Готовность, LIVE и остановка
+
+`GET /api/v1/health/live` проверяет процесс; `/health/ready` проверяет запрос PostgreSQL, подключения Redis и активный LIVE-dispatcher. Ошибка даёт 503 без URL, credentials или внутренних исключений. В development без Redis readiness сообщает `realtime:local`; production без Redis не стартует.
+
+Каждая критическая мутация записывает outbox в той же транзакции, что receipt/аудит/состояние. Поллер отправляет metadata `{kind,tournamentId,tatamiId?,cursor}` и после публикации ставит `publishedAt`. Ошибка/сбой допускает повтор одного cursor, который клиент отбрасывает. Курсор — десятичная строка bigint. На reconnect сервер заново проверяет доступ, воспроизводит до 100 retained событий и задаёт границу потока; больший разрыв или cursor из более новой резервной копии даёт `resync`. Клиент перечитывает актуальный HTTP-снимок, периодические 2/5-секундные проверки сохраняются. Outbox не содержит имён, спортивных состояний, session/device IDs, токенов или судейских комментариев.
+
+Socket.IO default-доставка не является журналом: восстановление здесь обеспечивают PostgreSQL/outbox и HTTP. Redis Pub/Sub adapter не хранит подтверждённые события и не поддерживает встроенную connection-state recovery. Redis держать в приватной сети с отдельным паролем, не разделять его с недоверенными приложениями. [Гарантии Socket.IO](https://socket.io/docs/v4/delivery-guarantees/), [Redis adapter](https://socket.io/docs/v4/redis-adapter/).
+
+SIGTERM/SIGINT запускают Nest shutdown: LIVE прекращает новые dispatch, завершает текущую отправку, закрывает sockets; Redis закрывается после LIVE. API имеет grace period 30 секунд. `docker compose stop` сохраняет volumes; `down -v` уничтожает БД и резервные копии в named volumes и не используется при обновлении. Неизвестный ответ клиентской команды после остановки повторяется с прежним ID/body, без подмены версии.
+
+## Резервная копия и восстановление
+
+На сервере отдельно создать ключ AES-256: приватный обычный файл с 64 hex-символами, права `0600`, без symlink. Каталог исключён из Git и Docker build context. Эти команды предназначены ответственному за сервер и не выполнялись с production-секретами:
+
+```sh
+umask 077
+mkdir -p deploy/secrets
+# Создание с noclobber откажется заменить уже существующий ключ.
+(set -C; openssl rand -hex 32 > deploy/secrets/backup.key)
+chmod 600 deploy/secrets/backup.key
+```
+
+Сохранить отдельную защищённую копию ключа вне хоста и отдельно от архивов. Потеря ключа делает зашифрованные копии невосстановимыми; новый ключ не расшифрует старые архивы. В `.env.production` хранится только путь `BACKUP_ENCRYPTION_KEY_SOURCE`, а не ключ. Compose выдаёт read-only secret только одноразовому `backup`; API/web его не получают. Для file-based secrets Compose сохраняет host UID/mode, поэтому этот закрытый служебный контейнер запускается root, а постоянно работающие API/web остаются non-root. Проверка ключа откажется читать файл с group/other permissions. [Файловые secrets Compose](https://docs.docker.com/reference/compose-file/services/#secrets).
+
+```sh
+docker compose --env-file .env.production --profile operations build backup
+docker compose --env-file .env.production --profile operations run --rm backup
+```
+
+`production-backup.mjs` сначала проверяет согласованный pg_dump snapshot восстановлением в новую одноразовую БД и сравнивает строки/схему/безопасные sequence counters. Затем потоково шифрует dump и исходный manifest в envelope `JUDOBKP1` алгоритмом AES-256-GCM с новым случайным IV. До признания экспорта проверенным он заново расшифровывает именно этот файл, проверяет GCM tag и SHA-256 dump, восстанавливает расшифрованный архив в другую новую одноразовую БД и сравнивает сохранённый snapshot. Рабочая БД не перезаписывается. Служебный открытый dump удаляется; только после удаления временной БД/расшифрованного файла появляется `export-verified.json`. Существующие файлы не заменяются. [Authenticated encryption Node.js](https://nodejs.org/docs/latest-v24.x/api/crypto.html), [pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html).
+
+Из volume `backups` экспортировать только пару `database.dump.aesgcm` + `export-verified.json`, сохраняя закрытые права. Копировать её на независимое хранилище, затем проверять восстановление уже полученной копии. Schema/row counts и хэши в marker — эксплуатационная информация; marker также не публиковать. Private logs/manifests остаются локально. После аварийного SIGKILL могут остаться закрытые служебные файлы/QA БД без успешного marker: их проверить и удалить отдельно, не считать архив проверенным по имени каталога. Версии pg_dump/pg_restore должны совпадать с major PostgreSQL. Роль API не имеет права создавать восстановительные БД. Назначить расписание, срок хранения и RPO/RTO до первого соревнования.
+
+Для независимой проверки скопированного архива выполнить одноразовый контейнер с read-only mount архива и `BACKUP_ENCRYPTED_FILE`, например:
+
+```sh
+docker compose --env-file .env.production --profile operations run --rm \
+  -v /private/backups/copied.dump.aesgcm:/restore/copied.dump.aesgcm:ro \
+  -e BACKUP_ENCRYPTED_FILE=/restore/copied.dump.aesgcm \
+  backup scripts/verify-encrypted-backup.mjs
+```
+
+Путь `/private/backups/copied.dump.aesgcm` заменить реальным приватным архивом; использовать тот ключ, которым он был создан. Скрипт сам генерирует guarded `qa_restore_…`, не принимает рабочий restore target и удаляет временную БД/расшифрованный файл. Эта команда проверяет восстановимость и не переключает API на восстановленную БД.
+
+Восстанавливать сначала в новую БД/новый volume. До переключения API проверить историю миграций, количество/хэши таблиц, counters, опубликованные документы и более новые неизвестные команды/автономные журналы устройств. При восстановлении более старого сервера эти журналы требуют явной сверки, не молчаливого удаления. Время работающих встреч после рестарта требует проверки. Переключение рабочей площадки и удаление старой БД — отдельное административное действие после проверки восстановленной копии.
+
+## CI и приёмка
+
+GitHub workflow запускает Node 24, PostgreSQL 18, Redis, `npm ci`, Prisma generate, security audit, `npm run check`, изолированную rehearsal и статическую проверку Compose; matching pg_dump/pg_restore 18 устанавливаются из официального PostgreSQL apt repository. Отдельная job собирает три контейнерных target без публикации. CI не развёртывает сайт и не использует рабочую БД. Прикладные отчёты публикуются без private dumps, API-log, паролей и исходных журналов устройств. [PostgreSQL client tools для Ubuntu](https://www.postgresql.org/download/linux/ubuntu/).
+
+Перед соревнованием проверить на выбранном хосте сборку/запуск контейнеров, HTTPS и cookie, вход администратора/судьи, восемь татами, LAN-разрыв/сон/перезапуск, удержание на границе, unknown receipt retry, replay после disconnect, Redis outage/recovery, восстановление копии, RU/KK PDF и печать. Измерить p95 команд/LIVE и clock drift; предложенные в ТЗ 200/500 мс пока не являются измеренными эксплуатационными гарантиями.

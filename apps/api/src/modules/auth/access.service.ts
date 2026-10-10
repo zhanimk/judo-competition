@@ -1,3 +1,4 @@
+import { enqueueLive } from '../matches/live-outbox.js';
 import {
   BadRequestException,
   ConflictException,
@@ -223,6 +224,7 @@ export class AccessService {
         payload: json({ commandId: id, ...(payload as object) }),
       },
     });
+    await enqueueLive(tx, { tournamentId: mat.tournamentId, tatamiId: mat.id, kind: 'access' });
   }
 
   async command(user: Principal, tatamiId: string, dto: ControlAccessDto) {
@@ -448,6 +450,11 @@ export class AccessService {
           }),
         },
       });
+      await enqueueLive(tx, {
+        tournamentId: found.tatami.tournamentId,
+        tatamiId: invite.tatamiId,
+        kind: 'access',
+      });
       return {
         token: sessionToken,
         tournamentId: found.tatami.tournamentId,
@@ -505,6 +512,7 @@ export class AccessService {
             }),
           },
         });
+        await enqueueLive(tx, { tournamentId: mat.tournamentId, tatamiId: mat.id, kind: 'access' });
       }
       await tx.session.deleteMany({ where: { id: user.sessionId, userId: user.id } });
     });

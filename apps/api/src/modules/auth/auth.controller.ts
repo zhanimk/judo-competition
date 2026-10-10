@@ -16,31 +16,33 @@ import { RegisterDto, LoginDto, InviteDto, AcceptDto } from './auth.dto.js';
 import type { AuthRequest, CookieResponse, Principal } from './auth.types.js';
 import { ControlAccessDto, ControlAccessQuery, RevokeInvitationDto } from './access.dto.js';
 import { workRole } from './access-guards.js';
-function cookie(res: CookieResponse, token: string, logout = false) {
+import { RuntimeConfig } from '../../infrastructure/runtime-config.js';
+function cookie(res: CookieResponse, token: string, secure: boolean, logout = false) {
   res.setHeader(
     'Set-Cookie',
-    `judo_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${logout ? 0 : 28800}${process.env.COOKIE_SECURE === 'true' ? '; Secure' : ''}`,
+    `judo_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${logout ? 0 : 28800}${secure ? '; Secure' : ''}`,
   );
   res.setHeader('Cache-Control', 'no-store');
 }
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: RuntimeConfig,
+  ) {}
   @Get('users') users(@CurrentUser() user: Principal) {
     return this.auth.users(user);
   }
   @Post('users') createUser(@CurrentUser() user: Principal, @Body() dto: RegisterDto) {
-    this.auth.admin(user);
-    return this.auth.register(dto.email, dto.name, dto.password);
+    return this.auth.register(dto, user);
   }
   @Public() @Post('login') async login(
     @Req() req: AuthRequest,
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: CookieResponse,
   ) {
-    this.auth.limit('login:' + req.ip);
-    const user = await this.auth.login(dto.email, dto.password);
-    cookie(res, await this.auth.session(user.id));
+    const user = await this.auth.loginFromAddress(dto.email, dto.password, req.ip);
+    cookie(res, await this.auth.session(user.id), this.config.cookieSecure);
     return { name: user.name, role: user.role, workRole: workRole(user.role) };
   }
   @Get('me') @Header('Cache-Control', 'no-store') me(@CurrentUser() user: Principal) {
@@ -57,7 +59,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: CookieResponse,
   ) {
     await this.auth.logout(user);
-    cookie(res, '', true);
+    cookie(res, '', this.config.cookieSecure, true);
     return { ok: true };
   }
   @Get('tatamis/:id/invitations') @Header('Cache-Control', 'no-store') invites(
@@ -85,9 +87,8 @@ export class AuthController {
     @Body() dto: AcceptDto,
     @Res({ passthrough: true }) res: CookieResponse,
   ) {
-    this.auth.limit('accept:' + req.ip);
-    const result = await this.auth.accept(dto.token, dto.name);
-    cookie(res, result.token);
+    const result = await this.auth.acceptFromAddress(dto.token, dto.name, req.ip);
+    cookie(res, result.token, this.config.cookieSecure);
     return { tatamiId: result.tatamiId, tournamentId: result.tournamentId };
   }
   @Get('tatamis/:id/control') @Header('Cache-Control', 'no-store') control(

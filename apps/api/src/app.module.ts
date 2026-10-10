@@ -7,6 +7,7 @@ import { PublicController } from './modules/public/public.controller.js';
 import { PublicService } from './modules/public/public.service.js';
 import { ProtocolsController } from './modules/protocols/protocols.controller.js';
 import { ProtocolsService } from './modules/protocols/protocols.service.js';
+import { ProtocolPublicationsService } from './modules/protocols/protocol-publications.service.js';
 import { DrawsController } from './modules/draws/draws.controller.js';
 import { DrawsService } from './modules/draws/draws.service.js';
 import { APP_GUARD } from '@nestjs/core';
@@ -22,6 +23,9 @@ import { RosterService } from './modules/roster/roster.service.js';
 import { DatabaseService } from './database/database.service.js';
 import { TournamentsService } from './modules/tournaments/tournaments.service.js';
 import { TournamentsController } from './modules/tournaments/tournaments.controller.js';
+import { RuntimeConfig } from './infrastructure/runtime-config.js';
+import { RedisService } from './infrastructure/redis.service.js';
+import { HealthController } from './infrastructure/health.controller.js';
 @Module({
   controllers: [
     ControlController,
@@ -33,6 +37,7 @@ import { TournamentsController } from './modules/tournaments/tournaments.control
     RosterController,
     TatamisController,
     AuthController,
+    HealthController,
   ],
   providers: [
     ControlService,
@@ -41,12 +46,15 @@ import { TournamentsController } from './modules/tournaments/tournaments.control
     DatabaseService,
     PublicService,
     ProtocolsService,
+    ProtocolPublicationsService,
     DrawsService,
     TournamentsService,
     RosterService,
     TatamisService,
     AuthService,
     AccessService,
+    RuntimeConfig,
+    RedisService,
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })

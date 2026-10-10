@@ -181,12 +181,16 @@ function fixture() {
             state.accessCommands.find((command) => where.id.in.includes(command.id)) ?? null,
           ),
       },
+      tournamentCommand: { findFirst: async () => null },
       rosterCommand: {
         findFirst: async ({ where }) =>
           structuredClone(
             state.rosterCommands.find((command) => where.id.in.includes(command.id)) ?? null,
           ),
       },
+      drawCommand: { findFirst: async () => null },
+      protocolCommand: { findFirst: async () => null },
+      liveOutbox: { create: async () => ({ id: 1n }) },
       auditEvent: {
         create: async ({ data }) => {
           state.audits.push(structuredClone(data));

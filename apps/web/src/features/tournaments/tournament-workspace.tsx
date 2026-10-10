@@ -5,6 +5,7 @@ import { formatLabel } from '../draws/format-label';
 import { NEW_DRAW_FORMATS } from '@judo/engine/draw';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
+import { ProtocolPublications } from '../protocols/protocol-publications';
 import { ProtocolDownload } from '../draws/protocol-download';
 import { DrawPanel } from '../draws/draw-panel';
 import { ControlCenter } from '../control/control-center';
@@ -12,6 +13,7 @@ import { ClubRoster } from '../roster/club-roster';
 import { readPendingRoster } from '../roster/roster-command';
 import { acceptRosterSnapshot, mergeRosterReceipt, type Receipt } from '../roster/roster-model';
 import Link from 'next/link';
+import { useAdministrationCommand } from './use-administration-command';
 import { request } from './api';
 import type { Tournament } from './types';
 import { startReadiness } from './start-readiness';
@@ -21,7 +23,6 @@ export function TournamentWorkspace({ id }: { id: string }) {
   const [t, setT] = useState<Tournament | null>(null),
     [tab, setTab] = useState('overview'),
     [error, setError] = useState(''),
-    [busy, setBusy] = useState(false),
     [loaded, setLoaded] = useState(false);
   const [rosterPending, setRosterPending] = useState(false);
   const pollerRef = useRef<{ refresh: () => Promise<void>; stop: () => void } | null>(null);
@@ -38,6 +39,12 @@ export function TournamentWorkspace({ id }: { id: string }) {
   async function load() {
     await pollerRef.current?.refresh();
   }
+  const administration = useAdministrationCommand(id, async (command) => {
+    if (command.operation === 'CATEGORY') setCategory((current) => ({ ...current, name: '' }));
+    await load();
+    if (command.operation === 'START') setTab('tatamis');
+  });
+  const busy = administration.blocked;
   const applyReceipt = useCallback(
     (receipt: Receipt) => {
       setT((current) => (current?.id === id ? mergeRosterReceipt(current, receipt) : current));
@@ -122,59 +129,21 @@ export function TournamentWorkspace({ id }: { id: string }) {
       )
     )
       return;
-    setBusy(true);
-    setError('');
-    try {
-      await request(`/tournaments/${id}/start`, {});
-      await load();
-      setTab('tatamis');
-    } catch {
-      setError(
-        text(
-          'Состав или сетки изменились. Обновите данные, проверьте категории с участниками и повторите запуск.',
-          'Құрам немесе торлар өзгерді. Деректерді жаңартып, қатысушылары бар санаттарды тексеріңіз де, қайта бастаңыз.',
-        ),
-      );
-    } finally {
-      setBusy(false);
-    }
+    await administration.send('START', { expectedRevision: t.administrationRevision });
   }
   async function publish() {
-    setBusy(true);
-    setError('');
-    try {
-      await request(`/tournaments/${id}/publish`, {});
-      await load();
-    } catch {
-      setError(text('Не удалось опубликовать турнир.', 'Турнирді жариялау мүмкін болмады.'));
-    } finally {
-      setBusy(false);
-    }
+    if (!t || busy || rosterPending) return;
+    await administration.send('PUBLISH', { expectedRevision: t.administrationRevision });
   }
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setError('');
-    try {
-      await request(`/tournaments/${id}/categories`, {
-        ...category,
-        maxWeightGrams: openWeight ? null : category.maxWeightGrams,
-        minWeightGrams: openWeight ? category.maxWeightGrams : null,
-      });
-      setCategory({ ...category, name: '' });
-      await load();
-    } catch (e) {
-      setError(
-        (e as Error).message === 'DRAW_LOCKED'
-          ? text(
-              'Состав категории заблокирован после подтверждения сетки.',
-              'Тор расталғаннан кейін санат құрамы бекітілді.',
-            )
-          : (e as Error).message,
-      );
-    } finally {
-      setBusy(false);
-    }
+    if (!t || busy || rosterPending) return;
+    await administration.send('CATEGORY', {
+      expectedRevision: t.administrationRevision,
+      ...category,
+      maxWeightGrams: openWeight ? null : category.maxWeightGrams,
+      minWeightGrams: openWeight ? category.maxWeightGrams : null,
+    });
   }
   if (!t || t.id !== id)
     return (
@@ -188,6 +157,7 @@ export function TournamentWorkspace({ id }: { id: string }) {
   );
   return (
     <>
+      {administration.notice}
       <Link className="back-link" href="/tournaments">
         ← {text('Все турниры', 'Барлық турнирлер')}
       </Link>
@@ -204,9 +174,14 @@ export function TournamentWorkspace({ id }: { id: string }) {
               ? text('Версия зафиксирована при запуске', 'Нұсқа басталған кезде бекітілді')
               : text('Будет зафиксирован при запуске', 'Басталған кезде бекітіледі')}{' '}
             ·{' '}
-            {t.rulesSnapshot?.tieBreak === 'REMATCH'
-              ? text('При равенстве — дополнительные встречи', 'Тең болса — қосымша белдесулер')
-              : text('Правила прежней версии', 'Алдыңғы нұсқа ережелері')}
+            {t.rulesSnapshot?.tieRanking === 'WINS_ONLY'
+              ? text(
+                  'Равенство: двое — новая схватка; трое и более — решение администратора',
+                  'Теңдік: екеуі — жаңа белдесу; үш не одан көп — әкімшінің шешімі',
+                )
+              : t.rulesSnapshot?.tieBreak === 'REMATCH'
+                ? text('При равенстве — дополнительные встречи', 'Тең болса — қосымша белдесулер')
+                : text('Правила прежней версии', 'Алдыңғы нұсқа ережелері')}
           </p>
         </div>
         <div className={styles.actions}>
@@ -245,7 +220,7 @@ export function TournamentWorkspace({ id }: { id: string }) {
             key={value}
             aria-current={tab === value ? 'page' : undefined}
             className={tab === value ? 'active' : ''}
-            disabled={rosterPending && tab !== value}
+            disabled={(rosterPending || busy) && tab !== value}
             onClick={() => {
               setTab(value);
               setError('');
@@ -539,21 +514,33 @@ export function TournamentWorkspace({ id }: { id: string }) {
         />
       )}
       {tab === 'tatamis' && <ControlCenter tournamentId={t.id} />}
-      {tab === 'draw' && <DrawPanel key={t.id} tournament={t} onUpdate={load} />}
+      {tab === 'draw' && (
+        <DrawPanel
+          key={t.id}
+          tournament={t}
+          onUpdate={load}
+          administrationBlocked={busy}
+          onSchedule={() =>
+            administration.send('SCHEDULE', { expectedRevision: t.administrationRevision })
+          }
+        />
+      )}
       {tab === 'protocols' && (
-        <section className="panel empty-state">
-          <div className="empty-symbol">▤</div>
+        <section className="panel">
           <h3>{text('Документы турнира', 'Турнир құжаттары')}</h3>
-          <p>
+          <p className="field-note">
             {text(
-              'Сетки и результаты, участники по категориям. Командный зачёт по медалям пока недоступен. Выберите документ, категории и язык.',
-              'Торлар мен нәтижелер, санаттар бойынша қатысушылар. Медальдар бойынша командалық есеп әзірге қолжетімсіз. Құжатты, санаттарды және тілді таңдаңыз.',
+              'Сетки до соревнования и с итоговыми местами, участники по категориям и командный зачёт по медалям. Для публичного доступа создайте и проверьте версию PDF, затем опубликуйте её.',
+              'Жарысқа дейінгі және қорытынды орындары бар торлар, санаттар бойынша қатысушылар және медальдар бойынша командалық есеп. Жалпыға қолжетімді ету үшін PDF нұсқасын құрып, тексеріп, содан кейін жариялаңыз.',
             )}
           </p>
-          <ProtocolDownload tournamentId={id} />
-          <Link className="solid-link" href={`/tournaments/${id}/protocol`}>
-            {text('Открыть протокол', 'Хаттаманы ашу')}
-          </Link>
+          <div className="protocol-tools">
+            <ProtocolDownload tournamentId={id} />
+            <Link className="solid-link" href={`/tournaments/${id}/protocol`}>
+              {text('Открыть протокол', 'Хаттаманы ашу')}
+            </Link>
+          </div>
+          <ProtocolPublications tournamentId={id} />
         </section>
       )}
     </>

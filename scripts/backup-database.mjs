@@ -49,7 +49,17 @@ function hashStrings(rows) {
 }
 
 export function compareManifests(source, restored) {
-  return JSON.stringify(source) === JSON.stringify(restored);
+  const stable = (value) => ({
+    ...value,
+    sequences: (value.sequences ?? []).map(({ lastValue, isCalled, ...definition }) => definition),
+  });
+  if (JSON.stringify(stable(source)) !== JSON.stringify(stable(restored))) return false;
+  // nextval is outside MVCC and can advance during a live snapshot dump. Gaps
+  // are safe; restoring a counter that can reuse a snapshotted ID is not.
+  return (restored.sequences ?? []).every((sequence) => {
+    const next = BigInt(sequence.lastValue) + (sequence.isCalled ? BigInt(sequence.increment) : 0n);
+    return next > BigInt(sequence.maximumReferencedValue) && next <= BigInt(sequence.maximum);
+  });
 }
 
 async function run(file, args, env, output, name) {
@@ -78,15 +88,39 @@ async function manifest(tx, schema) {
   await tx.$executeRawUnsafe("SET LOCAL DateStyle = 'ISO, YMD'");
   await tx.$executeRawUnsafe('SET LOCAL extra_float_digits = 3');
   await tx.$executeRawUnsafe("SET LOCAL bytea_output = 'hex'");
-  const sequences = await tx.$queryRaw`
-    SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE n.nspname=${schema} AND c.relkind='S'
+  const sequenceDefinitions = await tx.$queryRaw`
+    SELECT c.relname AS name,s.seqstart::text AS start,s.seqincrement::text AS increment,
+           s.seqmin::text AS minimum,s.seqmax::text AS maximum,s.seqcache::text AS cache,
+           s.seqcycle AS cycle,t.relname AS "ownerTable",a.attname AS "ownerColumn"
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    JOIN pg_sequence s ON s.seqrelid=c.oid
+    LEFT JOIN pg_depend d ON d.objid=c.oid AND d.classid='pg_class'::regclass
+      AND d.refclassid='pg_class'::regclass AND d.deptype IN ('a','i')
+    LEFT JOIN pg_class t ON t.oid=d.refobjid AND t.relnamespace=n.oid
+    LEFT JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=d.refobjsubid
+    WHERE n.nspname=${schema} AND c.relkind='S' ORDER BY c.relname COLLATE "C"
   `;
-  // Sequences are not MVCC snapshots. The current UUID-based schema has none.
-  if (sequences.length) throw new Error('SEQUENCE_VERIFICATION_NOT_SUPPORTED');
+  const sequences = [];
+  for (const definition of sequenceDefinitions) {
+    if (
+      !definition.ownerTable ||
+      !definition.ownerColumn ||
+      definition.cycle ||
+      BigInt(definition.increment) <= 0n ||
+      BigInt(definition.minimum) < 1n
+    )
+      throw new Error('SEQUENCE_VERIFICATION_NOT_SUPPORTED');
+    const [{ lastValue, isCalled }] = await tx.$queryRawUnsafe(
+      `SELECT last_value::text AS "lastValue",is_called AS "isCalled" FROM ${quoteIdentifier(schema)}.${quoteIdentifier(definition.name)}`,
+    );
+    const [{ maximumReferencedValue }] = await tx.$queryRawUnsafe(
+      `SELECT COALESCE(MAX(${quoteIdentifier(definition.ownerColumn)}),0)::text AS "maximumReferencedValue" FROM ${quoteIdentifier(schema)}.${quoteIdentifier(definition.ownerTable)}`,
+    );
+    sequences.push({ ...definition, maximumReferencedValue, lastValue, isCalled });
+  }
   const unsupported = await tx.$queryRaw`
     SELECT c.relname AS name FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE n.nspname=${schema} AND c.relkind NOT IN ('r','i','t')
+    WHERE n.nspname=${schema} AND c.relkind NOT IN ('r','i','t','S')
     UNION ALL
     SELECT p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname=${schema}
@@ -153,6 +187,7 @@ async function manifest(tx, schema) {
   return {
     schema,
     tables: data,
+    sequences,
     structure: {
       columns: hashStrings(columns),
       constraints: hashStrings(constraints),
@@ -309,3 +344,6 @@ export async function createVerifiedBackup(
   }
   return report;
 }
+
+// Read-only inspection of a freshly restored, guarded disposable database.
+export { manifest as databaseManifest };

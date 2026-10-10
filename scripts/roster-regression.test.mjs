@@ -25,7 +25,18 @@ const { TournamentsService } = await apiModule('tournaments/tournaments.service'
 const { DrawsService, entryFingerprint } = await apiModule('draws/draws.service');
 const { assertUnusedCommandIds } = await apiModule('matches/command-ids');
 
-const owner = { id: randomUUID(), role: 'ORGANIZER' };
+const owner = {
+  id: randomUUID(),
+  role: 'ORGANIZER',
+  sessionId: randomUUID(),
+  name: 'QA Administrator',
+};
+const superAdmin = {
+  id: randomUUID(),
+  role: 'SUPER_ADMIN',
+  sessionId: randomUUID(),
+  name: 'QA Super Administrator',
+};
 const tournamentId = randomUUID();
 const categoryId = randomUUID();
 const femaleCategoryId = randomUUID();
@@ -53,6 +64,7 @@ function harness({
   failAthleteWrite = false,
   matchEvents = [],
 } = {}) {
+  let principalValid = true;
   let saved = {
     tournament: { id: tournamentId, ownerId: owner.id, status: 'DRAFT', rosterRevision: 0 },
     categories: [
@@ -180,6 +192,20 @@ function harness({
       const operation = chain.then(async () => {
         const staged = structuredClone(saved);
         const tx = {
+          session: {
+            findUnique: async ({ where }) => {
+              if (!principalValid) return null;
+              const principal = where.id === superAdmin.sessionId ? superAdmin : owner;
+              return {
+                id: principal.sessionId,
+                userId: principal.id,
+                user: { id: principal.id, role: principal.role, name: principal.name },
+                expiresAt: new Date('2099-01-01'),
+                invitationId: null,
+                tatamiId: null,
+              };
+            },
+          },
           $queryRaw: async (strings, ...values) => {
             locks.push({ sql: strings.join('?'), values });
             if (strings.join('').includes('SELECT a."id" FROM "Athlete" a')) {
@@ -386,6 +412,7 @@ function harness({
             },
           },
           accessCommand: { findFirst: async () => null },
+          tournamentCommand: { findFirst: async () => null },
           rosterCommand: {
             findUnique: async ({ where }) =>
               structuredClone(staged.receipts.find((receipt) => receipt.id === where.id) ?? null),
@@ -421,6 +448,9 @@ function harness({
                 ),
               ) ?? null,
           },
+          drawCommand: { findFirst: async () => null },
+          protocolCommand: { findFirst: async () => null },
+          liveOutbox: { create: async () => ({ id: 1n }) },
           auditEvent: {
             create: async ({ data }) => {
               if (failAudit) throw new Error('audit unavailable');
@@ -442,6 +472,9 @@ function harness({
   const legacy = new TournamentsService(db, live, auth);
   return {
     notices,
+    revokePrincipal: () => {
+      principalValid = false;
+    },
     locks,
     athleteReads,
     snapshot: () => structuredClone(saved),
@@ -591,10 +624,7 @@ test('exact roster receipt survives service restart and later status/version cha
     h.commit({ ...dto, entries: [row({ lastName: 'Other' })] }),
     httpError(409, 'COMMAND_ID_REUSED'),
   );
-  await assert.rejects(
-    h.commit(dto, { role: 'SUPER_ADMIN' }, randomUUID()),
-    httpError(409, 'COMMAND_ID_REUSED'),
-  );
+  await assert.rejects(h.commit(dto, superAdmin, randomUUID()), httpError(403, 'FORBIDDEN'));
 });
 
 test('club creation normalizes name, audits once and retains exact receipt after adding entries', async () => {
@@ -658,7 +688,7 @@ test('owner, foreign organizer and judge permissions apply to reads, preview and
       httpError(403, 'FORBIDDEN'),
     );
   }
-  await h.commit(h.dto(), { id: randomUUID(), role: 'SUPER_ADMIN' });
+  await h.commit(h.dto(), superAdmin);
 });
 
 test('foreign club/category and birth-year/gender/name errors reject the entire batch', async () => {
@@ -851,6 +881,7 @@ test('shared command namespace serializes sorted UUIDs and rejects roster receip
       locks.push(id);
       return [];
     },
+    tournamentCommand: { findFirst: async () => null },
     rosterCommand: { findFirst: async () => ({ id: ids[0] }) },
     matchEvent: { findFirst: async () => null },
   };
@@ -879,7 +910,9 @@ test('legacy entry API joins normalized club, infers gender and audits roster re
   assert.equal(h.snapshot().tournament.rosterRevision, 1);
   assert.equal(h.snapshot().audits[0].action, 'ENTRY_ADDED');
   assert.ok(h.locks[0].sql.includes('"Tournament"'));
-  assert.ok(h.locks[1].sql.includes('"Category"'));
+  assert.ok(h.locks[1].sql.includes('"Tatami"'));
+  assert.ok(h.locks[2].sql.includes('"Session"'));
+  assert.ok(h.locks[3].sql.includes('"Category"'));
   const fail = harness({ failAudit: true });
   const before = fail.snapshot();
   await assert.rejects(
@@ -1171,8 +1204,8 @@ test('exact correction receipts replay after restart/status changes and anchor t
   );
   await assert.rejects(h.restore(entry.id, command), httpError(409, 'COMMAND_ID_REUSED'));
   await assert.rejects(
-    h.archive(entry.id, command, { id: randomUUID(), role: 'SUPER_ADMIN' }, randomUUID()),
-    httpError(409, 'COMMAND_ID_REUSED'),
+    h.archive(entry.id, command, superAdmin, randomUUID()),
+    httpError(403, 'FORBIDDEN'),
   );
   assert.deepEqual(h.snapshot(), before);
 });
@@ -1337,6 +1370,17 @@ test('STALE draw confirmation rejects even if restoring entries returns the prev
     $transaction: async (callback) =>
       callback({
         $queryRaw: async () => [],
+        session: {
+          findUnique: async () => ({
+            id: owner.sessionId,
+            userId: owner.id,
+            user: owner,
+            expiresAt: new Date('2099-01-01'),
+            invitationId: null,
+          }),
+        },
+        tournament: { findUnique: async () => ({ id: tournamentId, ownerId: owner.id }) },
+        drawCommand: { findUnique: async () => null },
         drawRecord: {
           findUnique: async () => ({ status: 'STALE', version: 8, fingerprint: 'old' }),
         },
@@ -1350,7 +1394,7 @@ test('STALE draw confirmation rejects even if restoring entries returns the prev
   };
   const service = new DrawsService({}, db, { owner: async () => {} });
   await assert.rejects(
-    service.confirm(categoryId, 7, owner),
+    service.confirm(categoryId, { id: randomUUID(), version: 7 }, owner),
     httpError(409, 'DRAW_ENTRIES_CHANGED'),
   );
   assert.equal(entryReads, 0);
@@ -1497,20 +1541,20 @@ test('foreign owner identities are unavailable even to a superadmin operating th
   const foreign = history(h, {}, randomUUID());
   const before = h.snapshot();
   await assert.rejects(
-    h.commit(h.dto([row({ athleteId: foreign.athleteId })]), { role: 'SUPER_ADMIN' }),
+    h.commit(h.dto([row({ athleteId: foreign.athleteId })]), superAdmin),
     rowError('ATHLETE_NOT_FOUND'),
   );
   await assert.rejects(
-    h.previewIdentity(entry.id, foreign.athleteId, { role: 'SUPER_ADMIN' }),
+    h.previewIdentity(entry.id, foreign.athleteId, superAdmin),
     httpError(404, 'ATHLETE_NOT_FOUND'),
   );
   await assert.rejects(
-    h.bind(entry.id, h.correction({ athleteId: foreign.athleteId }), { role: 'SUPER_ADMIN' }),
+    h.bind(entry.id, h.correction({ athleteId: foreign.athleteId }), superAdmin),
     httpError(404, 'ATHLETE_NOT_FOUND'),
   );
   assert.deepEqual(h.snapshot(), before);
   assert.ok(
-    !(await h.athletes('', 20, { role: 'SUPER_ADMIN' })).athletes.some(
+    !(await h.athletes('', 20, superAdmin)).athletes.some(
       (athlete) => athlete.id === foreign.athleteId,
     ),
   );
@@ -1548,7 +1592,7 @@ test('orphan identities never cross null-owner tournament boundaries', async () 
     state.tournament.ownerId = null;
     state.athletes.find((athlete) => athlete.id === entry.athleteId).ownerId = null;
   });
-  const admin = { role: 'SUPER_ADMIN' };
+  const admin = superAdmin;
   const directory = await h.athletes('', 20, admin);
   assert.deepEqual(
     directory.athletes.map((athlete) => athlete.id),
@@ -1636,8 +1680,8 @@ test('identity bind exact receipt survives restart/current changes and anchors t
   assert.deepEqual(h.snapshot(), before);
   await assert.rejects(h.bind(randomUUID(), command), httpError(409, 'COMMAND_ID_REUSED'));
   await assert.rejects(
-    h.bind(entry.id, command, { role: 'SUPER_ADMIN' }, randomUUID()),
-    httpError(409, 'COMMAND_ID_REUSED'),
+    h.bind(entry.id, command, superAdmin, randomUUID()),
+    httpError(403, 'FORBIDDEN'),
   );
   await assert.rejects(
     h.bind(entry.id, { ...command, reason: 'Другая причина' }),
@@ -1813,4 +1857,27 @@ test('competing bind and batch-registration commands admit only one current iden
       ).length,
     1,
   );
+});
+
+test('legacy roster writes and exact receipts recheck a revoked administrator session', async () => {
+  const fresh = harness();
+  fresh.revokePrincipal();
+  const before = fresh.snapshot();
+  await assert.rejects(fresh.commit(fresh.dto()), httpError(401, 'AUTH_REQUIRED'));
+  await assert.rejects(
+    fresh.club({ id: randomUUID(), expectedRevision: 0, name: 'Denied' }),
+    httpError(401, 'AUTH_REQUIRED'),
+  );
+  await assert.rejects(
+    fresh.legacy({ firstName: 'QA', lastName: 'Denied', club: 'QA', birthYear: 2012 }),
+    httpError(401, 'AUTH_REQUIRED'),
+  );
+  assert.deepEqual(fresh.snapshot(), before);
+  const retry = harness();
+  const command = retry.dto();
+  await retry.commit(command);
+  retry.revokePrincipal();
+  const saved = retry.snapshot();
+  await assert.rejects(retry.commit(command), httpError(401, 'AUTH_REQUIRED'));
+  assert.deepEqual(retry.snapshot(), saved);
 });

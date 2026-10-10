@@ -13,3 +13,6 @@ output/
 .aws/
 .codex/
 .agents/
+deploy/certificates/
+deploy/secrets/
+*.aesgcm

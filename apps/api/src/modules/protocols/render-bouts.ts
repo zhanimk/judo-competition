@@ -2,6 +2,7 @@ import type { MatchState } from '@judo/engine/match';
 import { categoryResults, slotName, type ProtocolCategory } from './protocol-model.js';
 import { ProtocolPdf, ink } from './pdf-document.js';
 import { paintBoutCard, scoreLegend } from './pdf-bout-card.js';
+import { protocolResultClock } from './protocol-result-clock.js';
 export function renderBouts(pdf: ProtocolPdf, c: ProtocolCategory) {
   const data = categoryResults(c),
     text = pdf.text;
@@ -9,9 +10,7 @@ export function renderBouts(pdf: ProtocolPdf, c: ProtocolCategory) {
     pdf.notice(text('Схватки ещё не сформированы.', 'Белдесулер әлі құрылмаған.'));
     return;
   }
-  const name = slotName(c, text),
-    duration = (ms: number) =>
-      `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
+  const name = slotName(c, text);
   const records = new Map(c.draw!.contests.map((m) => [m.key, m]));
   const completed = c.draw!.contests.filter((m) => m.status === 'CONFIRMED').length;
   pdf.metrics([
@@ -68,7 +67,7 @@ export function renderBouts(pdf: ProtocolPdf, c: ProtocolCategory) {
         .fillColor(ink.navy)
         .text(
           confirmed
-            ? `${reason} · ${text('Время', 'Уақыт')} ${state ? duration(state.elapsedMs) : '—'}${state?.goldenMs ? ` + GS ${duration(state.goldenMs)}` : ''}`
+            ? `${reason} · ${text('Время', 'Уақыт')} ${protocolResultClock(state)}`
             : text('Результат не подтверждён', 'Нәтиже расталмаған'),
           x + 10,
           y + 107,

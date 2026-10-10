@@ -114,6 +114,27 @@ export async function fixtureRequest(base, path, data, cookie = '') {
       reason: 'Explicit revocation in isolated integration fixture',
     };
   }
+  const administration = /^\/tournaments\/([^/]+)\/(start|schedule|publish|categories)$/.exec(path);
+  if (data && !data.id && path === '/tournaments') payload = { ...data, id: randomUUID() };
+  else if (data && !data.id && administration) {
+    const current = await raw(base, `/tournaments/${administration[1]}`, undefined, cookie);
+    const tournament = current.ok ? await current.json() : null;
+    payload = {
+      ...data,
+      id: randomUUID(),
+      expectedRevision: tournament?.administrationRevision ?? 0,
+    };
+  }
+  const drawCommand = /^\/categories\/([^/]+)\/draw\/(preview|confirm|publication)$/.exec(path);
+  if (data && !data.id && drawCommand) {
+    const current = await raw(base, `/categories/${drawCommand[1]}/draw`, undefined, cookie);
+    const state = current.ok ? await current.json() : null;
+    payload = {
+      ...data,
+      id: randomUUID(),
+      ...(drawCommand[2] === 'preview' ? { expectedVersion: state?.draw?.version ?? 0 } : {}),
+    };
+  }
   const response = await raw(base, path, payload, cookie);
   if (data && invite && response.ok) {
     const issued = await response.clone().json();

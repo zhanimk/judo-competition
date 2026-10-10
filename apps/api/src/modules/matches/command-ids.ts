@@ -16,9 +16,15 @@ export async function assertUnusedCommandIds(
 ) {
   if (new Set(ids).size !== ids.length) throw new ConflictException('COMMAND_ID_REUSED');
   await lockCommandIds(tx, ids);
+  if (await tx.tournamentCommand.findFirst({ where: { id: { in: ids } }, select: { id: true } }))
+    throw new ConflictException('COMMAND_ID_REUSED');
   if (await tx.rosterCommand.findFirst({ where: { id: { in: ids } }, select: { id: true } }))
     throw new ConflictException('COMMAND_ID_REUSED');
   if (await tx.accessCommand.findFirst({ where: { id: { in: ids } }, select: { id: true } }))
+    throw new ConflictException('COMMAND_ID_REUSED');
+  if (await tx.drawCommand.findFirst({ where: { id: { in: ids } }, select: { id: true } }))
+    throw new ConflictException('COMMAND_ID_REUSED');
+  if (await tx.protocolCommand.findFirst({ where: { id: { in: ids } }, select: { id: true } }))
     throw new ConflictException('COMMAND_ID_REUSED');
   const reused = await tx.matchEvent.findFirst({
     where: {

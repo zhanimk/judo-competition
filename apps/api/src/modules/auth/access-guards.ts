@@ -7,15 +7,26 @@ export function workRole(role: string): 'ADMIN' | 'JUDGE' | null {
   return role === 'OPERATOR' ? 'JUDGE' : null;
 }
 
+/** Administrative writes share the same lock order as logout and live commands. */
+export async function lockAdminMutation(
+  tx: Prisma.TransactionClient,
+  user: Principal,
+  tournamentId: string,
+) {
+  await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${tournamentId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM "Tatami" WHERE "tournamentId"=${tournamentId} ORDER BY id FOR UPDATE`;
+  await assertActivePrincipal(tx, user, { tournamentId });
+}
+
 /** Call inside the mutation transaction after its Tournament/Tatami locks.
  * AuthGuard is an initial check; this check orders expiry/revocation/logout
  * against sporting and administrative commands on those same locks. */
-export async function assertActivePrincipal(
+export async function assertSessionIdentity(
   tx: Prisma.TransactionClient,
   user: Principal,
-  scope: { tournamentId: string; tatamiId?: string; lockSession?: boolean },
+  lockSession = true,
 ) {
-  if (scope.lockSession !== false)
+  if (lockSession)
     await tx.$queryRaw`SELECT id FROM "Session" WHERE id=${user.sessionId} FOR UPDATE`;
   const session = await tx.session.findUnique({
     where: { id: user.sessionId },
@@ -40,6 +51,15 @@ export async function assertActivePrincipal(
     )
       throw new UnauthorizedException('AUTH_REQUIRED');
   }
+  return session;
+}
+
+export async function assertActivePrincipal(
+  tx: Prisma.TransactionClient,
+  user: Principal,
+  scope: { tournamentId: string; tatamiId?: string; lockSession?: boolean },
+) {
+  const session = await assertSessionIdentity(tx, user, scope.lockSession !== false);
   const tournament = await tx.tournament.findUnique({ where: { id: scope.tournamentId } });
   if (!tournament) throw new ForbiddenException('FORBIDDEN');
   if (session.user.role === 'SUPER_ADMIN') return session;

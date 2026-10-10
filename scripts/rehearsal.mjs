@@ -84,11 +84,13 @@ try {
   for (const suite of [
     'integration',
     'auth-integration',
+    'auth-safety-integration',
     'roster-integration',
     'roster-corrections-integration',
     'draw-integration',
     'scheduling-integration',
     'public-integration',
+    'public-snapshot-integration',
     'control-integration',
     'formats-integration',
     'rematches-integration',
@@ -100,8 +102,25 @@ try {
     'draw-session-race-integration',
     'athlete-identity-integration',
     'protocol-integration',
+    'draw-v4-integration',
+    'draw-128-integration',
+    'administration-integration',
+    'protocol-publication-integration',
+    'realtime-outbox-integration',
+    'encrypted-backup-integration',
   ]) {
-    if (suite === 'live-integration' || suite === 'protocol-integration') {
+    if (
+      [
+        'auth-safety-integration',
+        'live-integration',
+        'protocol-integration',
+        'draw-v4-integration',
+        'draw-128-integration',
+        'administration-integration',
+        'protocol-publication-integration',
+        'realtime-outbox-integration',
+      ].includes(suite)
+    ) {
       // Independent suites create many valid synthetic logins. Give live/PDF
       // checks a fresh process/IP budget without changing production throttles.
       await stop();
@@ -121,6 +140,9 @@ try {
     },
   });
   report.suites.push({ name: 'actual-process-restart-and-persistence', passed: true });
+  await run('verified-backup-with-outbox-sequence-and-pdf-bytes', process.execPath, [
+    'scripts/verify-database-backup.mjs',
+  ]);
   report.passed = true;
   console.log('PASS actual-process-restart-and-persistence: two crashes and one normal restart');
 } catch (error) {

@@ -8,8 +8,14 @@ import {
   IsIn,
   Matches,
   ValidateIf,
+  IsUUID,
 } from 'class-validator';
+export class AdministrationCommandDto {
+  @IsUUID() id!: string;
+  @IsInt() @Min(0) @Max(Number.MAX_SAFE_INTEGER) expectedRevision!: number;
+}
 export class CreateTournamentDto {
+  @IsUUID() id!: string;
   @IsString() @Length(3, 120) name!: string;
   @IsString() @Length(2, 80) city!: string;
   @IsString() @Length(2, 160) venue!: string;
@@ -17,7 +23,7 @@ export class CreateTournamentDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/) endDate!: string;
   @IsInt() @Min(1) @Max(32) tatamiCount!: number;
 }
-export class CreateCategoryDto {
+export class CreateCategoryDto extends AdministrationCommandDto {
   @IsOptional() @IsIn(['SINGLE_ELIMINATION', 'REPECHAGE', 'ROUND_ROBIN', 'MIXED']) format?: string;
   @IsString() @Length(2, 100) name!: string;
   @IsIn(['MALE', 'FEMALE']) gender!: string;
@@ -31,9 +37,4 @@ export class CreateCategoryDto {
   @IsOptional() @IsInt() @Min(1000) @Max(300000) minWeightGrams?: number | null;
   @IsInt() @Min(30) @Max(1200) durationSeconds!: number;
 }
-export class CreateEntryDto {
-  @IsString() @Length(1, 80) firstName!: string;
-  @IsString() @Length(1, 80) lastName!: string;
-  @IsString() @Length(2, 120) club!: string;
-  @IsInt() @Min(1900) @Max(2100) birthYear!: number;
-}
+export { SingleEntryCommitDto as CreateEntryDto } from '../roster/roster.dto.js';
