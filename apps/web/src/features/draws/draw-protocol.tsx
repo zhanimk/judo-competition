@@ -1,9 +1,11 @@
 'use client';
 import { ResultsTable, type ResultContest } from '../live/results-table';
 import { subscribeTournament } from '../../shared/live/subscribe';
-import { useEffect, useState } from 'react';
+import { pollSnapshots } from '../../shared/live/snapshot-poller';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import type { Draw, Slot } from '@judo/engine/draw';
+import { drawFormat, type Draw, type Slot } from '@judo/engine/draw';
+import { formatLabel } from './format-label';
 import { ProtocolDownload } from './protocol-download';
 import { AuthGate } from '../auth/auth-gate';
 import { request } from '../tournaments/api';
@@ -23,21 +25,13 @@ type Data = { tournament: Tournament; draws: Record<string, RecordDraw | null> }
 function ProtocolContent({ tournamentId }: { tournamentId: string }) {
   const { text, locale } = useLanguage();
   const [data, setData] = useState<Data | null>(null),
-    [error, setError] = useState(false),
-    [retry, setRetry] = useState(0);
-  useEffect(
-    () =>
-      subscribeTournament(tournamentId, (e) => {
-        if (e.kind === 'result') setRetry((v) => v + 1);
-      }),
-    [tournamentId],
-  );
+    [error, setError] = useState(false);
+  const pollerRef = useRef<ReturnType<typeof pollSnapshots<Data>> | null>(null);
   useEffect(() => {
-    let active = true;
     setError(false);
     setData(null);
-    async function load() {
-      try {
+    const poller = pollSnapshots(
+      async () => {
         const t = await request<Tournament>(`/tournaments/${tournamentId}`);
         const rows = await Promise.all(
           t.categories.map(
@@ -48,16 +42,26 @@ function ProtocolContent({ tournamentId }: { tournamentId: string }) {
               ] as const,
           ),
         );
-        if (active) setData({ tournament: t, draws: Object.fromEntries(rows) });
-      } catch {
-        if (active) setError(true);
-      }
-    }
-    void load();
+        return { tournament: t, draws: Object.fromEntries(rows) };
+      },
+      (value) => {
+        setData(value);
+        setError(false);
+      },
+      () => setError(true),
+      5000,
+    );
+    pollerRef.current = poller;
+    void poller.refresh();
+    const unsubscribe = subscribeTournament(tournamentId, (event) => {
+      if (event.kind !== 'state') void poller.refresh();
+    });
     return () => {
-      active = false;
+      poller.stop();
+      if (pollerRef.current === poller) pollerRef.current = null;
+      unsubscribe();
     };
-  }, [tournamentId, retry]);
+  }, [tournamentId]);
   const name = (c: Category, slot: Slot) => {
     if ('winnerOf' in slot) return text('Победитель ', 'Жеңімпаз ') + slot.winnerOf;
     if ('loserOf' in slot) return text('Проигравший ', 'Жеңілген ') + slot.loserOf;
@@ -72,14 +76,16 @@ function ProtocolContent({ tournamentId }: { tournamentId: string }) {
           <Link href={`/tournaments/${tournamentId}`}>← {text('К турниру', 'Турнирге')}</Link>
           <LanguageSwitch />
           <ProtocolDownload tournamentId={tournamentId} />
-          <button disabled={!data} onClick={() => window.print()}>
+          <button disabled={!data || error} onClick={() => window.print()}>
             {text('Печать / сохранить PDF', 'Басып шығару / PDF сақтау')}
           </button>
         </div>
         {error ? (
           <div className="error-box" role="alert">
             {text('Не удалось загрузить протокол.', 'Хаттаманы жүктеу мүмкін болмады.')}{' '}
-            <button onClick={() => setRetry((v) => v + 1)}>{text('Повторить', 'Қайталау')}</button>
+            <button onClick={() => void pollerRef.current?.refresh()}>
+              {text('Повторить', 'Қайталау')}
+            </button>
           </div>
         ) : !data ? (
           <p role="status">{text('Готовим протокол…', 'Хаттама дайындалуда…')}</p>
@@ -124,11 +130,7 @@ function ProtocolContent({ tournamentId }: { tournamentId: string }) {
                   <div className="protocol-tools">
                     <ProtocolDownload tournamentId={tournamentId} categoryId={c.id} />
                   </div>
-                  <p>
-                    {c.format === 'ROUND_ROBIN'
-                      ? text('Круговая — каждый с каждым', 'Айналмалы — әрқайсысы әрқайсысымен')
-                      : text('Выбывание без утешения', 'Жұбаныш белдесулерінсіз шығару')}
-                  </p>
+                  <p>{formatLabel(d ? drawFormat(d.snapshot) : c.format, locale)}</p>
                   <p>
                     {c.birthYearFrom}–{c.birthYearTo} ·{' '}
                     {c.maxWeightGrams === null

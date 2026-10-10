@@ -4,6 +4,8 @@ import { scheduleCategories } from './scheduling.js';
 import { LiveService } from '../matches/live.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/auth.types.js';
+import { assertActivePrincipal } from '../auth/access-guards.js';
+import { requireCompetitionCategories } from './active-categories.js';
 import { ForbiddenException } from '@nestjs/common';
 import {
   Injectable,
@@ -33,15 +35,20 @@ export class TournamentsService {
           include: {
             categories: {
               orderBy: { name: 'asc' },
-              include: { draw: { include: { contests: true } } },
+              include: {
+                _count: { select: { entries: { where: { archivedAt: null } } } },
+                draw: { include: { contests: true } },
+              },
             },
             tatamis: { orderBy: { number: 'asc' } },
           },
         });
+        for (const mat of [...t.tatamis].sort((a, b) => a.id.localeCompare(b.id)))
+          await tx.$queryRaw`SELECT id FROM "Tatami" WHERE id=${mat.id} FOR UPDATE`;
+        await assertActivePrincipal(tx, user, { tournamentId: id });
         if (t.status === 'RUNNING' || t.status === 'FINISHED') return { status: t.status };
-        if (!t.categories.length || t.categories.some((c) => c.draw?.status !== 'CONFIRMED'))
-          throw new ConflictException('ALL_DRAWS_REQUIRED');
-        await scheduleCategories(tx, id, user.id);
+        const categories = requireCompetitionCategories(t.categories);
+        await scheduleCategories(tx, id, user);
         await tx.tournament.update({
           where: { id },
           data: {
@@ -51,7 +58,7 @@ export class TournamentsService {
                 ...profile(t.rulesSnapshot),
                 approvedAt: new Date().toISOString(),
                 categories: Object.fromEntries(
-                  t.categories.map((c) => [
+                  categories.map((c) => [
                     c.id,
                     {
                       durationSeconds: c.durationSeconds,
@@ -85,7 +92,7 @@ export class TournamentsService {
     const result = await this.db.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-        return scheduleCategories(tx, id, user.id);
+        return scheduleCategories(tx, id, user);
       },
       { timeout: 30000 },
     );

@@ -241,3 +241,86 @@
   min-height: 44px;
   font-size: 13px;
 }
+.control-review,
+.control-pending {
+  min-width: 0;
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+  overflow-wrap: anywhere;
+}
+.control-review h3,
+.control-pending h3,
+.control-clock-preview p {
+  margin: 0;
+}
+.control-pending {
+  border: 2px solid #bc7800;
+  background: #fffcf3;
+}
+.control-pending-details {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.control-archive,
+.control-clock-review {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+.control-archive legend,
+.control-clock-review legend {
+  font-weight: 700;
+  padding: 0 6px;
+}
+.control-check {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+.control-check input {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0;
+}
+.control-time-input {
+  max-width: 220px;
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.control-clock-preview {
+  background: #edf3ff;
+  border: 1px solid #cbd6fa;
+  border-radius: 10px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+.control-pending button {
+  min-height: 44px;
+}
+@media (max-width: 700px) {
+  .control-review,
+  .control-pending {
+    padding: 16px;
+  }
+  .control-review .form-actions,
+  .control-pending .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .control-review .form-actions button,
+  .control-pending .form-actions button {
+    width: 100%;
+    white-space: normal;
+  }
+}

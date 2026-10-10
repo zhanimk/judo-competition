@@ -1,6 +1,12 @@
 'use client';
 import { useId, useRef, useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
+import {
+  exportCategories,
+  exportEntryCount,
+  exportSelection,
+  type ExportCategory,
+} from './protocol-scope';
 import './protocol-download.css';
 const kinds = [
   [
@@ -21,18 +27,11 @@ const kinds = [
     'TEAMS',
     'Командный зачёт',
     'Командалық есеп',
-    'По медалям: золото, серебро, бронза.',
-    'Медальдар бойынша: алтын, күміс, қола.',
+    'Итог по медалям: золото, серебро, бронза. Все включённые категории должны быть полностью подтверждены.',
+    'Медальдар бойынша қорытынды: алтын, күміс, қола. Қосылған барлық санаттар толық расталуы керек.',
   ],
 ] as const;
 type Kind = (typeof kinds)[number][0];
-const available = (kind: Kind) => kind === 'DRAW' || kind === 'PARTICIPANTS';
-type ExportCategory = {
-  id: string;
-  name: string;
-  _count?: { entries: number };
-  entries?: unknown[];
-};
 export function ProtocolDownload({
   tournamentId,
   categoryId,
@@ -52,6 +51,8 @@ export function ProtocolDownload({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [done, setDone] = useState(false);
+  const eligible = exportCategories(categories, kind);
+  const chosen = exportSelection(categories, kind, selected);
   async function open() {
     setKind('DRAW');
     setLang(locale);
@@ -80,34 +81,41 @@ export function ProtocolDownload({
     }
   }
   async function download() {
-    if (
-      !available(kind) ||
-      busy ||
-      loading ||
-      !categories.length ||
-      (scope === 'SELECTED' && !selected.length)
-    )
-      return;
+    if (busy || loading || !eligible.length || (scope === 'SELECTED' && !chosen.length)) return;
     setBusy(true);
     setError('');
     setDone(false);
+    let pendingCategories: string[] = [];
     try {
       const query = new URLSearchParams({ lang, kind });
-      if (scope === 'SELECTED') query.set('categoryIds', selected.join(','));
+      if (scope === 'SELECTED') query.set('categoryIds', chosen.join(','));
       const r = await fetch(`/api/v1/tournaments/${tournamentId}/protocol.pdf?${query}`, {
         cache: 'no-store',
       });
       if (!r.ok) {
         const failure = await r.json().catch(() => null);
+        if (failure?.message === 'TEAMS_NOT_READY' && Array.isArray(failure.categories))
+          pendingCategories = failure.categories.flatMap((category: unknown) =>
+            category &&
+            typeof category === 'object' &&
+            'name' in category &&
+            typeof category.name === 'string'
+              ? [category.name]
+              : [],
+          );
         throw new Error(
-          failure?.message === 'DRAW_ENTRIES_CHANGED' ? 'DRAW_ENTRIES_CHANGED' : 'DOWNLOAD',
+          ['DRAW_ENTRIES_CHANGED', 'NO_ACTIVE_CATEGORIES', 'TEAMS_NOT_READY'].includes(
+            failure?.message,
+          )
+            ? failure.message
+            : 'DOWNLOAD',
         );
       }
       if (!r.headers.get('content-type')?.includes('application/pdf')) throw new Error('DOWNLOAD');
       const url = URL.createObjectURL(await r.blob()),
         a = document.createElement('a');
       a.href = url;
-      a.download = `${kind.toLowerCase()}-${scope === 'ALL' ? 'all' : selected.length === 1 ? selected[0] : 'selected'}-${tournamentId}-${lang}.pdf`;
+      a.download = `${kind.toLowerCase()}-${scope === 'ALL' ? 'all' : chosen.length === 1 ? chosen[0] : 'selected'}-${tournamentId}-${lang}.pdf`;
       document.body.append(a);
       a.click();
       a.remove();
@@ -120,10 +128,20 @@ export function ProtocolDownload({
               'Состав изменился. Повторите жеребьёвку затронутых категорий перед скачиванием сетки. Список участников можно скачать отдельно.',
               'Құрам өзгерді. Торды жүктемес бұрын тиісті санаттардың жеребесін қайталаңыз. Қатысушылар тізімін бөлек жүктеуге болады.',
             )
-          : text(
-              'Не удалось скачать PDF. Проверьте подключение и повторите.',
-              'PDF жүктеу мүмкін болмады. Қосылымды тексеріп, қайталаңыз.',
-            ),
+          : error instanceof Error && error.message === 'TEAMS_NOT_READY'
+            ? `${text(
+                'Категории ещё не готовы к итоговому зачёту. Проверьте подтверждение встреч и результаты.',
+                'Санаттар қорытынды есепке әлі дайын емес. Белдесулердің расталуын және нәтижелерін тексеріңіз.',
+              )}${pendingCategories.length ? ` ${pendingCategories.join(', ')}.` : ''}`
+            : error instanceof Error && error.message === 'NO_ACTIVE_CATEGORIES'
+              ? text(
+                  'В выбранных категориях нет участников для этого документа. Можно скачать списки участников.',
+                  'Таңдалған санаттарда бұл құжат үшін қатысушылар жоқ. Қатысушылар тізімін жүктеуге болады.',
+                )
+              : text(
+                  'Не удалось скачать PDF. Проверьте подключение и повторите.',
+                  'PDF жүктеу мүмкін болмады. Қосылымды тексеріп, қайталаңыз.',
+                ),
       );
     } finally {
       setBusy(false);
@@ -158,17 +176,11 @@ export function ProtocolDownload({
             <legend>1. {text('Какой документ нужен?', 'Қандай құжат қажет?')}</legend>
             <div className="protocol-export-kinds">
               {kinds.map(([value, ru, kk, descRu, descKk]) => (
-                <label
-                  key={value}
-                  className={
-                    !available(value) ? 'is-unavailable' : kind === value ? 'is-selected' : ''
-                  }
-                >
+                <label key={value} className={kind === value ? 'is-selected' : ''}>
                   <input
                     type="radio"
                     name={`${titleId}-kind`}
                     value={value}
-                    disabled={!available(value)}
                     checked={kind === value}
                     onChange={() => {
                       setKind(value);
@@ -177,11 +189,7 @@ export function ProtocolDownload({
                   />
                   <span>
                     <strong>{text(ru, kk)}</strong>
-                    <small>
-                      {available(value)
-                        ? text(descRu, descKk)
-                        : text('Пока недоступно', 'Әзірге қолжетімсіз')}
-                    </small>
+                    <small>{text(descRu, descKk)}</small>
                   </span>
                 </label>
               ))}
@@ -200,7 +208,7 @@ export function ProtocolDownload({
                     setDone(false);
                   }}
                 />
-                {text('Весь турнир', 'Бүкіл турнир')} {!loading && `· ${categories.length}`}
+                {text('Весь турнир', 'Бүкіл турнир')} {!loading && `· ${eligible.length}`}
               </label>
               <label>
                 <input
@@ -224,7 +232,8 @@ export function ProtocolDownload({
                     <label key={c.id}>
                       <input
                         type="checkbox"
-                        checked={selected.includes(c.id)}
+                        checked={chosen.includes(c.id)}
+                        disabled={kind !== 'PARTICIPANTS' && exportEntryCount(c) === 0}
                         onChange={(e) => {
                           setSelected((prev) =>
                             e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id),
@@ -233,7 +242,7 @@ export function ProtocolDownload({
                         }}
                       />
                       <span>{c.name}</span>
-                      <small>{c._count?.entries ?? c.entries?.length ?? 0}</small>
+                      <small>{exportEntryCount(c)}</small>
                     </label>
                   ))}
                   {!categories.length && <p>{text('Категорий пока нет.', 'Санаттар әлі жоқ.')}</p>}
@@ -241,6 +250,14 @@ export function ProtocolDownload({
               )
             )}
           </fieldset>
+          {!loading && kind !== 'PARTICIPANTS' && categories.length > eligible.length && (
+            <p role="status">
+              {text(
+                'Пустые категории не включаются в этот документ. Их настройки и история сохраняются; списки участников можно скачать отдельно.',
+                'Бос санаттар бұл құжатқа қосылмайды. Баптаулар мен тарих сақталады; қатысушылар тізімін бөлек жүктеуге болады.',
+              )}
+            </p>
+          )}
           <label className="protocol-export-language">
             <strong>3. {text('Язык документа', 'Құжат тілі')}</strong>
             <select
@@ -273,16 +290,12 @@ export function ProtocolDownload({
               {text('Один PDF · A4', 'Бір PDF · A4')} ·{' '}
               {scope === 'ALL'
                 ? text('Весь турнир', 'Бүкіл турнир')
-                : `${text('Категорий', 'Санаттар')}: ${selected.length}`}
+                : `${text('Категорий', 'Санаттар')}: ${chosen.length}`}
             </span>
             <button
               type="submit"
               disabled={
-                !available(kind) ||
-                busy ||
-                loading ||
-                !categories.length ||
-                (scope === 'SELECTED' && !selected.length)
+                busy || loading || !eligible.length || (scope === 'SELECTED' && !chosen.length)
               }
             >
               {busy ? text('Готовим PDF…', 'PDF дайындалуда…') : text('Скачать PDF', 'PDF жүктеу')}

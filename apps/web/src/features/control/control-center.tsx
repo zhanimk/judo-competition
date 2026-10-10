@@ -8,6 +8,11 @@ import { subscribeTournament } from '../../shared/live/subscribe';
 import { pollSnapshots } from '../../shared/live/snapshot-poller';
 import './control.css';
 import { ControlQueue, type QueueBout } from './control-queue';
+import { useAdminCommand } from './use-admin-command';
+import { PendingControlReview } from './pending-review';
+import { ClockCorrectionReview } from './clock-review';
+import { clockEditValue, previewClockCorrection } from './clock-edit';
+import type { AdminAction, AdminCommandPayload } from './pending-command';
 type Person = { firstName: string; lastName: string };
 type Row = {
   id: string;
@@ -50,18 +55,27 @@ type Dashboard = {
   tatamis: Mat[];
   contests: Row[];
 };
-type Action = 'MOVE' | 'RESET' | 'REOPEN' | 'REMOVE' | 'RELEASE_OFFLINE';
+type Action = AdminAction;
 type Impact = {
   revision: number;
   impactToken: string;
   blocked: boolean;
   dependent: { id: string; key: string; status: string }[];
+  stoppedClock: {
+    phase: 'REGULAR' | 'GOLDEN';
+    elapsedMs: number;
+    durationMs: number;
+    status: string;
+    hasHold: boolean;
+  } | null;
+  clockState: MatchState | null;
 };
 const clock = (ms: number) =>
   `${Math.floor(Math.max(0, ms) / 60000)}:${String(Math.floor(Math.max(0, ms) / 1000) % 60).padStart(2, '0')}`;
 const name = (p?: Person | null) => (p ? `${p.lastName} ${p.firstName}` : '—');
 export function ControlCenter({ tournamentId }: { tournamentId: string }) {
   const { text } = useLanguage();
+  const admin = useAdminCommand(tournamentId);
   const [data, setData] = useState<Dashboard | null>(null),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
@@ -73,11 +87,16 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
     [search, setSearch] = useState('');
   const [review, setReview] = useState<{ row: Row; type: Action; impact: Impact } | null>(null),
     [reason, setReason] = useState(''),
-    [target, setTarget] = useState('');
+    [target, setTarget] = useState(''),
+    [timeValue, setTimeValue] = useState('');
   const received = useRef(0),
     poller = useRef<ReturnType<typeof pollSnapshots<Dashboard>> | null>(null),
     reviewElement = useRef<HTMLElement>(null),
-    allMatchesElement = useRef<HTMLElement>(null);
+    allMatchesElement = useRef<HTMLElement>(null),
+    preparing = useRef<symbol | null>(null),
+    currentTournament = useRef(tournamentId);
+  currentTournament.current = tournamentId;
+  const commandsBlocked = busy || !connected || admin.blocked;
   const refresh = useCallback(async () => {
     await poller.current?.refresh();
   }, []);
@@ -86,6 +105,8 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
     setConnected(false);
     setReview(null);
     setError('');
+    setBusy(false);
+    preparing.current = null;
     const currentPoller = pollSnapshots(
       () => request<Dashboard>(`/tournaments/${tournamentId}/control`),
       (d) => {
@@ -127,6 +148,7 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
       RESET: text('Отменить схватку и поставить заново', 'Белдесуді тоқтатып, қайта қою'),
       REOPEN: text('Отменить подтверждение победы', 'Жеңісті растауды қайтару'),
       REMOVE: text('Снять с очереди', 'Кезектен алу'),
+      EDIT_TIME: text('Исправить время', 'Уақытты түзету'),
     })[a];
   function message(e: unknown) {
     const code = (e as Error).message;
@@ -136,8 +158,8 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
         'Белдесуді автономды табло басқарады. Алдымен синхрондаңыз немесе басқаруды қайтарыңыз.',
       ),
       TIEBREAK_REVIEW_REQUIRED: text(
-        'Назначены дополнительные встречи. Исправление требует отдельного разбора с главным судьёй.',
-        'Қосымша белдесулер тағайындалған. Түзету бас төрешімен бөлек қарауды қажет етеді.',
+        'Назначены дополнительные встречи. Администратор должен отдельно проверить последствия исправления.',
+        'Қосымша белдесулер тағайындалған. Әкімші түзетудің салдарын бөлек тексеруі керек.',
       ),
       DEPENDENT_CONTESTS_STARTED: text(
         'Зависимая схватка уже началась или завершена. Её нужно разобрать первой; автоматическая отмена запрещена.',
@@ -169,8 +191,8 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
         'Белдесу қатысушылары қолжетімсіз немесе олардың байланыстары сәйкес емес. Кезекті жаңартыңыз; әкімші құрамды тексеруі керек.',
       ),
       PAUSE_REQUIRED: text(
-        'Перед переносом остановите время в пульте.',
-        'Ауыстыру алдында пультте уақытты тоқтатыңыз.',
+        'Перед изменением остановите время в пульте.',
+        'Өзгерту алдында пультте уақытты тоқтатыңыз.',
       ),
       RESET_FIRST: text(
         'Сначала отмените текущую схватку с повторной постановкой.',
@@ -184,62 +206,179 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
         'Сначала завершите удержание в пульте.',
         'Алдымен пультте ұстап тұруды аяқтаңыз.',
       ),
+      RESULT_LOCKED: text(
+        'У встречи уже есть результат. Сначала проверьте его в пульте.',
+        'Белдесудің нәтижесі бар. Алдымен оны пультте тексеріңіз.',
+      ),
+      CLOCK_PHASE_MISMATCH: text(
+        'Фаза встречи изменилась. Заново откройте проверку времени.',
+        'Белдесу кезеңі өзгерген. Уақытты тексеруді қайта ашыңыз.',
+      ),
+      INVALID_TIME: text(
+        'Время выходит за допустимый диапазон.',
+        'Уақыт рұқсат етілген аралықтан тыс.',
+      ),
+      ADMIN_PENDING_CORRUPT: text(
+        'Сохранённая команда требует ручной проверки.',
+        'Сақталған команданы қолмен тексеру қажет.',
+      ),
+      ADMIN_PENDING_EXISTS: text(
+        'Сначала разберите исход незавершённой команды.',
+        'Алдымен аяқталмаған команданың нәтижесін тексеріңіз.',
+      ),
+      ADMIN_RECEIPT_INVALID: text(
+        'Ответ сервера не подтверждает исход команды. Исходная запись сохранена для точного повтора.',
+        'Сервер жауабы команданың нәтижесін растамайды. Бастапқы жазба дәл қайталау үшін сақталған.',
+      ),
     };
     return messages[code] ?? text('Действие не выполнено: ', 'Әрекет орындалмады: ') + code;
   }
   async function prepare(row: Row, type: Action) {
+    if (commandsBlocked || admin.hasPending() || preparing.current) return;
+    const attempt = Symbol('control-impact');
+    preparing.current = attempt;
     setBusy(true);
     setError('');
     setReview(null);
     setReason('');
     setNotice('');
     setTarget('');
+    setTimeValue('');
     try {
       const impact = await request<Impact>(`/tournaments/${tournamentId}/control/${row.id}/impact`);
+      if (currentTournament.current !== tournamentId || preparing.current !== attempt) return;
       setReview({ row, type, impact });
+      if (type === 'EDIT_TIME' && impact.clockState)
+        setTimeValue(clockEditValue(impact.clockState));
     } catch (e) {
-      setError(message(e));
+      if (currentTournament.current === tournamentId) setError(message(e));
     } finally {
-      setBusy(false);
+      if (preparing.current === attempt) {
+        preparing.current = null;
+        if (currentTournament.current === tournamentId) setBusy(false);
+      }
     }
   }
   useEffect(() => {
     if (review) reviewElement.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [review]);
   async function confirm() {
-    if (!review) return;
-    setBusy(true);
+    if (!review || commandsBlocked || admin.hasPending()) return;
     setError('');
     try {
-      await request(`/tournaments/${tournamentId}/control/${review.row.id}/command`, {
+      const base = {
         id: crypto.randomUUID(),
-        type: review.type,
         expectedRevision: review.impact.revision,
         impactToken: review.impact.impactToken,
         reason: reason.trim(),
-        ...(review.type === 'MOVE' ? { tatamiId: target } : {}),
+      };
+      let payload: AdminCommandPayload;
+      if (review.type === 'MOVE') payload = { ...base, type: 'MOVE', tatamiId: target };
+      else if (review.type === 'EDIT_TIME') {
+        if (!review.impact.clockState) return;
+        payload = {
+          ...base,
+          type: 'EDIT_TIME',
+          ...previewClockCorrection(review.impact.clockState, timeValue).correction,
+        };
+      } else payload = { ...base, type: review.type };
+      const result = await admin.execute({
+        tournamentId,
+        contestId: review.row.id,
+        payload,
+        review: {
+          key: review.row.key,
+          category: review.row.category,
+          white: name(review.row.white),
+          blue: name(review.row.blue),
+          dependent: review.impact.dependent,
+          ...(review.type === 'MOVE'
+            ? { targetNumber: data?.tatamis.find((m) => m.id === target)?.number }
+            : {}),
+        },
       });
-      setNotice(
-        review.type === 'MOVE'
-          ? text('Схватка перенесена на татами ', 'Белдесу ауыстырылды: татами ') +
-              data?.tatamis.find((m) => m.id === target)?.number
-          : text('Изменение сохранено.', 'Өзгеріс сақталды.'),
-      );
+      if (currentTournament.current !== tournamentId) return;
+      if (result?.kind === 'success') setNotice(text('Изменение сохранено.', 'Өзгеріс сақталды.'));
       setReview(null);
       await refresh();
     } catch (e) {
       setError(message(e));
-      await refresh();
-    } finally {
-      setBusy(false);
     }
   }
+  async function retry() {
+    if (!connected || busy) return;
+    const result = await admin.execute();
+    if (result?.kind === 'success')
+      setNotice(text('Исходная команда подтверждена.', 'Бастапқы команда расталды.'));
+    await refresh();
+  }
+  const pendingRow = data?.contests.find((row) => row.id === admin.pending?.contestId);
+  const pendingLive = data?.tatamis.find((mat) => mat.live.currentMatch?.id === pendingRow?.id)
+    ?.live.currentMatch;
+  const currentEvidence = pendingRow
+    ? [
+        `${pendingRow.category} · ${pendingRow.key} · ${status(pendingRow.status)} · ${text('версия', 'нұсқа')} ${pendingRow.revision}`,
+        pendingLive
+          ? `${pendingLive.state.status} · ${pendingLive.state.phase} ${clockEditValue(pendingLive.state)}${pendingLive.state.outcome ? ` · ${text('Победитель', 'Жеңімпаз')}: ${name(pendingLive.state.outcome.winner === 'WHITE' ? pendingLive.white : pendingLive.blue)}` : ''}`
+          : '',
+        admin.pending?.review.dependent?.length
+          ? text('Зависимые встречи', 'Тәуелді белдесулер') +
+            ': ' +
+            admin.pending.review.dependent
+              .map(
+                (row) =>
+                  `${row.key} (${status(data?.contests.find((current) => current.id === row.id)?.status ?? row.status)})`,
+              )
+              .join(', ')
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : text(
+        'Встреча не найдена в актуальном списке. Проверьте сетку и протокол.',
+        'Белдесу өзекті тізімде табылмады. Тор мен хаттаманы тексеріңіз.',
+      );
+  const pendingPanel = (
+    <PendingControlReview
+      key={admin.pending?.payload.id ?? tournamentId}
+      tournamentId={tournamentId}
+      pending={admin.pending}
+      corrupt={admin.corrupt}
+      connected={connected}
+      busy={busy || admin.sending}
+      current={currentEvidence}
+      reviewVersion={JSON.stringify([
+        pendingRow?.revision,
+        pendingLive?.state.status,
+        data?.contests
+          .filter((row) =>
+            admin.pending?.review.dependent?.some((dependent) => dependent.id === row.id),
+          )
+          .map((row) => [row.id, row.revision, row.status]),
+      ])}
+      actionLabel={actionLabel}
+      onRetry={() => void retry()}
+      onRefresh={() => void refresh()}
+      onArchive={(why, checked) => {
+        admin.archive(why, checked);
+        setReview(null);
+      }}
+    />
+  );
   if (!data)
     return (
-      <section className="panel state-box">
-        {text('Загружаем центральное управление…', 'Орталық басқару жүктелуде…')}{' '}
-        {!connected && <button onClick={refresh}>{text('Повторить', 'Қайталау')}</button>}
-      </section>
+      <div className="control-center">
+        {admin.problem ? (
+          <p className="error-box" role="alert">
+            {message(admin.problem)}
+          </p>
+        ) : null}
+        {pendingPanel}
+        <section className="panel state-box">
+          {text('Загружаем центральное управление…', 'Орталық басқару жүктелуде…')}{' '}
+          {!connected && <button onClick={refresh}>{text('Повторить', 'Қайталау')}</button>}
+        </section>
+      </div>
     );
   const rows = data.contests.filter(
     (c) =>
@@ -262,6 +401,15 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
       movingLive?.state.status === 'RUNNING' ||
       !!movingLive?.state.hold ||
       (review.row.status === 'ACTIVE' && !!selectedMat.live.currentMatch));
+  let timeBlocked = review?.type === 'EDIT_TIME';
+  if (review?.type === 'EDIT_TIME' && review.impact.clockState) {
+    try {
+      previewClockCorrection(review.impact.clockState, timeValue);
+      timeBlocked = false;
+    } catch {
+      /* The review explains the blocked clock input. */
+    }
+  }
   function showQueue(matId: string) {
     setMatFilter(matId);
     setFilter('ALL');
@@ -292,6 +440,12 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
           {error}
         </p>
       )}
+      {admin.problem ? (
+        <p className="error-box" role="alert">
+          {message(admin.problem)}
+        </p>
+      ) : null}
+      {pendingPanel}
       {notice && (
         <p className="control-notice" role="status">
           {notice}
@@ -395,7 +549,7 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
               </div>
               {m && (
                 <button
-                  disabled={busy || !connected}
+                  disabled={commandsBlocked}
                   onClick={() => {
                     const row = data.contests.find((c) => c.id === m.id);
                     if (row) void prepare(row, 'MOVE');
@@ -406,7 +560,7 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
               )}
               <ControlQueue
                 queue={mat.queue}
-                disabled={busy || !connected}
+                disabled={commandsBlocked}
                 onMove={(id) => {
                   const row = data.contests.find((c) => c.id === id);
                   if (row) void prepare(row, 'MOVE');
@@ -471,6 +625,15 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
                 </p>
               )}
             </>
+          ) : review.type === 'EDIT_TIME' ? (
+            <ClockCorrectionReview
+              state={review.impact.clockState}
+              value={timeValue}
+              white={name(review.row.white)}
+              blue={name(review.row.blue)}
+              disabled={commandsBlocked}
+              onChange={setTimeValue}
+            />
           ) : (
             <p>
               {review.type === 'RELEASE_OFFLINE'
@@ -495,7 +658,7 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
             </p>
           )}
           {review.type === 'MOVE' && (
-            <fieldset className="control-destinations" disabled={busy}>
+            <fieldset className="control-destinations" disabled={commandsBlocked}>
               <legend>{text('Куда перенести схватку', 'Белдесуді қайда ауыстыру керек')}</legend>
               <p>
                 {text('Сейчас', 'Қазір')}:{' '}
@@ -582,24 +745,24 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
               onChange={(e) => setReason(e.target.value)}
               minLength={3}
               maxLength={300}
-              disabled={busy}
+              disabled={commandsBlocked}
             />
           </label>
           <div className="form-actions">
             <button
               className="solid-button"
               disabled={
-                busy ||
-                !connected ||
+                commandsBlocked ||
                 reason.trim().length < 3 ||
                 (review.type === 'REOPEN' && review.impact.blocked) ||
-                !!moveBlocked
+                !!moveBlocked ||
+                timeBlocked
               }
               onClick={confirm}
             >
               {text('Подтвердить изменение', 'Өзгерісті растау')}
             </button>
-            <button disabled={busy} onClick={() => setReview(null)}>
+            <button disabled={busy || admin.sending} onClick={() => setReview(null)}>
               {text('Назад без изменений', 'Өзгертпей қайту')}
             </button>
           </div>
@@ -677,13 +840,14 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
                           ? ([
                               'MOVE',
                               'RESET',
+                              ...(c.status === 'ACTIVE' ? ['EDIT_TIME'] : []),
                               ...(c.status === 'READY' && c.tatamiId ? ['REMOVE'] : []),
                             ] as Action[])
                           : c.status === 'CONFIRMED'
                             ? (['REOPEN'] as Action[])
                             : []
                       ).map((a) => (
-                        <button key={a} disabled={busy || !connected} onClick={() => prepare(c, a)}>
+                        <button key={a} disabled={commandsBlocked} onClick={() => prepare(c, a)}>
                           {actionLabel(a)}
                         </button>
                       ))}

@@ -1,67 +1,67 @@
 {
-  "startedAt": "2026-10-09T16:35:56.797Z",
-  "schema": "qa_rehearsal_60753ca2c281451a8de3a636532880d9",
+  "startedAt": "2026-10-10T06:36:52.718Z",
+  "schema": "qa_rehearsal_cc87a226bebc45aa85269ee2672be53d",
   "passed": true,
   "suites": [
     {
       "name": "migrations",
       "passed": true,
-      "durationMs": 763
+      "durationMs": 750
     },
     {
       "name": "migrations-repeat",
       "passed": true,
-      "durationMs": 546
+      "durationMs": 545
     },
     {
       "name": "integration",
       "passed": true,
-      "durationMs": 228
+      "durationMs": 222
     },
     {
       "name": "auth-integration",
       "passed": true,
-      "durationMs": 342
+      "durationMs": 333
     },
     {
       "name": "roster-integration",
       "passed": true,
-      "durationMs": 840
+      "durationMs": 873
     },
     {
       "name": "roster-corrections-integration",
       "passed": true,
-      "durationMs": 1012
+      "durationMs": 961
     },
     {
       "name": "draw-integration",
       "passed": true,
-      "durationMs": 422
+      "durationMs": 423
     },
     {
       "name": "scheduling-integration",
       "passed": true,
-      "durationMs": 591
+      "durationMs": 728
     },
     {
       "name": "public-integration",
       "passed": true,
-      "durationMs": 308
+      "durationMs": 294
     },
     {
       "name": "control-integration",
       "passed": true,
-      "durationMs": 800
+      "durationMs": 772
     },
     {
       "name": "formats-integration",
       "passed": true,
-      "durationMs": 4638
+      "durationMs": 4873
     },
     {
       "name": "rematches-integration",
       "passed": true,
-      "durationMs": 2552
+      "durationMs": 2539
     },
     {
       "name": "live-integration",
@@ -69,34 +69,39 @@
       "durationMs": 22213
     },
     {
+      "name": "clock-correction-integration",
+      "passed": true,
+      "durationMs": 647
+    },
+    {
       "name": "tatami-access-integration",
       "passed": true,
-      "durationMs": 1899
+      "durationMs": 1693
     },
     {
       "name": "access-session-race-integration",
       "passed": true,
-      "durationMs": 477
+      "durationMs": 485
     },
     {
       "name": "athlete-identity-integration",
       "passed": true,
-      "durationMs": 694
+      "durationMs": 708
     },
     {
       "name": "protocol-integration",
       "passed": true,
-      "durationMs": 6591
+      "durationMs": 6683
     },
     {
       "name": "actual-process-restart-and-persistence",
       "passed": true
     }
   ],
-  "output": "tmp/rehearsal/qa_rehearsal_60753ca2c281451a8de3a636532880d9",
+  "output": "tmp/rehearsal/qa_rehearsal_cc87a226bebc45aa85269ee2672be53d",
   "suiteBoundaryRestarts": 1,
   "persistence": {
-    "tournamentId": "887a4791-570e-4bed-8bc6-e99483e41270",
+    "tournamentId": "2a42d917-3d00-405c-9c12-0327590153f7",
     "confirmedBouts": 3,
     "crashRestarts": 2,
     "gracefulRestarts": 1,
@@ -117,5 +122,5 @@
     ]
   },
   "cleanedUp": true,
-  "finishedAt": "2026-10-09T16:36:50.563Z"
+  "finishedAt": "2026-10-10T06:37:46.807Z"
 }

@@ -112,7 +112,13 @@ export function teamStandings(categories: ProtocolCategory[]) {
       const prev = sorted[i - 1];
       if (!prev || prev.gold !== t.gold || prev.silver !== t.silver || prev.bronze !== t.bronze)
         rank = i + 1;
-      return { ...t, rank: t.gold + t.silver + t.bronze ? rank : null };
+      return {
+        ...t,
+        rank:
+          (complete === categories.length && categories.length > 0) || t.gold + t.silver + t.bronze
+            ? rank
+            : null,
+      };
     }),
   };
 }

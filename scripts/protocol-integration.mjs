@@ -224,6 +224,7 @@ try {
   ])
     assert.equal((await get(query)).status, status, query);
   assert.equal((await get('kind=DRAW', '')).status, 401);
+  assert.equal((await get('kind=TEAMS', '')).status, 401);
   assert.equal((await get('kind=TEAMS', foreignCookie)).status, 403);
   await mkdir('tmp/pdfs/exports', { recursive: true });
   for (const lang of ['ru', 'kk'])
@@ -235,11 +236,92 @@ try {
       assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
       await writeFile(`tmp/pdfs/exports/${kind.toLowerCase()}-${lang}.pdf`, bytes);
     }
-  for (const kind of ['BOUTS', 'RESULTS', 'TEAMS', 'MEDALS', 'ALL']) {
+  for (const kind of ['BOUTS', 'RESULTS', 'MEDALS', 'ALL']) {
     const disabled = await get(`kind=${kind}`);
     assert.equal(disabled.status, 409);
     assert.equal((await disabled.json()).message, 'PROTOCOL_NOT_AVAILABLE');
   }
+  const unfinishedTeams = await get('kind=TEAMS');
+  assert.equal(unfinishedTeams.status, 409);
+  const unfinishedBody = await unfinishedTeams.json();
+  assert.equal(unfinishedBody.message, 'TEAMS_NOT_READY');
+  assert.deepEqual(
+    new Set(unfinishedBody.categories.map((category) => category.id)),
+    new Set(categories.slice(4).map((category) => category.id)),
+  );
+  // An explicit completed subset is valid while other categories are still running.
+  await db.tournament.update({ where: { id: tournament.id }, data: { status: 'RUNNING' } });
+  const empty = await db.category.create({
+    data: {
+      tournamentId: tournament.id,
+      name: 'EMPTY · сохранённые настройки',
+      gender: 'FEMALE',
+      birthYearFrom: 2012,
+      birthYearTo: 2013,
+      maxWeightGrams: 57000,
+      durationSeconds: 180,
+      format: 'ROUND_ROBIN',
+    },
+  });
+  const teamIds = [...categories.slice(0, 4).map((category) => category.id), empty.id];
+  for (const lang of ['ru', 'kk']) {
+    const teamsPdf = await get(`kind=TEAMS&categoryIds=${teamIds.join(',')}&lang=${lang}`);
+    assert.equal(teamsPdf.status, 200);
+    assert.match(teamsPdf.headers.get('content-type'), /application\/pdf/);
+    const bytes = Buffer.from(await teamsPdf.arrayBuffer());
+    assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
+    const scopeTitle = lang === 'ru' ? 'выбранные категории' : 'таңдалған санаттар';
+    assert.ok(bytes.includes(Buffer.from(scopeTitle, 'utf16le').swap16()));
+    await writeFile(`tmp/pdfs/exports/teams-selected-${lang}.pdf`, bytes);
+  }
+  const noTeams = await get(`kind=TEAMS&categoryIds=${empty.id}`);
+  assert.equal(noTeams.status, 409);
+  assert.equal((await noTeams.json()).message, 'NO_ACTIVE_CATEGORIES');
+  assert.equal((await get(`kind=TEAMS&categoryIds=${empty.id},${foreign.id}`)).status, 404);
+  const confirmedContest = await db.contest.findFirstOrThrow({
+    where: { draw: { categoryId: categories[0].id } },
+  });
+  const singleTeamQuery = `kind=TEAMS&categoryIds=${categories[0].id}`;
+  // The global state cannot make provisional or offline results final.
+  await db.tournament.update({ where: { id: tournament.id }, data: { status: 'FINISHED' } });
+  await db.contest.update({
+    where: { id: confirmedContest.id },
+    data: { status: 'PROVISIONAL' },
+  });
+  const provisionalTeam = await get(singleTeamQuery);
+  assert.equal(provisionalTeam.status, 409);
+  assert.equal((await provisionalTeam.json()).message, 'TEAMS_NOT_READY');
+  await db.contest.update({
+    where: { id: confirmedContest.id },
+    data: {
+      status: 'CONFIRMED',
+      offlineSessionId: randomUUID(),
+      offlineActorId: owner.id,
+      offlineControlGeneration: 0,
+    },
+  });
+  const offlineTeam = await get(singleTeamQuery);
+  assert.equal(offlineTeam.status, 409);
+  assert.equal((await offlineTeam.json()).categories[0].reason, 'OFFLINE_OWNED');
+  await db.contest.update({
+    where: { id: confirmedContest.id },
+    data: { offlineSessionId: null, offlineActorId: null, offlineControlGeneration: null },
+  });
+  // Empty configurations are skipped in the default complete scope as well.
+  const savedEmpty = await db.category.findUniqueOrThrow({ where: { id: empty.id } });
+  await db.entry.updateMany({
+    where: { categoryId: { in: categories.slice(4).map((category) => category.id) } },
+    data: { archivedAt: new Date() },
+  });
+  for (const lang of ['ru', 'kk']) {
+    const allTeams = await get(`kind=TEAMS&lang=${lang}`);
+    assert.equal(allTeams.status, 200);
+    await writeFile(
+      `tmp/pdfs/exports/teams-all-${lang}.pdf`,
+      Buffer.from(await allTeams.arrayBuffer()),
+    );
+  }
+  assert.deepEqual(await db.category.findUniqueOrThrow({ where: { id: empty.id } }), savedEmpty);
   assert.equal((await get()).status, 200, 'Default download is the draw');
   const subset = await get(`kind=PARTICIPANTS&categoryIds=${categories[0].id},${categories[1].id}`);
   assert.equal(subset.status, 200);
@@ -252,7 +334,7 @@ try {
   await writeFile('tmp/pdfs/exports/subset.pdf', subsetBytes);
   assert.equal((await get(`kind=DRAW&categoryId=${categories[0].id}`)).status, 200);
   console.log(
-    'PASS exports: DRAW/PARTICIPANTS × RU/KK, five deferred kinds rejected, 2/5 round robin, 8 repechage/mixed, 7 BYE and 128 bracket, club normalization, medal totals/ties, no provisional medals, subset scope, legacy category scope, 401/403/400/404.',
+    'PASS exports: DRAW/PARTICIPANTS/TEAMS × RU/KK, four excluded kinds rejected, 2/5 round robin, 8 repechage/mixed, 7 BYE and 128 bracket, club normalization, medal totals/ties, no provisional medals, complete selected team scopes while RUNNING, FINISHED/offline guards, empty configs retained, subset scope, legacy category scope, 401/403/400/404.',
   );
 } finally {
   if (tournament) {

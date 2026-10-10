@@ -9,6 +9,8 @@ import { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/auth.types.js';
 import type { ProtocolKind } from './protocol-model.js';
 import { renderProtocol } from './render-protocol.js';
+import { protocolScope } from './protocol-scope.js';
+import { requireTeamResults } from './protocol-readiness.js';
 @Injectable()
 export class ProtocolsService {
   constructor(
@@ -24,7 +26,7 @@ export class ProtocolsService {
     categoryIds?: string[],
   ) {
     await this.auth.owner(user, id);
-    if (kind !== 'DRAW' && kind !== 'PARTICIPANTS')
+    if (kind !== 'DRAW' && kind !== 'PARTICIPANTS' && kind !== 'TEAMS')
       throw new ConflictException('PROTOCOL_NOT_AVAILABLE');
     if (categoryId && categoryIds) throw new BadRequestException('AMBIGUOUS_CATEGORY_SCOPE');
     const ids = categoryIds ?? (categoryId ? [categoryId] : undefined);
@@ -51,8 +53,8 @@ export class ProtocolsService {
     );
     if (ids && t.categories.length !== new Set(ids).size)
       throw new NotFoundException('CATEGORY_NOT_FOUND');
-    if (kind === 'DRAW' && t.categories.some((category) => category.draw?.status === 'STALE'))
-      throw new ConflictException('DRAW_ENTRIES_CHANGED');
-    return renderProtocol(t, kind, lang);
+    const categories = [...protocolScope(t.categories, kind)];
+    if (kind === 'TEAMS') requireTeamResults(categories);
+    return renderProtocol({ ...t, categories }, kind, lang, ids ? 'SELECTED' : 'ALL');
   }
 }

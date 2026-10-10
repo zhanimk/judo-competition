@@ -12,9 +12,18 @@ import { ProtocolPdf } from './pdf-document.js';
 import { renderDraw } from './render-draw.js';
 import { renderBouts } from './render-bouts.js';
 /** Renders an immutable snapshot; authorization and database reads remain in the service. */
-export function renderProtocol(t: ProtocolTournament, kind: ProtocolKind, lang: 'ru' | 'kk') {
+export function renderProtocol(
+  t: ProtocolTournament,
+  kind: ProtocolKind,
+  lang: 'ru' | 'kk',
+  scope: 'ALL' | 'SELECTED' = 'ALL',
+) {
   const text = (ru: string, kk: string) => (lang === 'kk' ? kk : ru);
-  const pdf = new ProtocolPdf(t, text, text(...titles[kind]), lang);
+  const title =
+    kind === 'TEAMS' && scope === 'SELECTED'
+      ? text('Командный зачёт · выбранные категории', 'Командалық есеп · таңдалған санаттар')
+      : text(...titles[kind]);
+  const pdf = new ProtocolPdf(t, text, title, lang);
   const formats: Record<string, [string, string]> = {
     SINGLE_ELIMINATION: ['Выбывание без утешения', 'Жұбанышсыз шығару'],
     REPECHAGE: ['Выбывание с утешением', 'Жұбаныш белдесулерімен шығару'],
@@ -47,7 +56,22 @@ export function renderProtocol(t: ProtocolTournament, kind: ProtocolKind, lang: 
   for (const k of kinds) {
     if (k === 'TEAMS' || k === 'MEDALS') {
       const summary = teamStandings(t.categories);
-      pdf.section(text(...titles[k]), `${t.startDate} - ${t.endDate} · ${t.venue}`);
+      pdf.section(
+        k === 'TEAMS' ? title : text(...titles[k]),
+        `${t.startDate} - ${t.endDate} · ${t.venue}`,
+      );
+      if (k === 'TEAMS')
+        pdf.line(
+          scope === 'SELECTED'
+            ? text(
+                'Итог по выбранным категориям. Их список приведён ниже.',
+                'Таңдалған санаттар бойынша қорытынды. Тізімі төменде көрсетілген.',
+              )
+            : text(
+                'Итог по всем участвующим категориям турнира.',
+                'Турнирдің барлық қатысушы санаттары бойынша қорытынды.',
+              ),
+        );
       pdf.notice(
         summary.complete === t.categories.length && t.categories.length > 0
           ? text('ИТОГОВЫЙ ЗАЧЁТ', 'ҚОРЫТЫНДЫ ЕСЕП')

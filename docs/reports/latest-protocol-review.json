@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-10",
+  "source": "disposable PostgreSQL integration fixtures and fictional pagination fixtures",
+  "languages": ["ru", "kk"],
+  "rendering": "pypdfium2 PNG rendering and visual inspection; pypdf text extraction",
+  "fixed": "PDFKit addPage default margins caused automatic page flow inside manually placed multiline table cells",
+  "verified": [
+    "consistent explicit page margins and whole-row pagination",
+    "table heading repeats and stays with its first row",
+    "confirmed draw podium shows first, second and one or two third places according to format",
+    "round-robin seven-athlete fixture preserves all 21 matches, athlete names and clubs across two table pages",
+    "actual format integration PDFs render in 12 pages per language without isolated name or club pages",
+    "all-category and selected-category team PDFs render in three pages with medals, scope labels, category list and team roster",
+    "page numbers and repeated headers render on every inspected page"
+  ],
+  "limitations": [
+    "Synthetic fixtures do not replace visual checks of every real tournament document or printer acceptance.",
+    "Public PDF publication, stored versions and document history remain unimplemented."
+  ]
+}

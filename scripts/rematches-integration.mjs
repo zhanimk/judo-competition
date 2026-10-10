@@ -37,7 +37,7 @@ try {
   ).id;
   assert.equal(
     (await call(`/tournaments/${tournament}/start`, {})).body.message,
-    'ALL_DRAWS_REQUIRED',
+    'NO_ACTIVE_CATEGORIES',
   );
   assert.equal((await call(`/tournaments/${tournament}/start`, {}, '')).status, 401);
   for (const [format, count] of [

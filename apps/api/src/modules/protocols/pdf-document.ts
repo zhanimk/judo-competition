@@ -25,6 +25,7 @@ export class ProtocolPdf {
   private subtitle = '';
   private landscape = false;
   private readonly generated: string;
+  private readonly margins = { top: 32, bottom: 44, left: 36, right: 36 };
   constructor(
     private readonly tournament: ProtocolTournament,
     readonly text: Translate,
@@ -37,7 +38,7 @@ export class ProtocolPdf {
     this.doc = new PDFDocument({
       autoFirstPage: false,
       bufferPages: true,
-      margins: { top: 32, bottom: 44, left: 36, right: 36 },
+      margins: this.margins,
       info: { Title: `${tournament.name} · ${title}`, Author: 'Judo Child League' },
     });
     const chunks: Buffer[] = [];
@@ -71,7 +72,13 @@ export class ProtocolPdf {
     this.doc.outline.addItem(this.sectionTitle);
   }
   page() {
-    this.doc.addPage({ size: 'A4', layout: this.landscape ? 'landscape' : 'portrait' });
+    // PDFKit uses addPage's options instead of inheriting document options. Omitting
+    // margins silently restores its 72 pt default and splits a manually fitted row.
+    this.doc.addPage({
+      size: 'A4',
+      layout: this.landscape ? 'landscape' : 'portrait',
+      margins: this.margins,
+    });
   }
   private header() {
     const d = this.doc,
@@ -199,14 +206,27 @@ export class ProtocolPdf {
     rows = rows.map((r) => r.map((c) => this.safe(c)));
     const d = this.doc,
       widths = weights.map((w) => this.width * w);
-    const row = (cells: string[], head = false, index = 0) => {
-      const bodySize = style.compact ? 9 : 9.5;
-      const padding = style.compact ? 6 : 9;
-      d.font('Bold').fontSize(head ? 8.5 : bodySize);
-      const h = Math.max(
+    const bodySize = style.compact ? 9 : 9.5;
+    const padding = style.compact ? 6 : 9;
+    const cellStyle = (index: number, head: boolean) => {
+      const numeric = !head && style.medals && index >= 2;
+      return {
+        font: head || numeric || index === (style.strongColumn ?? 1) ? 'Bold' : 'Regular',
+        size: numeric ? 13 : head ? 8.5 : bodySize,
+        align: numeric ? ('center' as const) : ('left' as const),
+      };
+    };
+    const rowHeight = (cells: string[], head: boolean) =>
+      Math.max(
         style.compact ? 30 : 34,
-        ...cells.map((c, i) => d.heightOfString(c, { width: widths[i] - 16 }) + padding * 2),
+        ...cells.map((cell, index) => {
+          const { font, size } = cellStyle(index, head);
+          d.font(font).fontSize(size);
+          return d.heightOfString(cell, { width: widths[index] - 16 }) + padding * 2;
+        }),
       );
+    const row = (cells: string[], head = false, index = 0) => {
+      const h = rowHeight(cells, head);
       if (d.y + h > d.page.height - 55) {
         this.page();
         if (!head) row(headers, true);
@@ -225,13 +245,14 @@ export class ProtocolPdf {
             .fillColor(c === '1' ? ink.navy : '#ffffff')
             .text(c, x, y + h / 2 - 8, { width: widths[i], align: 'center' });
         } else {
-          const numeric = !head && style.medals && i >= 2;
-          d.font(head || numeric || i === (style.strongColumn ?? 1) ? 'Bold' : 'Regular')
-            .fontSize(numeric ? 13 : head ? 8.5 : bodySize)
+          const { font, size, align } = cellStyle(i, head);
+          d.font(font)
+            .fontSize(size)
             .fillColor(head ? '#ffffff' : ink.navy)
             .text(c, x + 8, y + padding, {
               width: widths[i] - 16,
-              align: numeric ? 'center' : 'left',
+              height: h - padding * 2,
+              align,
             });
         }
         x += widths[i];
@@ -243,6 +264,8 @@ export class ProtocolPdf {
         .stroke();
       d.y = y + h;
     };
+    // Keep a table heading with at least its first row, including after another section.
+    this.ensure(rowHeight(headers, true) + (rows[0] ? rowHeight(rows[0], false) : 0));
     row(headers, true);
     rows.forEach((r, i) => row(r, false, i));
     d.y += 16;

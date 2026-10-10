@@ -1,7 +1,7 @@
 import { fixtureRequest } from './test-access.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { inflateSync } from 'node:zlib';
+import { pdfText } from './pdf-text.mjs';
 import { PrismaClient } from '@prisma/client';
 import { createTestUser, createTestEntries } from './test-user.mjs';
 
@@ -319,63 +319,6 @@ async function correctionConfirmRace(winner) {
   }
 }
 
-// Decode only the Type0/Identity-H + ToUnicode format emitted by our PDFKit renderer.
-// Positive before/after controls make an unsupported format fail rather than pass an absence check.
-function pdfText(bytes) {
-  assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
-  const objects = new Map();
-  for (const match of bytes.toString('latin1').matchAll(/(\d+) 0 obj\s*([\s\S]*?)\s*endobj/g)) {
-    const body = match[2];
-    const stream = body.match(/stream\r?\n([\s\S]*?)\r?\nendstream/);
-    let text = '';
-    if (stream) {
-      const data = Buffer.from(stream[1], 'latin1');
-      text = (
-        /\/FlateDecode/.test(body.slice(0, stream.index)) ? inflateSync(data) : data
-      ).toString('latin1');
-    }
-    objects.set(match[1], { body, text });
-  }
-  const maps = new Map();
-  for (const [id, object] of objects) {
-    if (!object.text.includes('begincmap')) continue;
-    const codes = new Map();
-    for (const range of object.text.matchAll(/<([0-9a-f]+)>\s*<([0-9a-f]+)>\s*\[([^\]]+)\]/gi)) {
-      let index = parseInt(range[1], 16);
-      for (const encoded of range[3].matchAll(/<([^>]+)>/g)) {
-        const hex = encoded[1].replace(/\s/g, '');
-        const value = [...hex.matchAll(/.{4}/g)]
-          .map((unit) => String.fromCharCode(parseInt(unit[0], 16)))
-          .join('');
-        codes.set(index++, value);
-      }
-    }
-    maps.set(id, codes);
-  }
-  const fontObjects = new Map();
-  for (const [id, object] of objects) {
-    const ref = object.body.match(/\/ToUnicode\s+(\d+) 0 R/);
-    if (ref) fontObjects.set(id, maps.get(ref[1]));
-  }
-  const fonts = new Map();
-  for (const object of objects.values())
-    for (const ref of object.body.matchAll(/\/(F\d+)\s+(\d+) 0 R/g))
-      if (fontObjects.has(ref[2])) fonts.set(ref[1], fontObjects.get(ref[2]));
-  let result = '';
-  for (const object of objects.values()) {
-    if (!object.text.includes('BT')) continue;
-    let font;
-    for (const token of object.text.matchAll(/\/(F\d+)\s+[\d.]+\s+Tf|<([0-9a-f]+)>/gi)) {
-      if (token[1]) font = fonts.get(token[1]);
-      else if (font)
-        result += [...token[2].matchAll(/.{4}/g)]
-          .map((unit) => font.get(parseInt(unit[0], 16)) ?? '')
-          .join('');
-    }
-  }
-  assert.ok(result.length > 100, 'participant PDF text must actually be decoded');
-  return result;
-}
 async function participantText(id) {
   const response = await fetch(`${base}/tournaments/${id}/protocol.pdf?kind=PARTICIPANTS&lang=ru`, {
     headers: { Cookie: cookie },

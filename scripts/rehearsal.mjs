@@ -93,6 +93,7 @@ try {
     'formats-integration',
     'rematches-integration',
     'live-integration',
+    'clock-correction-integration',
     'tatami-access-integration',
     'access-session-race-integration',
     'athlete-identity-integration',

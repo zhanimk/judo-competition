@@ -14,6 +14,7 @@ import { acceptRosterSnapshot, mergeRosterReceipt, type Receipt } from '../roste
 import Link from 'next/link';
 import { request } from './api';
 import type { Tournament } from './types';
+import { startReadiness } from './start-readiness';
 import styles from './tournament-workspace.module.css';
 export function TournamentWorkspace({ id }: { id: string }) {
   const { text, locale } = useLanguage();
@@ -82,12 +83,42 @@ export function TournamentWorkspace({ id }: { id: string }) {
     };
   }, [id]);
   async function start() {
+    if (!t || busy || rosterPending) return;
+    const readiness = startReadiness(t.categories);
+    if (!readiness.ready) {
+      setError(
+        !readiness.active.length
+          ? text(
+              'Добавьте участников: пустые категории не участвуют в турнире.',
+              'Қатысушыларды қосыңыз: бос санаттар турнирге қатыспайды.',
+            )
+          : readiness.single.length
+            ? text(
+                'В этих категориях только один участник: ',
+                'Бұл санаттарда бір ғана қатысушы бар: ',
+              ) +
+              readiness.single.map((c) => c.name).join(', ') +
+              text(
+                '. Добавьте соперника или измените заявку до жеребьёвки.',
+                '. Қарсылас қосыңыз немесе жеребеге дейін өтінімді өзгертіңіз.',
+              )
+            : text('Подтвердите сетки категорий: ', 'Санаттардың торларын растаңыз: ') +
+              readiness.unconfirmed.map((c) => c.name).join(', '),
+      );
+      setTab(readiness.single.length || !readiness.active.length ? 'entries' : 'draw');
+      return;
+    }
     if (
       !window.confirm(
         text(
           'Запустить турнир? Составы будут заблокированы, готовые схватки распределены по татами. Таймеры запускаются отдельно в пультах.',
           'Турнирді бастау керек пе? Құрамдар бекітіліп, дайын белдесулер татамиге бөлінеді. Таймерлер пульттерде бөлек іске қосылады.',
-        ),
+        ) +
+          (readiness.empty.length
+            ? '\n\n' +
+              text('Без участников, будут пропущены: ', 'Қатысушысыз, өткізілмейді: ') +
+              readiness.empty.map((c) => c.name).join(', ')
+            : ''),
       )
     )
       return;
@@ -100,8 +131,8 @@ export function TournamentWorkspace({ id }: { id: string }) {
     } catch {
       setError(
         text(
-          'Сначала подтвердите жеребьёвку каждой категории. Затем повторите запуск.',
-          'Алдымен әр санаттың жеребесін растаңыз. Содан кейін қайта бастаңыз.',
+          'Состав или сетки изменились. Обновите данные, проверьте категории с участниками и повторите запуск.',
+          'Құрам немесе торлар өзгерді. Деректерді жаңартып, қатысушылары бар санаттарды тексеріңіз де, қайта бастаңыз.',
         ),
       );
     } finally {

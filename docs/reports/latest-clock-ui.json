@@ -1,0 +1,23 @@
+{
+  "stage": "stopped-clock-correction",
+  "date": "2026-10-10",
+  "browser": "Google Chrome",
+  "isolatedSchema": true,
+  "cleanedUp": true,
+  "languages": ["ru", "kk"],
+  "mobileViewport": { "width": 390, "height": 844 },
+  "verified": [
+    "administrator opens correction only for a stopped active match",
+    "regular-time form shows current value, bounds, reason and local preview",
+    "saving remaining time 02:35.4 updates the central panel and preserves white YUKO 1",
+    "corrected match stays paused and requires a separate start in the control panel",
+    "reopening in Kazakh displays the persisted corrected value",
+    "mobile form fits 390-pixel viewport with readable labels and stacked actions"
+  ],
+  "limitations": [
+    "Golden Score, timeout-result reversal, unknown-response recovery and stale grant rejection are covered by automated tests, not this visual scenario.",
+    "Safari accessibility could not interact with login fields; the scenario was completed in Chrome.",
+    "The disposable UI harness initially used the working API WebSocket port; its private clone was corrected to the isolated API port. This scenario does not accept production network transport or venue equipment.",
+    "UI fixture preceded the final semantic impact race fix; that additional protection is verified by regression and isolated PostgreSQL tests."
+  ]
+}

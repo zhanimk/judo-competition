@@ -509,6 +509,7 @@ export type ScheduledBout = {
   birthYearFrom: number;
   birthYearTo: number;
   maxWeightGrams: number | null;
+  minWeightGrams?: number | null;
   categoryId: string;
   queueOrder: number | null;
   key: string;
@@ -520,6 +521,9 @@ export function compareScheduledBouts(a: ScheduledBout, b: ScheduledBout) {
     b.birthYearFrom - a.birthYearFrom ||
     b.birthYearTo - a.birthYearTo ||
     (a.maxWeightGrams || Infinity) - (b.maxWeightGrams || Infinity) ||
+    (a.maxWeightGrams === null && b.maxWeightGrams === null
+      ? (a.minWeightGrams ?? 0) - (b.minWeightGrams ?? 0)
+      : 0) ||
     a.categoryId.localeCompare(b.categoryId) ||
     (a.queueOrder ?? 0) - (b.queueOrder ?? 0) ||
     a.key.localeCompare(b.key, 'en', { numeric: true })

@@ -1,25 +1,33 @@
-import { ConflictException } from '@nestjs/common';
 import { balanceCategoryLoads } from '@judo/engine/draw';
 import type { Prisma } from '@prisma/client';
+import type { Principal } from '../auth/auth.types.js';
+import { assertActivePrincipal } from '../auth/access-guards.js';
+import { requireCompetitionCategories } from './active-categories.js';
 /** Caller holds the tournament lock. Only ready, unassigned contests are queued. */
 export async function scheduleCategories(
   tx: Prisma.TransactionClient,
   tournamentId: string,
-  actorId: string,
+  user: Principal,
 ) {
   const t = await tx.tournament.findUniqueOrThrow({
     where: { id: tournamentId },
     include: {
       tatamis: { orderBy: { number: 'asc' } },
-      categories: { orderBy: { name: 'asc' }, include: { draw: { include: { contests: true } } } },
+      categories: {
+        orderBy: { name: 'asc' },
+        include: {
+          _count: { select: { entries: { where: { archivedAt: null } } } },
+          draw: { include: { contests: true } },
+        },
+      },
     },
   });
-  if (!t.categories.length || t.categories.some((c) => c.draw?.status !== 'CONFIRMED'))
-    throw new ConflictException('ALL_DRAWS_REQUIRED');
   for (const mat of [...t.tatamis].sort((a, b) => a.id.localeCompare(b.id)))
     await tx.$queryRaw`SELECT id FROM "Tatami" WHERE id=${mat.id} FOR UPDATE`;
+  await assertActivePrincipal(tx, user, { tournamentId });
+  const categories = requireCompetitionCategories(t.categories);
   const plan = balanceCategoryLoads(
-    t.categories.map((c) => ({
+    categories.map((c) => ({
       id: c.id,
       tatamiId: c.homeTatamiId,
       matches: c.draw!.contests.filter((m) => m.status !== 'CONFIRMED').length,
@@ -36,7 +44,7 @@ export async function scheduleCategories(
   }
   const pinned: { categoryId: string; tatamiId: string }[] = [];
   const queued: string[] = [];
-  for (const c of t.categories) {
+  for (const c of categories) {
     const tatamiId = plan.assignments.find((a) => a.categoryId === c.id)!.tatamiId;
     if (!c.homeTatamiId) {
       await tx.category.update({ where: { id: c.id }, data: { homeTatamiId: tatamiId } });
@@ -58,7 +66,7 @@ export async function scheduleCategories(
   if (pinned.length || queued.length)
     await tx.auditEvent.create({
       data: {
-        actorId,
+        actorId: user.id,
         tournamentId,
         entityId: tournamentId,
         action: 'CATEGORIES_SCHEDULED',

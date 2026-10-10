@@ -100,6 +100,42 @@ export function scoreboardScores(state: MatchState, side: Side) {
     result.IPPON = 1;
   return result;
 }
+/** A technical correction bound, not a sporting Golden Score duration limit. */
+export const MAX_CORRECTED_GOLDEN_MS = 6 * 60 * 60 * 1000;
+
+/** Administrative correction of an already stopped clock. This is deliberately
+ * separate from the judge/offline command union: the server owns permission,
+ * reasons, revisions and immutable receipts. The phase and score history remain
+ * unchanged, and regular expiry uses the existing profile's outcome calculation. */
+export function correctStoppedClock(
+  input: MatchState,
+  correction: { phase: MatchState['phase']; elapsedMs: number },
+): MatchState {
+  const correctableTimeOutcome =
+    input.status === 'PROVISIONAL' && input.phase === 'REGULAR' && input.outcome?.reason === 'TIME';
+  requireCondition(
+    ['PAUSED', 'DECISION'].includes(input.status) || correctableTimeOutcome,
+    'PAUSE_REQUIRED',
+  );
+  requireCondition(!input.hold, 'RESOLVE_HOLD_FIRST');
+  requireCondition(!input.outcome || correctableTimeOutcome, 'RESULT_LOCKED');
+  requireCondition(correction.phase === input.phase, 'CLOCK_PHASE_MISMATCH');
+  requireCondition(
+    Number.isSafeInteger(correction.elapsedMs) &&
+      correction.elapsedMs >= 0 &&
+      correction.elapsedMs <=
+        (input.phase === 'REGULAR' ? input.rules.durationMs : MAX_CORRECTED_GOLDEN_MS),
+    'INVALID_TIME',
+  );
+  const state = structuredClone(input);
+  if (correctableTimeOutcome) state.outcome = null;
+  if (state.phase === 'REGULAR') state.elapsedMs = correction.elapsedMs;
+  else state.goldenMs = correction.elapsedMs;
+  state.status = 'PAUSED';
+  if (state.phase === 'REGULAR') evaluate(state);
+  state.version++;
+  return state;
+}
 function finish(s: MatchState, winner: Side, reason: string) {
   s.outcome = { winner, reason };
   s.status = 'PROVISIONAL';

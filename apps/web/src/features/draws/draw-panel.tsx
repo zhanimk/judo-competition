@@ -5,6 +5,7 @@ import './draw-workspace.css';
 import { formatLabel } from './format-label';
 import { ResultsTable } from '../live/results-table';
 import { subscribeTournament } from '../../shared/live/subscribe';
+import { pollSnapshots } from '../../shared/live/snapshot-poller';
 import { useEffect, useRef, useState } from 'react';
 import { drawFormat, type Draw } from '@judo/engine/draw';
 
@@ -13,6 +14,7 @@ import { CompetitionDraw } from './competition-draw';
 import { request } from '../tournaments/api';
 import { useLanguage } from '../../shared/i18n/provider';
 import type { Tournament } from '../tournaments/types';
+import { activeEntryCount } from '../tournaments/start-readiness';
 import {
   clearPendingAssignment,
   deliverPendingAssignment,
@@ -98,27 +100,34 @@ export function DrawPanel({
     setLoading(true);
   }, [categoryId]);
   useEffect(() => {
-    let active = true;
     const generation = ++snapshotGeneration.current;
     setLoadError('');
     if (!categoryId) {
       setLoading(false);
       return;
     }
-    request<{ draw: SavedDraw | null }>(`/categories/${categoryId}/draw`)
-      .then((d) => {
-        if (active && generation === snapshotGeneration.current) setDraw(d.draw);
-      })
-      .catch(() => {
-        if (active && generation === snapshotGeneration.current)
-          setLoadError(text('Не удалось загрузить сетку.', 'Торды жүктеу мүмкін болмады.'));
-      })
-      .finally(() => {
-        if (active && generation === snapshotGeneration.current) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    const poller = pollSnapshots(
+      () => request<{ draw: SavedDraw | null }>(`/categories/${categoryId}/draw`),
+      (value) => {
+        if (generation !== snapshotGeneration.current) return;
+        setDraw(value.draw);
+        setLoadError('');
+        setLoading(false);
+      },
+      () => {
+        if (generation !== snapshotGeneration.current) return;
+        setLoadError(
+          text(
+            'Не удалось обновить сетку. Показана последняя полученная версия.',
+            'Торды жаңарту мүмкін болмады. Соңғы алынған нұсқа көрсетілген.',
+          ),
+        );
+        setLoading(false);
+      },
+      5000,
+    );
+    void poller.refresh();
+    return () => poller.stop();
   }, [categoryId, refresh]);
   async function finishMutation() {
     snapshotGeneration.current++;
@@ -409,6 +418,19 @@ export function DrawPanel({
           ) : (
             category && (
               <>
+                {activeEntryCount(category) < 2 && (
+                  <p className="info-note" role="status">
+                    {activeEntryCount(category) === 0
+                      ? text(
+                          'Категория без участников будет пропущена при запуске. Её настройки сохранены для ввода заявок.',
+                          'Қатысушысыз санат басталған кезде өткізілмейді. Өтінім енгізу үшін баптаулары сақталады.',
+                        )
+                      : text(
+                          'Для сетки нужен соперник. В категории один участник; добавьте второго или исправьте заявку до запуска.',
+                          'Тор үшін қарсылас қажет. Санатта бір қатысушы бар; екіншісін қосыңыз немесе басталғанға дейін өтінімді түзетіңіз.',
+                        )}
+                  </p>
+                )}
                 {draw?.status === 'STALE' && (
                   <p className="info-note" role="status">
                     {text(
@@ -431,7 +453,10 @@ export function DrawPanel({
                     {draw?.status === 'CONFIRMED' ? (
                       <span className="draw-action-done">✓ {text('Готово', 'Дайын')}</span>
                     ) : (
-                      <button disabled={blocked} onClick={() => action('preview')}>
+                      <button
+                        disabled={blocked || activeEntryCount(category) < 2}
+                        onClick={() => action('preview')}
+                      >
                         {draw
                           ? text('Повторить жеребьёвку', 'Жеребені қайталау')
                           : text('Создать сетку', 'Тор құру')}

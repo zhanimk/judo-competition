@@ -80,3 +80,24 @@ test('tatami order is by round, youngest age group, lightest weight; queue posit
     ['young', 'light', 'heavy', 'open', 'older', 'round2'],
   );
 });
+
+test('different open weight lower bounds sort by weight before category identifiers', async () => {
+  const { compareScheduledBouts } = await import('../src/draw/index.ts');
+  const base = {
+    round: 1,
+    birthYearFrom: 2014,
+    birthYearTo: 2015,
+    maxWeightGrams: null,
+    queueOrder: 1,
+    key: 'r1-m1',
+  };
+  const rows = [
+    { ...base, categoryId: 'a-heavy', minWeightGrams: 70000 },
+    { ...base, categoryId: 'z-light', minWeightGrams: 30000 },
+    { ...base, categoryId: 'bounded', maxWeightGrams: 90000, minWeightGrams: null },
+  ];
+  assert.deepEqual(
+    rows.sort(compareScheduledBouts).map((row) => row.categoryId),
+    ['bounded', 'z-light', 'a-heavy'],
+  );
+});

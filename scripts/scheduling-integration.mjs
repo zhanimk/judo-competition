@@ -38,8 +38,83 @@ try {
   assert.equal((await call(`/tournaments/${tournament}/schedule`, {}, '')).status, 401);
   assert.equal(
     (await call(`/tournaments/${tournament}/schedule`, {})).body.message,
-    'ALL_DRAWS_REQUIRED',
+    'NO_ACTIVE_CATEGORIES',
   );
+  const empty = await post(`/tournaments/${tournament}/categories`, {
+    name: 'Empty saved configuration',
+    gender: 'MALE',
+    birthYearFrom: 2016,
+    birthYearTo: 2017,
+    maxWeightGrams: 20000,
+    durationSeconds: 120,
+  });
+  const lone = await post(`/tournaments/${tournament}/categories`, {
+    name: 'One active athlete',
+    gender: 'MALE',
+    birthYearFrom: 2016,
+    birthYearTo: 2017,
+    maxWeightGrams: 30000,
+    durationSeconds: 120,
+  });
+  const loneEntry = await post(`/tournaments/${tournament}/categories/${lone.id}/entries`, {
+    firstName: 'QA',
+    lastName: 'Single',
+    club: 'Fixture club',
+    birthYear: 2016,
+  });
+  const beforeRejectedStart = await db.tournament.findUniqueOrThrow({ where: { id: tournament } });
+  for (const action of ['start', 'schedule']) {
+    const rejected = await call(`/tournaments/${tournament}/${action}`, {});
+    assert.equal(rejected.status, 409);
+    assert.equal(rejected.body.message, 'CATEGORY_NEEDS_OPPONENT');
+    assert.deepEqual(rejected.body.categories, [{ id: lone.id, name: lone.name }]);
+    assert.deepEqual(
+      await db.tournament.findUniqueOrThrow({ where: { id: tournament } }),
+      beforeRejectedStart,
+    );
+    assert.equal(
+      await db.auditEvent.count({
+        where: { tournamentId: tournament, action: 'CATEGORIES_SCHEDULED' },
+      }),
+      0,
+    );
+  }
+  await post(`/tournaments/${tournament}/roster/entries/${loneEntry.id}/archive`, {
+    id: randomUUID(),
+    expectedRevision: beforeRejectedStart.rosterRevision,
+    reason: 'Archive isolated single admission for scheduling QA',
+  });
+  const archivedCategory = await post(`/tournaments/${tournament}/categories`, {
+    name: 'Archived roster with stale preview',
+    gender: 'MALE',
+    birthYearFrom: 2016,
+    birthYearTo: 2017,
+    maxWeightGrams: 40000,
+    durationSeconds: 120,
+  });
+  const archivedEntries = [];
+  for (let index = 0; index < 2; index++)
+    archivedEntries.push(
+      await post(`/tournaments/${tournament}/categories/${archivedCategory.id}/entries`, {
+        firstName: 'QA',
+        lastName: `Archive ${index}`,
+        club: 'Fixture club',
+        birthYear: 2016,
+      }),
+    );
+  await post(`/categories/${archivedCategory.id}/draw/preview`);
+  for (const entry of archivedEntries) {
+    const current = await db.tournament.findUniqueOrThrow({ where: { id: tournament } });
+    await post(`/tournaments/${tournament}/roster/entries/${entry.id}/archive`, {
+      id: randomUUID(),
+      expectedRevision: current.rosterRevision,
+      reason: 'Retain archived preview history while excluding empty category',
+    });
+  }
+  const archivedDraw = await db.drawRecord.findUniqueOrThrow({
+    where: { categoryId: archivedCategory.id },
+  });
+  assert.equal(archivedDraw.status, 'STALE');
   for (const [name, count, year, weight] of [
     ['older', 8, 2012, 20000],
     ['young', 8, 2016, 30000],
@@ -70,12 +145,67 @@ try {
     plan.loads.map((m) => m.matches),
     [10, 10],
   );
+  for (const excluded of [empty, lone, archivedCategory]) {
+    assert.ok(!plan.assignments.some((assignment) => assignment.categoryId === excluded.id));
+    assert.equal(
+      (await db.category.findUniqueOrThrow({ where: { id: excluded.id } })).homeTatamiId,
+      null,
+    );
+  }
   const saved = await db.contest.findMany({
     where: { draw: { category: { tournamentId: tournament } } },
     orderBy: { id: 'asc' },
   });
   await post(`/tournaments/${tournament}/schedule`);
   await post(`/tournaments/${tournament}/start`);
+  const started = await db.tournament.findUniqueOrThrow({ where: { id: tournament } });
+  assert.equal(Object.keys(started.rulesSnapshot.categories).length, 4);
+  assert.deepEqual(
+    await db.drawRecord.findUniqueOrThrow({ where: { categoryId: archivedCategory.id } }),
+    archivedDraw,
+  );
+  assert.equal(
+    await db.entry.count({
+      where: {
+        id: { in: [loneEntry.id, ...archivedEntries.map((entry) => entry.id)] },
+        archivedAt: { not: null },
+      },
+    }),
+    3,
+  );
+  const protocol = (query) =>
+    fixtureRequest(base, `/tournaments/${tournament}/protocol.pdf?${query}`, undefined, cookie);
+  const allDraws = await protocol('kind=DRAW');
+  assert.equal(
+    allDraws.status,
+    200,
+    'An empty stale preview must not block populated category PDFs',
+  );
+  assert.equal(
+    Buffer.from(await allDraws.arrayBuffer())
+      .subarray(0, 5)
+      .toString(),
+    '%PDF-',
+  );
+  const emptyDraw = await protocol(`kind=DRAW&categoryId=${archivedCategory.id}`);
+  assert.equal(emptyDraw.status, 409);
+  assert.equal((await emptyDraw.json()).message, 'NO_ACTIVE_CATEGORIES');
+  const emptyParticipants = await protocol(`kind=PARTICIPANTS&categoryId=${archivedCategory.id}`);
+  assert.equal(
+    emptyParticipants.status,
+    200,
+    'An explicit empty participant list remains downloadable',
+  );
+  assert.equal(
+    Buffer.from(await emptyParticipants.arrayBuffer())
+      .subarray(0, 5)
+      .toString(),
+    '%PDF-',
+  );
+  assert.equal(
+    (await protocol(`kind=DRAW&categoryIds=${archivedCategory.id},${randomUUID()}`)).status,
+    404,
+  );
   const again = await db.contest.findMany({
     where: { draw: { category: { tournamentId: tournament } } },
     orderBy: { id: 'asc' },

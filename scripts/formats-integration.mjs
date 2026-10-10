@@ -40,7 +40,7 @@ try {
   ).id;
   assert.equal(
     (await call(`/tournaments/${tournament}/start`, {})).body.message,
-    'ALL_DRAWS_REQUIRED',
+    'NO_ACTIVE_CATEGORIES',
   );
   assert.equal((await call(`/tournaments/${tournament}/start`, {}, '')).status, 401);
   for (const [format, count] of [
@@ -102,11 +102,13 @@ try {
     );
   }
   const mats = (await call(`/tournaments/${tournament}/tatamis`)).body;
-  let completed = 0;
+  let completed = 0,
+    shidoLoser;
   while (true) {
     const rows = await db.contest.findMany({
       where: { draw: { category: { tournamentId: tournament } }, status: 'READY' },
       orderBy: { queueOrder: 'asc' },
+      include: { draw: { include: { category: true } } },
     });
     if (!rows.length) break;
     const queues = await Promise.all(
@@ -129,13 +131,36 @@ try {
       type: 'START',
       expectedVersion: row.revision,
     });
-    result = await post(`/tatamis/${row.tatamiId}/live/${row.id}/command`, {
-      id: randomUUID(),
-      type: 'AWARD',
-      expectedVersion: result.revision,
-      side: row.whiteEntryId < row.blueEntryId ? 'WHITE' : 'BLUE',
-      kind: 'IPPON',
-    });
+    const winnerSide =
+      row.draw.category.name === 'REPECHAGE8' &&
+      row.key.startsWith('bronze-') &&
+      [row.whiteEntryId, row.blueEntryId].includes(shidoLoser)
+        ? row.whiteEntryId === shidoLoser
+          ? 'WHITE'
+          : 'BLUE'
+        : row.whiteEntryId < row.blueEntryId
+          ? 'WHITE'
+          : 'BLUE';
+    if (row.draw.category.name === 'REPECHAGE8' && row.key === 'r2-m1') {
+      const loserSide = winnerSide === 'WHITE' ? 'BLUE' : 'WHITE';
+      shidoLoser = loserSide === 'WHITE' ? row.whiteEntryId : row.blueEntryId;
+      for (let penalty = 0; penalty < 3; penalty++)
+        result = await post(`/tatamis/${row.tatamiId}/live/${row.id}/command`, {
+          id: randomUUID(),
+          type: 'AWARD',
+          expectedVersion: result.revision,
+          side: loserSide,
+          kind: 'SHIDO',
+        });
+      assert.equal(result.state.outcome.reason, 'ACCUMULATED_SHIDO');
+    } else
+      result = await post(`/tatamis/${row.tatamiId}/live/${row.id}/command`, {
+        id: randomUUID(),
+        type: 'AWARD',
+        expectedVersion: result.revision,
+        side: winnerSide,
+        kind: 'IPPON',
+      });
     const confirm = { id: randomUUID(), type: 'CONFIRM', expectedVersion: result.revision };
     await post(`/tatamis/${row.tatamiId}/live/${row.id}/command`, confirm);
     await post(`/tatamis/${row.tatamiId}/live/${row.id}/command`, confirm);
@@ -159,6 +184,18 @@ try {
     0,
   );
   assert.equal(completed, 66 + extra);
+  assert.ok(shidoLoser, 'the semifinals must exercise a third-Shido loss');
+  const shidoCategory = await db.category.findFirstOrThrow({
+    where: { tournamentId: tournament, name: 'REPECHAGE8' },
+    include: { entries: true, draw: { include: { contests: true } } },
+  });
+  assert.equal(shidoCategory.entries.find((entry) => entry.id === shidoLoser).archivedAt, null);
+  assert.ok(
+    categoryResults(shidoCategory).places.some(
+      (place) => place.place === 3 && place.entryId === shidoLoser,
+    ),
+    'third-Shido loss does not remove the athlete: a later eligible bronze bout can be won',
+  );
   assert.equal(
     (await db.tournament.findUniqueOrThrow({ where: { id: tournament } })).status,
     'FINISHED',
