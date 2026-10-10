@@ -395,6 +395,7 @@ try {
     },
   );
   assert.equal(legacySync.result.status, 409);
+  assert.equal(legacySync.result.body.message, 'OFFLINE_METADATA_INCOMPLETE');
   assert.deepEqual(await sportingSnapshot(contest.id), legacySnapshot);
   await db.contest.update({
     where: { id: contest.id },

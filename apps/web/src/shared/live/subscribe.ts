@@ -1,5 +1,5 @@
 export type LiveNotice = {
-  kind: 'state' | 'result' | 'queue' | 'connected';
+  kind: 'state' | 'result' | 'queue' | 'roster' | 'connected';
   tournamentId: string;
   tatamiId?: string;
 };

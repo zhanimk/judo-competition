@@ -24,6 +24,7 @@ import { LiveService } from './live.service.js';
 import { MatchCommandDto } from './matches.dto.js';
 import { assertUnusedCommandIds } from './command-ids.js';
 import { lockContestAthletes, requireAvailableAthletes } from './athlete-guards.js';
+import { hasOfflineOwnership, hasIncompleteOfflineOwnership } from './offline-ownership.js';
 const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
 const now = () => Number(process.hrtime.bigint() / 1000000n);
 const commandResult = (row: Contest) => ({
@@ -179,18 +180,19 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
           }
           // A valid offline lease owns its own clock and event journal. Only
           // lost access pauses its saved snapshot; the lease remains for review.
-          if (row.offlineSessionId) return false;
+          if (hasOfflineOwnership(row)) return false;
           const at = now(),
             state = this.advance(row, at),
-            recovery = row.clockEpoch !== this.epoch;
+            recovery = row.clockEpoch !== this.epoch,
+            terminal = !recovery && (state.status === 'DECISION' || state.status === 'PROVISIONAL');
           await this.recordHoldScore(tx, row, state);
-          await tx.contest.update({
+          const updated = await tx.contest.update({
             where: { id: row.id },
             data: {
               state: json(state),
               clockAnchorMs: at,
               clockEpoch: this.epoch,
-              ...(recovery ? { revision: { increment: 1 } } : {}),
+              ...(recovery || terminal ? { revision: { increment: 1 } } : {}),
             },
           });
           if (recovery)
@@ -203,6 +205,35 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
                 payload: json({ state }),
               },
             });
+          if (terminal) {
+            const payload = json({
+              cause:
+                state.status === 'DECISION' || state.outcome?.reason === 'TIME'
+                  ? 'REGULAR_TIME_EXPIRED'
+                  : 'HOLD_SCORE_FINISHED',
+              revision: updated.revision,
+              before: s,
+              state,
+            });
+            await tx.matchEvent.create({
+              data: {
+                id: randomUUID(),
+                contestId: row.id,
+                actorId: 'SYSTEM',
+                type: 'CLOCK_TERMINAL_REACHED',
+                payload,
+              },
+            });
+            await tx.auditEvent.create({
+              data: {
+                actorId: 'SYSTEM',
+                tournamentId: item.draw.category.tournamentId,
+                entityId: row.id,
+                action: 'MATCH_CLOCK_TERMINAL_REACHED',
+                payload,
+              },
+            });
+          }
           return true;
         });
         if (changed)
@@ -286,7 +317,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         key: row.key,
         category: row.draw.category.name,
         revision: row.revision,
-        offlineActive: !!row.offlineSessionId,
+        offlineActive: hasOfflineOwnership(row),
         updatedAt: row.updatedAt,
         state,
         white: person(row.whiteEntryId),
@@ -333,6 +364,8 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         // the original response even after later commands change the contest.
         return receipt.response ?? commandResult(row);
       }
+      if (hasIncompleteOfflineOwnership(row))
+        throw new ConflictException('OFFLINE_METADATA_INCOMPLETE');
       await assertTatamiControl(tx, user, tatamiId, dto);
       if (row.revision !== dto.expectedVersion) throw new ConflictException('VERSION_CONFLICT');
       if (row.status === 'CONFIRMED') throw new ConflictException('RESULT_LOCKED');

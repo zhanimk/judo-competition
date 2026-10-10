@@ -1,6 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { resolveMatches, type Draw } from '@judo/engine/draw';
 import { categoryResults, type ProtocolCategory } from './protocol-model.js';
+import { hasOfflineOwnership } from '../matches/offline-ownership.js';
 
 export type TeamReadinessReason =
   | 'DRAW_NOT_CONFIRMED'
@@ -13,15 +14,7 @@ export type TeamReadinessReason =
 export function teamReadiness(category: ProtocolCategory): TeamReadinessReason | null {
   const record = category.draw;
   if (!record || record.status !== 'CONFIRMED') return 'DRAW_NOT_CONFIRMED';
-  if (
-    record.contests.some(
-      (contest) =>
-        contest.offlineSessionId ||
-        contest.offlineActorId ||
-        contest.offlineControlGeneration != null,
-    )
-  )
-    return 'OFFLINE_OWNED';
+  if (record.contests.some(hasOfflineOwnership)) return 'OFFLINE_OWNED';
   try {
     const draw = record.snapshot as unknown as Draw;
     if (!Array.isArray(draw.matches) || !draw.matches.length || !Array.isArray(draw.positions))

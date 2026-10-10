@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-10",
+  "scope": "Native Chrome UI, isolated disposable QA database and private web/API processes",
+  "passed": true,
+  "locales": ["kk", "ru"],
+  "mobileViewport": { "width": 390, "height": 844 },
+  "checks": [
+    "RUNNING tournament exposes name-only correction for an active participant while category and identity actions remain blocked",
+    "Kazakh form presents before/after names and requires a reason and review before saving",
+    "Saving a corrected surname updates the roster and shows a success message",
+    "The control screen displays the corrected name while preserving the paused match and existing YUKO score",
+    "The public participants screen displays the corrected name",
+    "Russian and Kazakh name correction forms fit the mobile viewport without overlapping fields or buttons"
+  ],
+  "limitations": [
+    "This UI check does not cover every browser, TV, physical mobile device or venue network",
+    "Offline replay, API/PDF propagation and identity preservation are verified separately by automated tests",
+    "One transient WebSocket-close warning was observed during development reconnect; this is not a realtime delivery or load certification"
+  ],
+  "cleanup": {
+    "qaSchemaDropped": true,
+    "privateProcessesStopped": true,
+    "createdBrowserTabsClosed": true,
+    "originalBrowserTabPreserved": true
+  }
+}

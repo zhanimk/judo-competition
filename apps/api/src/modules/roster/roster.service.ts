@@ -10,12 +10,14 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../../database/database.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/auth.types.js';
+import { assertActivePrincipal } from '../auth/access-guards.js';
 import { assertUnusedCommandIds, lockCommandIds } from '../matches/command-ids.js';
 import { LiveService } from '../matches/live.service.js';
 import type { CreateClubDto, RosterCommitDto, RosterPreviewDto } from './roster.dto.js';
 import { cleanName, normalizedName, validateRoster } from './roster-validation.js';
 import type {
   EntryArchiveDto,
+  EntryNameDto,
   EntryPreviewDto,
   EntryRestoreDto,
   EntryUpdateDto,
@@ -141,12 +143,14 @@ export class RosterService {
     tournamentId: string,
     type: string,
     dto: DurableCommand,
+    actorId?: string,
   ) {
     await lockCommandIds(tx, [dto.id]);
     const saved = await tx.rosterCommand.findUnique({ where: { id: dto.id } });
     if (!saved) return null;
     if (
       saved.tournamentId !== tournamentId ||
+      (actorId !== undefined && saved.actorId !== actorId) ||
       saved.type !== type ||
       !isDeepStrictEqual(saved.command, json(dto))
     )
@@ -372,6 +376,87 @@ export class RosterService {
     });
     if (!entry) throw new NotFoundException('ENTRY_NOT_FOUND');
     return entry;
+  }
+
+  /** Correct this tournament's display fields without touching any sporting state. */
+  async correctName(id: string, entryId: string, dto: EntryNameDto, user: Principal) {
+    await this.auth.owner(user, id);
+    const command = { ...dto, entryId };
+    let result: Prisma.JsonValue | Prisma.InputJsonValue;
+    let changed = false;
+    try {
+      result = await this.db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
+        // Keep Session/logout lock order even though this command changes no mat.
+        await tx.$queryRaw`SELECT id FROM "Tatami" WHERE "tournamentId"=${id} ORDER BY id FOR UPDATE`;
+        await assertActivePrincipal(tx, user, { tournamentId: id });
+        const saved = await this.receipt(tx, id, 'ENTRY_NAME_CORRECTED', command, user.id);
+        if (saved !== null) return saved;
+        if (
+          Object.keys(dto).some(
+            (field) =>
+              !['id', 'expectedRevision', 'firstName', 'lastName', 'reason'].includes(field),
+          )
+        )
+          throw new BadRequestException('UNEXPECTED_NAME_PAYLOAD');
+        const reason = typeof dto.reason === 'string' ? dto.reason.trim() : '';
+        if ([...reason].length < 3 || [...reason].length > 500)
+          throw new BadRequestException('REASON_REQUIRED');
+        if (typeof dto.firstName !== 'string' || typeof dto.lastName !== 'string')
+          throw new BadRequestException('NAME_REQUIRED');
+        const firstName = cleanName(dto.firstName),
+          lastName = cleanName(dto.lastName);
+        if (!firstName || !lastName) throw new BadRequestException('NAME_REQUIRED');
+        if ([...firstName].length > 80 || [...lastName].length > 80)
+          throw new BadRequestException('NAME_TOO_LONG');
+        const tournament = await tx.tournament.findUniqueOrThrow({ where: { id } });
+        if (tournament.rosterRevision !== dto.expectedRevision)
+          throw new ConflictException('VERSION_CONFLICT');
+        if (!['DRAFT', 'RUNNING', 'FINISHED'].includes(tournament.status))
+          throw new ConflictException('NAME_CORRECTION_NOT_ALLOWED');
+        await assertUnusedCommandIds(tx, [dto.id], null);
+        const lookup = await this.savedEntry(tx, id, entryId);
+        await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${lookup.categoryId} AND "tournamentId"=${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM "Entry" WHERE id=${entryId} FOR UPDATE`;
+        const before = await this.savedEntry(tx, id, entryId);
+        if (before.archivedAt) throw new ConflictException('ENTRY_ARCHIVED');
+        if (tournament.status === 'DRAFT') {
+          const draw = await tx.drawRecord.findUnique({ where: { categoryId: before.categoryId } });
+          // Unconfirmed previews fingerprint names; use the existing correction
+          // flow there rather than silently rewriting that historical fingerprint.
+          if (draw?.status !== 'CONFIRMED')
+            throw new ConflictException('NAME_CORRECTION_NOT_ALLOWED');
+        }
+        if (before.firstName === firstName && before.lastName === lastName)
+          throw new ConflictException('NAME_UNCHANGED');
+        const entry = await tx.entry.update({
+          where: { id: entryId },
+          data: { firstName, lastName },
+        });
+        const updated = await tx.tournament.update({
+          where: { id },
+          data: { rosterRevision: { increment: 1 } },
+        });
+        const response = json({
+          revision: updated.rosterRevision,
+          entry,
+          invalidatedCategoryIds: [],
+        });
+        await this.record(tx, id, user, 'ENTRY_NAME_CORRECTED', command, response, entryId, {
+          reason,
+          before: json(before),
+          after: json(entry),
+        });
+        changed = true;
+        return response;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw new ConflictException('COMMAND_ID_REUSED');
+      throw error;
+    }
+    if (changed) this.live.notify({ kind: 'roster', tournamentId: id });
+    return result;
   }
 
   private async hasContest(tx: Prisma.TransactionClient, entryId: string) {

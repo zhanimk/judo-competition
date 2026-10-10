@@ -14,6 +14,7 @@ import type { MatchState } from '@judo/engine/match';
 import { DatabaseService } from '../../database/database.service.js';
 import { AuthService } from '../auth/auth.service.js';
 import type { Principal } from '../auth/auth.types.js';
+import { assertActivePrincipal } from '../auth/access-guards.js';
 import { assertUnusedCommandIds } from '../matches/command-ids.js';
 import type { AssignDto, AssignmentResult } from './draws.dto.js';
 import { normalizedName } from '../roster/roster-validation.js';
@@ -226,7 +227,10 @@ export class DrawsService {
     const assigned = await this.db
       .$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${tournamentId} FOR UPDATE`;
-        await tx.$queryRaw`SELECT id FROM "Tatami" WHERE id=${dto.tatamiId} FOR UPDATE`;
+        // Logout, access changes and sporting commands use the same lock order.
+        // Recheck the session before returning a receipt or changing the queue.
+        await tx.$queryRaw`SELECT id FROM "Tatami" WHERE "tournamentId"=${tournamentId} ORDER BY id FOR UPDATE`;
+        await assertActivePrincipal(tx, user, { tournamentId });
         await tx.$queryRaw`SELECT id FROM "Contest" WHERE id=${id} FOR UPDATE`;
         const row = await tx.contest.findUniqueOrThrow({
           where: { id },

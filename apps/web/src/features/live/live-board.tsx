@@ -8,6 +8,7 @@ import { authMessage } from '../auth/messages';
 import { restoreMatchPending, type PendingMatchCommand } from './pending-command';
 import { resultReasonLabel } from './labels';
 import { mergeCommandResponse, type CommandResponse } from './command-response';
+import { refreshParticipantNames } from './participant-names';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MatchState, Side, Score } from '@judo/engine/match';
 
@@ -259,12 +260,16 @@ export function LiveBoard({
         },
       });
   }
-  const effectiveView = offline.journal
-    ? {
-        ...offline.journal.view,
-        currentMatch: { ...offline.journal.view.currentMatch!, state: offline.journal.state },
-      }
-    : view;
+  const offlineDisplay = offline.journal
+    ? refreshParticipantNames(offline.journal.view, view)
+    : null;
+  const effectiveView =
+    offline.journal && offlineDisplay
+      ? {
+          ...offlineDisplay,
+          currentMatch: { ...offlineDisplay.currentMatch!, state: offline.journal.state },
+        }
+      : view;
   const m = effectiveView?.currentMatch,
     s = m?.state;
   const shown = s

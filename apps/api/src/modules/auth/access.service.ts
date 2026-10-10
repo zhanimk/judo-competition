@@ -15,6 +15,10 @@ import type { Principal } from './auth.types.js';
 import type { ControlAccessDto, RevokeInvitationDto } from './access.dto.js';
 import type { InviteDto } from './auth.dto.js';
 import { assertUnusedCommandIds } from '../matches/command-ids.js';
+import {
+  hasOfflineOwnership,
+  hasIncompleteOfflineOwnership,
+} from '../matches/offline-ownership.js';
 
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -229,6 +233,9 @@ export class AccessService {
       if (saved) return saved;
       if (mat.accessRevision !== dto.expectedRevision)
         throw new ConflictException('ACCESS_VERSION_CONFLICT');
+      const active = await tx.contest.findMany({ where: { tatamiId, status: 'ACTIVE' } });
+      if (active.some(hasIncompleteOfflineOwnership))
+        throw new ConflictException('OFFLINE_METADATA_INCOMPLETE');
       const same =
         mat.controllerSessionId === user.sessionId &&
         mat.controllerActorId === user.id &&
@@ -251,9 +258,7 @@ export class AccessService {
         };
       } else if (dto.type === 'RELEASE') {
         if (!same) throw new ConflictException('CONTROL_HELD');
-        const active = await tx.contest.findMany({ where: { tatamiId, status: 'ACTIVE' } });
-        if (active.some((row) => row.offlineSessionId))
-          throw new ConflictException('OFFLINE_OWNED');
+        if (active.some(hasOfflineOwnership)) throw new ConflictException('OFFLINE_OWNED');
         if (active.some((row) => (row.state as unknown as MatchState | null)?.hold))
           throw new ConflictException('RESOLVE_HOLD_FIRST');
         if (active.some((row) => (row.state as unknown as MatchState | null)?.status === 'RUNNING'))
@@ -269,12 +274,7 @@ export class AccessService {
         if (workRole(user.role) !== 'ADMIN') throw new ForbiddenException('FORBIDDEN');
         if (!dto.reason || dto.reason.trim().length < 3)
           throw new BadRequestException('REASON_REQUIRED');
-        if (
-          await tx.contest.findFirst({
-            where: { tatamiId, status: 'ACTIVE', offlineSessionId: { not: null } },
-          })
-        )
-          throw new ConflictException('OFFLINE_OWNED');
+        if (active.some(hasOfflineOwnership)) throw new ConflictException('OFFLINE_OWNED');
         await pauseControlledContests(tx, tatamiId, {
           actorId: user.id,
           tournamentId: mat.tournamentId,

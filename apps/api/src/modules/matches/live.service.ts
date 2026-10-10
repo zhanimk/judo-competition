@@ -6,7 +6,7 @@ import { AuthService } from '../auth/auth.service.js';
 export type LiveNotice = {
   tournamentId: string;
   tatamiId?: string;
-  kind: 'state' | 'result' | 'queue' | 'connected';
+  kind: 'state' | 'result' | 'queue' | 'roster' | 'connected';
 };
 @Injectable()
 export class LiveService implements OnModuleDestroy {

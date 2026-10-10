@@ -6,12 +6,17 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Prisma } from '@prisma/client';
 import { createMatch, applyCommand } from '@judo/engine/match';
-import { AuthService } from '../apps/api/dist/modules/auth/auth.service.js';
-import { MatchesService } from '../apps/api/dist/modules/matches/matches.service.js';
-import { MatchCommandDto } from '../apps/api/dist/modules/matches/matches.dto.js';
-import { TatamisService } from '../apps/api/dist/modules/tatamis/tatamis.service.js';
-import { LiveService } from '../apps/api/dist/modules/matches/live.service.js';
-import { ControlService } from '../apps/api/dist/modules/control/control.service.js';
+const apiDist = process.env.JUDO_API_TEST_DIST ?? '../apps/api/dist';
+const apiModule = (path) => import(new URL(`${apiDist}/modules/${path}.js`, import.meta.url));
+const { AuthService } = await apiModule('auth/auth.service');
+const { MatchesService } = await apiModule('matches/matches.service');
+const { MatchCommandDto } = await apiModule('matches/matches.dto');
+const { TatamisService } = await apiModule('tatamis/tatamis.service');
+const { LiveService } = await apiModule('matches/live.service');
+const { ControlService } = await apiModule('control/control.service');
+const { hasOfflineOwnership, hasIncompleteOfflineOwnership } = await apiModule(
+  'matches/offline-ownership',
+);
 
 const rules = {
   durationMs: 180000,
@@ -46,7 +51,12 @@ function pausedMatch() {
 }
 
 // Transaction snapshots make rollback observable without connecting to a user's database.
-function harness({ offline = true, oldEvents = [], collideOnWrite = false } = {}) {
+function harness({
+  offline = true,
+  oldEvents = [],
+  collideOnWrite = false,
+  failAudit = false,
+} = {}) {
   let saved = {
     row: {
       id: matchId,
@@ -172,7 +182,12 @@ function harness({ offline = true, oldEvents = [], collideOnWrite = false } = {}
           },
           create: async ({ data }) => staged.events.push(structuredClone(data)),
         },
-        auditEvent: { create: async ({ data }) => staged.audit.push(structuredClone(data)) },
+        auditEvent: {
+          create: async ({ data }) => {
+            if (failAudit) throw new Error('audit unavailable');
+            staged.audit.push(structuredClone(data));
+          },
+        },
       };
       const result = await callback(tx);
       saved = staged;
@@ -578,8 +593,190 @@ test('a legacy or previous-generation offline reservation requires administrativ
       saved.row.offlineControlGeneration = previousGeneration;
     });
     const before = h.snapshot();
-    await assert.rejects(h.send(h.packet([])), conflict('OFFLINE_CONTROL_STALE'));
+    await assert.rejects(
+      h.send(h.packet([])),
+      conflict(
+        previousGeneration === null ? 'OFFLINE_METADATA_INCOMPLETE' : 'OFFLINE_CONTROL_STALE',
+      ),
+    );
     assert.deepEqual(h.snapshot(), before);
+  }
+});
+
+test('offline ownership treats every metadata field, including generation zero, as a saved lease', () => {
+  assert.equal(hasOfflineOwnership({}), false);
+  assert.equal(hasIncompleteOfflineOwnership({}), false);
+  assert.equal(
+    hasOfflineOwnership({
+      offlineSessionId: null,
+      offlineActorId: null,
+      offlineControlGeneration: null,
+    }),
+    false,
+  );
+  for (const row of [
+    { offlineSessionId: offlineSession },
+    { offlineActorId: actor.id },
+    { offlineControlGeneration: 0 },
+    { offlineSessionId: offlineSession, offlineActorId: actor.id },
+    { offlineSessionId: offlineSession, offlineControlGeneration: 0 },
+    { offlineActorId: actor.id, offlineControlGeneration: 0 },
+    { offlineSessionId: '', offlineActorId: actor.id, offlineControlGeneration: 0 },
+  ]) {
+    assert.equal(hasOfflineOwnership(row), true);
+    assert.equal(hasIncompleteOfflineOwnership(row), true);
+  }
+  const complete = {
+    offlineSessionId: offlineSession,
+    offlineActorId: actor.id,
+    offlineControlGeneration: 0,
+  };
+  assert.equal(hasOfflineOwnership(complete), true);
+  assert.equal(hasIncompleteOfflineOwnership(complete), false);
+});
+
+const incompleteLeases = [
+  { offlineSessionId: offlineSession },
+  { offlineActorId: actor.id },
+  { offlineControlGeneration: 0 },
+  { offlineSessionId: offlineSession, offlineActorId: actor.id },
+  { offlineSessionId: offlineSession, offlineControlGeneration: 0 },
+  { offlineActorId: actor.id, offlineControlGeneration: 0 },
+];
+
+test('new sporting and offline commands cannot replace partial offline metadata or its journal', async () => {
+  for (const partial of incompleteLeases) {
+    const h = harness({ offline: false });
+    h.mutate((saved) => Object.assign(saved.row, partial));
+    const before = h.snapshot();
+    for (const command of [
+      { type: 'AWARD', side: 'WHITE', kind: 'YUKO' },
+      { type: 'OFFLINE_OPEN', sessionId: offlineSession },
+      { type: 'OFFLINE_SYNC', sessionId: offlineSession, events: [] },
+      { type: 'OFFLINE_RELEASE', sessionId: offlineSession, events: [] },
+    ]) {
+      await assert.rejects(
+        h.send({ id: randomUUID(), expectedVersion: before.row.revision, ...command }),
+        conflict('OFFLINE_METADATA_INCOMPLETE'),
+      );
+      assert.deepEqual(h.snapshot(), before);
+      assert.equal(h.notices.length, 0);
+    }
+  }
+});
+
+test('exact historical receipts remain read-only after partial offline metadata appears', async () => {
+  for (const offline of [false, true])
+    for (const partial of incompleteLeases) {
+      const h = harness({ offline });
+      const command = offline
+        ? h.packet([])
+        : {
+            id: randomUUID(),
+            expectedVersion: 7,
+            type: 'AWARD',
+            side: 'WHITE',
+            kind: 'YUKO',
+          };
+      const original = await h.send(command);
+      h.mutate((saved) =>
+        Object.assign(saved.row, {
+          offlineSessionId: null,
+          offlineActorId: null,
+          offlineControlGeneration: null,
+          ...partial,
+        }),
+      );
+      const before = h.snapshot();
+      assert.deepEqual(await h.send(command), original);
+      assert.deepEqual(h.snapshot(), before);
+      await assert.rejects(
+        h.send({
+          id: randomUUID(),
+          expectedVersion: before.row.revision,
+          type: 'AWARD',
+          side: 'BLUE',
+          kind: 'YUKO',
+        }),
+        conflict('OFFLINE_METADATA_INCOMPLETE'),
+      );
+      assert.deepEqual(h.snapshot(), before);
+      h.mutate((saved) => {
+        saved.session = null;
+      });
+      const loggedOut = h.snapshot();
+      await assert.rejects(h.send(command), httpError(401));
+      assert.deepEqual(h.snapshot(), loggedOut);
+    }
+});
+
+test('partial offline metadata remains visibly offline in the live snapshot', async () => {
+  for (const partial of incompleteLeases) {
+    const h = harness({ offline: false });
+    h.mutate((saved) => Object.assign(saved.row, partial));
+    const { row } = h.snapshot();
+    row.draw.category.entries = [];
+    const service = new MatchesService(
+      {
+        tatami: {
+          findUnique: async () => ({
+            tournamentId: tournament,
+            number: 1,
+            tournament: { name: 'QA', status: 'RUNNING' },
+          }),
+        },
+        contest: { findFirst: async ({ where }) => (where.status === 'ACTIVE' ? row : null) },
+      },
+      {},
+      {},
+    );
+    assert.equal((await service.view(mat)).currentMatch.offlineActive, true);
+  }
+});
+
+test('valid control holder never advances or reconciles a partial offline journal', async () => {
+  for (const partial of incompleteLeases) {
+    const h = harness({ offline: false });
+    h.mutate((saved) => {
+      Object.assign(saved.row, partial);
+      saved.row.state = applyCommand(saved.row.state, {
+        id: randomUUID(),
+        expectedVersion: saved.row.state.version,
+        type: 'START',
+      });
+      saved.row.clockEpoch = h.service.epoch;
+      saved.row.clockAnchorMs = 0;
+    });
+    const before = h.snapshot();
+    await h.service.tick();
+    assert.deepEqual(h.snapshot(), before);
+    assert.equal(h.notices.length, 0);
+  }
+});
+
+test('expired holder safely pauses a partial offline journal without clearing or rebinding its metadata', async () => {
+  for (const partial of incompleteLeases) {
+    const h = harness({ offline: false });
+    h.mutate((saved) => {
+      Object.assign(saved.row, partial);
+      saved.row.state = applyCommand(saved.row.state, {
+        id: randomUUID(),
+        expectedVersion: saved.row.state.version,
+        type: 'START',
+      });
+      saved.session.expiresAt = new Date(0);
+    });
+    const before = h.snapshot();
+    await h.service.tick();
+    const paused = h.snapshot();
+    assert.equal(paused.row.status, 'ACTIVE');
+    assert.equal(paused.row.state.status, 'PAUSED');
+    assert.equal(paused.row.state.elapsedMs, before.row.state.elapsedMs);
+    assert.deepEqual(paused.row.state.awards, before.row.state.awards);
+    for (const field of ['offlineSessionId', 'offlineActorId', 'offlineControlGeneration'])
+      assert.equal(paused.row[field], before.row[field]);
+    assert.deepEqual(paused.mat, before.mat);
+    assert.equal(paused.events.at(-1).type, 'CONTROL_LOST_PAUSED');
   }
 });
 
@@ -689,4 +886,162 @@ test('tick never advances a valid offline holder clock or rewrites its saved jou
   await h.service.tick();
   assert.deepEqual(h.snapshot(), before);
   assert.equal(h.notices.length, 0);
+});
+
+function startTickFixture(h, { lead = false, hold = false, golden = false } = {}) {
+  h.mutate((saved) => {
+    let state = saved.row.state;
+    const command = (type, extra = {}) => {
+      state = applyCommand(state, {
+        id: randomUUID(),
+        expectedVersion: state.version,
+        type,
+        ...extra,
+      });
+    };
+    if (golden) {
+      command('START');
+      command('ADVANCE', { ms: state.rules.durationMs });
+      command('GOLDEN');
+    }
+    if (lead) command('AWARD', { side: 'WHITE', kind: 'YUKO' });
+    command('START');
+    if (hold) command('HOLD', { side: 'BLUE' });
+    state.receipts = {};
+    saved.row.state = state;
+    saved.row.clockEpoch = h.service.epoch;
+    saved.row.clockAnchorMs = 0;
+  });
+}
+
+test('terminal clock expiry records one atomic transition and revision for tie or TIME lead', async () => {
+  for (const lead of [false, true]) {
+    const h = harness({ offline: false });
+    startTickFixture(h, { lead });
+    const before = h.snapshot();
+    await h.service.tick();
+    const after = h.snapshot();
+    assert.equal(after.row.status, 'ACTIVE', 'a terminal clock transition is still unconfirmed');
+    assert.equal(after.row.state.status, lead ? 'PROVISIONAL' : 'DECISION');
+    assert.deepEqual(after.row.state.outcome, lead ? { winner: 'WHITE', reason: 'TIME' } : null);
+    assert.equal(after.row.revision, before.row.revision + 1);
+    assert.equal(after.row.state.version, before.row.state.version + 1);
+    assert.equal(after.row.state.elapsedMs, rules.durationMs);
+    assert.equal(after.events.length, 1);
+    assert.equal(after.events[0].type, 'CLOCK_TERMINAL_REACHED');
+    assert.equal(after.events[0].actorId, 'SYSTEM');
+    assert.equal(after.events[0].payload.cause, 'REGULAR_TIME_EXPIRED');
+    assert.equal(after.events[0].payload.revision, after.row.revision);
+    assert.deepEqual(after.events[0].payload.before, before.row.state);
+    assert.deepEqual(after.events[0].payload.state, after.row.state);
+    assert.equal(after.audit.length, 1);
+    assert.equal(after.audit[0].action, 'MATCH_CLOCK_TERMINAL_REACHED');
+    assert.equal(after.audit[0].tournamentId, tournament);
+    assert.equal(after.audit[0].entityId, matchId);
+    assert.deepEqual(after.audit[0].payload, after.events[0].payload);
+    assert.deepEqual(after.mat, before.mat);
+    assert.equal(after.matStatus, 'BUSY');
+    assert.equal(h.notices.length, 1);
+    await h.service.tick();
+    assert.deepEqual(
+      h.snapshot(),
+      after,
+      'repeated stopped tick cannot duplicate revision/event/audit',
+    );
+    assert.equal(h.notices.length, 1);
+  }
+});
+
+test('hold completion logs its score once and one terminal-clock boundary in REGULAR and GOLDEN', async () => {
+  for (const golden of [false, true]) {
+    const h = harness({ offline: false });
+    startTickFixture(h, { hold: true, golden });
+    const before = h.snapshot();
+    await h.service.tick();
+    const after = h.snapshot();
+    assert.equal(after.row.state.status, 'PROVISIONAL');
+    assert.deepEqual(after.row.state.outcome, {
+      winner: 'BLUE',
+      reason: golden ? 'GOLDEN_SCORE' : 'IPPON',
+    });
+    assert.equal(after.row.revision, before.row.revision + 1);
+    assert.equal(
+      after.row.state.awards.filter((award) => award.active && award.kind === 'IPPON').length,
+      1,
+    );
+    assert.equal(after.events.filter((event) => event.type === 'HOLD_SCORE_UPDATED').length, 1);
+    const transitions = after.events.filter((event) => event.type === 'CLOCK_TERMINAL_REACHED');
+    assert.equal(transitions.length, 1);
+    assert.equal(transitions[0].payload.cause, 'HOLD_SCORE_FINISHED');
+    assert.deepEqual(transitions[0].payload.before, before.row.state);
+    assert.deepEqual(transitions[0].payload.state, after.row.state);
+    assert.equal(after.audit.length, 1);
+    assert.deepEqual(after.audit[0].payload, transitions[0].payload);
+    await h.service.tick();
+    assert.deepEqual(h.snapshot(), after);
+  }
+});
+
+test('current-profile Golden Score hold finishes at the first 5-second YUKO with one boundary audit', async () => {
+  const h = harness({ offline: false });
+  h.mutate((saved) => {
+    saved.row.state.rules.holdThresholds = [
+      { ms: 5000, score: 'YUKO' },
+      { ms: 10000, score: 'WAZA_ARI' },
+      { ms: 20000, score: 'IPPON' },
+    ];
+  });
+  startTickFixture(h, { hold: true, golden: true });
+  const before = h.snapshot();
+  await h.service.tick();
+  const after = h.snapshot();
+  assert.equal(after.row.state.status, 'PROVISIONAL');
+  assert.deepEqual(after.row.state.outcome, { winner: 'BLUE', reason: 'GOLDEN_SCORE' });
+  assert.equal(after.row.state.goldenMs, 5000);
+  assert.equal(after.row.state.elapsedMs, rules.durationMs);
+  assert.equal(after.row.revision, before.row.revision + 1);
+  assert.deepEqual(
+    after.row.state.awards.filter((award) => award.active).map((award) => award.kind),
+    ['YUKO'],
+  );
+  assert.equal(after.events.filter((event) => event.type === 'HOLD_SCORE_UPDATED').length, 1);
+  const transitions = after.events.filter((event) => event.type === 'CLOCK_TERMINAL_REACHED');
+  assert.equal(transitions.length, 1);
+  assert.equal(transitions[0].payload.cause, 'HOLD_SCORE_FINISHED');
+  assert.deepEqual(transitions[0].payload.state, after.row.state);
+  assert.equal(after.audit.length, 1);
+  assert.deepEqual(after.audit[0].payload, transitions[0].payload);
+  await h.service.tick();
+  assert.deepEqual(h.snapshot(), after);
+});
+
+test('failed terminal audit rolls back clock, row revision, boundary and hold award atomically', async () => {
+  for (const hold of [false, true]) {
+    const h = harness({ offline: false, failAudit: true });
+    startTickFixture(h, { hold });
+    const before = h.snapshot();
+    await assert.rejects(h.service.tick(), /audit unavailable/);
+    assert.deepEqual(h.snapshot(), before);
+    assert.equal(h.notices.length, 0);
+    assert.equal(h.service.ticking, false, 'a failed audit does not disable later timer ticks');
+  }
+});
+
+test('an ordinary online clock advance changes no command revision or transition event/audit', async () => {
+  const h = harness({ offline: false });
+  startTickFixture(h);
+  h.mutate((saved) => {
+    saved.row.clockAnchorMs = Number(process.hrtime.bigint() / 1000000n) - 20;
+  });
+  const before = h.snapshot();
+  await h.service.tick();
+  const after = h.snapshot();
+  assert.equal(after.row.state.status, 'RUNNING');
+  assert.ok(after.row.state.elapsedMs >= 20 && after.row.state.elapsedMs < rules.durationMs);
+  assert.equal(after.row.state.version, before.row.state.version + 1);
+  assert.equal(after.row.revision, before.row.revision);
+  assert.deepEqual(after.row.state.awards, before.row.state.awards);
+  assert.deepEqual(after.events, before.events);
+  assert.deepEqual(after.audit, before.audit);
+  assert.deepEqual(after.mat, before.mat);
 });

@@ -20,6 +20,7 @@ import { ControlCommandDto } from './control.dto.js';
 import { assertUnusedCommandIds } from '../matches/command-ids.js';
 import { lockContestAthletes, requireAvailableAthletes } from '../matches/athlete-guards.js';
 import { profile } from '../rules/profile.js';
+import { hasOfflineOwnership } from '../matches/offline-ownership.js';
 const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
 function previewState(row: Contest) {
   const state = row.state as unknown as MatchState | null;
@@ -102,7 +103,7 @@ export class ControlService {
       revision: c.revision,
       tatamiId: c.tatamiId,
       queueOrder: c.queueOrder,
-      offlineActive: !!c.offlineSessionId,
+      offlineActive: hasOfflineOwnership(c),
       white: entries.find((e) => e.id === c.whiteEntryId),
       blue: entries.find((e) => e.id === c.blueEntryId),
       winnerEntryId: c.winnerEntryId,
@@ -176,8 +177,7 @@ export class ControlService {
       const all = await tx.contest.findMany({ where: { drawId: row.drawId } });
       const impact = plan(row.draw.snapshot as unknown as Draw, row, all);
       if (impact.impactToken !== dto.impactToken) throw new ConflictException('IMPACT_CHANGED');
-      const offlineOwned =
-        !!row.offlineSessionId || !!row.offlineActorId || row.offlineControlGeneration != null;
+      const offlineOwned = hasOfflineOwnership(row);
       if (offlineOwned && dto.type !== 'RELEASE_OFFLINE')
         throw new ConflictException('OFFLINE_OWNED');
       const savedDraw = row.draw.snapshot as unknown as Draw;

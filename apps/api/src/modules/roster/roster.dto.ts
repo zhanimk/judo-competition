@@ -74,6 +74,10 @@ export class EntryArchiveDto {
   @IsInt() @Min(0) @Max(Number.MAX_SAFE_INTEGER) expectedRevision!: number;
   @IsString() @TrimmedReason() reason!: string;
 }
+export class EntryNameDto extends EntryArchiveDto {
+  @IsString() @Length(1, 80) firstName!: string;
+  @IsString() @Length(1, 80) lastName!: string;
+}
 export class EntryRestoreDto extends EntryArchiveDto {
   @IsOptional() @IsBoolean() duplicateConfirmed?: boolean;
 }

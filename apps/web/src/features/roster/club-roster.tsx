@@ -6,12 +6,15 @@ import { ApiError, request } from '../tournaments/api';
 import type { Tournament } from '../tournaments/types';
 import { EntryCorrection } from './entry-correction';
 import { EntryIdentity } from './entry-identity';
+import { EntryName } from './entry-name';
+import { canCorrectEntryName } from './entry-name-model';
 import type { CorrectionMode } from './entry-correction-model';
 import { rosterMessage } from './messages';
 import {
   clearPendingRoster,
   deliverRosterCommand,
   readPendingRoster,
+  pendingRosterJson,
   savePendingRoster,
   type PendingRosterCommand,
 } from './roster-command';
@@ -59,7 +62,7 @@ export function ClubRoster({
   const [pending, setPending] = useState<PendingRosterCommand | null>(null);
   const [correction, setCorrection] = useState<{
     entry: SavedEntry;
-    mode: CorrectionMode | 'identity';
+    mode: CorrectionMode | 'identity' | 'name';
   } | null>(null);
   const [correctionAttempt, setCorrectionAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -77,7 +80,8 @@ export function ClubRoster({
   const busyRef = useRef(false);
   const mounted = useRef(false);
   const locked = tournament.status !== 'DRAFT';
-  const deliveryDisabled = !ready || busy || !!pending || storageBlocked || locked;
+  const mutationDisabled = !ready || busy || !!pending || storageBlocked;
+  const deliveryDisabled = mutationDisabled || locked;
   const disabled = deliveryDisabled || !!correction;
   const selectedClub = tournament.clubs.find((club) => club.id === selectedClubId);
   const previewCurrent = previewMatchesDraft(checked, rows, tournament.rosterRevision);
@@ -90,6 +94,7 @@ export function ClubRoster({
           `Құрам сақталды: ${notice.count} спортшы. Келесілерін қосуға болады.`,
         ),
         update: text('Исправление заявки сохранено.', 'Өтінім түзетуі сақталды.'),
+        name: text('ФИО исправлено в этом турнире.', 'Осы турнирде аты-жөні түзетілді.'),
         identity: text(
           'Связь заявки со спортсменом исправлена; данные заявки сохранены.',
           'Өтінімнің спортшымен байланысы түзетілді; өтінім деректері сақталды.',
@@ -220,11 +225,29 @@ export function ClubRoster({
       if (mounted.current) sayError('REFRESH_FAILED');
     }
   }
-  function openCorrection(entry: SavedEntry, mode: CorrectionMode | 'identity') {
-    if (disabled) return;
+  function openCorrection(entry: SavedEntry, mode: CorrectionMode | 'identity' | 'name') {
+    if (
+      mutationDisabled ||
+      correction ||
+      (mode === 'name' ? !canCorrectEntryName(tournament, entry) : locked)
+    )
+      return;
     setCorrection({ entry: structuredClone(entry), mode });
     setError('');
     setNotice(null);
+  }
+  function downloadPending() {
+    try {
+      const raw = pendingRosterJson(sessionStorage, tournament.id);
+      const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `roster-command-${pending?.payload.id ?? tournament.id}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      storageFailure(error);
+    }
   }
 
   async function deliver(command: PendingRosterCommand) {
@@ -438,7 +461,10 @@ export function ClubRoster({
           {locked && (
             <p className="info-note">
               {rosterMessage('ROSTER_LOCKED', locale === 'kk')}{' '}
-              {text('Сохранённые составы доступны ниже.', 'Сақталған құрамдар төменде қолжетімді.')}
+              {text(
+                'ФИО можно исправить в сохранённых заявках ниже.',
+                'Төмендегі сақталған өтінімдерде аты-жөнін түзетуге болады.',
+              )}
             </p>
           )}
           {error && (
@@ -469,6 +495,11 @@ export function ClubRoster({
                   ? text('Проверяем…', 'Тексерілуде…')
                   : text('Повторить сохранённую команду', 'Сақталған команданы қайталау')}
               </button>
+              {pending.kind === 'name' && (
+                <button type="button" onClick={downloadPending}>
+                  {text('Скачать исходную команду', 'Бастапқы команданы жүктеу')}
+                </button>
+              )}
             </div>
           )}
           {storageBlocked && (
@@ -605,13 +636,34 @@ export function ClubRoster({
           onUpdate={onUpdate}
         />
       )}
-      {correction && correction.mode !== 'identity' && (
+      {correction?.mode === 'name' && (
+        <EntryName
+          key={`${correction.entry.id}:name`}
+          tournament={tournament}
+          entry={correction.entry}
+          pending={pending?.kind === 'name' ? pending : null}
+          disabled={mutationDisabled}
+          attempt={correctionAttempt}
+          onDeliver={deliver}
+          onClose={() => {
+            if (!busy && !pending) setCorrection(null);
+          }}
+        />
+      )}
+      {correction && correction.mode !== 'identity' && correction.mode !== 'name' && (
         <EntryCorrection
           key={`${correction.entry.id}:${correction.mode}`}
           tournament={tournament}
           entry={correction.entry}
           mode={correction.mode}
-          pending={pending && 'entryId' in pending && pending.kind !== 'identity' ? pending : null}
+          pending={
+            pending &&
+            'entryId' in pending &&
+            pending.kind !== 'identity' &&
+            pending.kind !== 'name'
+              ? pending
+              : null
+          }
           disabled={deliveryDisabled}
           attempt={correctionAttempt}
           onDeliver={deliver}

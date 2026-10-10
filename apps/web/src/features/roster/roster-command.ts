@@ -11,6 +11,12 @@ import type {
 import { entryInputs, isUuid, validSavedEntry, validCategoryIds } from './roster-model.ts';
 import { validDraftRows } from './roster-storage.ts';
 import { validAthleteDisplay } from './athlete-model.ts';
+import {
+  nameReceiptPreservesEntry,
+  normalizeEntryName,
+  validNameCorrectionPayload,
+  type NameCorrectionPayload,
+} from './entry-name-model.ts';
 type Base = { tournamentId: string };
 export type PendingRosterCommand =
   | (Base & { kind: 'club'; payload: { id: string; expectedRevision: number; name: string } })
@@ -23,6 +29,12 @@ export type PendingRosterCommand =
         clubId: string;
         entries: RosterEntryInput[];
       };
+    })
+  | (Base & {
+      kind: 'name';
+      entryId: string;
+      entrySnapshot: SavedEntry;
+      payload: NameCorrectionPayload;
     })
   | (Base & {
       kind: 'identity';
@@ -67,7 +79,7 @@ export function readPendingRoster(store: Store, tournamentId: string): PendingRo
   if (
     !value ||
     value.tournamentId !== tournamentId ||
-    !['club', 'roster', 'update', 'archive', 'restore', 'identity'].includes(value.kind) ||
+    !['club', 'roster', 'update', 'archive', 'restore', 'identity', 'name'].includes(value.kind) ||
     !value.payload ||
     typeof value.payload.id !== 'string' ||
     !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value.payload.id) ||
@@ -84,7 +96,8 @@ export function readPendingRoster(store: Store, tournamentId: string): PendingRo
     ((value.kind === 'update' ||
       value.kind === 'archive' ||
       value.kind === 'restore' ||
-      value.kind === 'identity') &&
+      value.kind === 'identity' ||
+      value.kind === 'name') &&
       (!isUuid(value.entryId) ||
         !validSavedEntry(value.entrySnapshot) ||
         value.entrySnapshot.id !== value.entryId ||
@@ -95,6 +108,7 @@ export function readPendingRoster(store: Store, tournamentId: string): PendingRo
           ? value.entrySnapshot.archivedAt === null
           : value.entrySnapshot.archivedAt !== null) ||
         (value.kind === 'update' && !validCorrectionInput(value.payload)) ||
+        (value.kind === 'name' && !validNameCorrectionPayload(value.payload)) ||
         (value.kind === 'identity' &&
           (!isUuid(value.payload.athleteId) ||
             !isUuid(value.entrySnapshot.athleteId) ||
@@ -140,6 +154,13 @@ function validCorrectionReceipt(
   )
     return false;
   const entry = receipt.entry;
+  if (command.kind === 'name')
+    return (
+      receipt.invalidatedCategoryIds.length === 0 &&
+      nameReceiptPreservesEntry(command.entrySnapshot, entry) &&
+      entry.firstName === normalizeEntryName(command.payload.firstName) &&
+      entry.lastName === normalizeEntryName(command.payload.lastName)
+    );
   if (command.kind === 'identity')
     return (
       entry.athleteId === command.payload.athleteId &&
@@ -177,6 +198,15 @@ function validCorrectionReceipt(
   );
 }
 export function savePendingRoster(store: Store, command: PendingRosterCommand): void {
+  if (
+    command.kind === 'name' &&
+    (!isUuid(command.entryId) ||
+      !validSavedEntry(command.entrySnapshot) ||
+      command.entrySnapshot.id !== command.entryId ||
+      command.entrySnapshot.archivedAt !== null ||
+      !validNameCorrectionPayload(command.payload))
+  )
+    throw new Error('ROSTER_STORAGE_INVALID');
   const existing = readPendingRoster(store, command.tournamentId);
   if (existing && JSON.stringify(existing) !== JSON.stringify(command))
     throw new Error('ROSTER_PENDING_EXISTS');
@@ -187,6 +217,11 @@ export function clearPendingRoster(store: Store, command: PendingRosterCommand):
   if (existing && JSON.stringify(existing) !== JSON.stringify(command))
     throw new Error('ROSTER_PENDING_EXISTS');
   store.removeItem(key(command.tournamentId));
+}
+/** Download the stored original, not a packet reconstructed with a newer revision. */
+export function pendingRosterJson(store: Store, tournamentId: string): string {
+  if (!readPendingRoster(store, tournamentId)) throw new Error('ROSTER_STORAGE_INVALID');
+  return store.getItem(key(tournamentId))!;
 }
 export async function deliverRosterCommand(
   command: PendingRosterCommand,
@@ -225,6 +260,13 @@ export async function deliverRosterCommand(
       throw new Error('ROSTER_RESPONSE_INVALID');
     return { kind: 'success', receipt };
   } catch (error) {
-    return { kind: error instanceof ApiError && error.status < 500 ? 'rejected' : 'retry', error };
+    // Auth can expire after a previous delivery applied. Keep the exact name packet until its
+    // receipt or a definite validation rejection is known, including after a reload.
+    const rejected =
+      error instanceof ApiError &&
+      (command.kind === 'name'
+        ? [400, 404, 409].includes(error.status) && error.message !== 'COMMAND_ID_REUSED'
+        : error.status < 500);
+    return { kind: rejected ? 'rejected' : 'retry', error };
   }
 }

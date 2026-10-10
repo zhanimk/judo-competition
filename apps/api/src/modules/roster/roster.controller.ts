@@ -8,6 +8,7 @@ import {
   EntryPreviewDto,
   EntryUpdateDto,
   EntryArchiveDto,
+  EntryNameDto,
   EntryRestoreDto,
   EntryIdentityPreviewDto,
   EntryIdentityBindDto,
@@ -78,6 +79,14 @@ export class RosterController {
     @CurrentUser() user: Principal,
   ) {
     return this.service.archiveEntry(id, entryId, dto, user);
+  }
+  @Post(':id/roster/entries/:entryId/name') correctName(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @Body() dto: EntryNameDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.correctName(id, entryId, dto, user);
   }
   @Post(':id/roster/entries/:entryId/restore') restoreEntry(
     @Param('id', ParseUUIDPipe) id: string,

@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-10",
+  "mode": "read-only compiled engine public exports",
+  "randomSeed": 20261010,
+  "draw": {
+    "checked": 1143,
+    "maxMatches": 8128,
+    "formats": ["ROUND_ROBIN", "REPECHAGE", "MIXED"],
+    "seeds": [0, 1, 4294967295],
+    "n": [2, 128],
+    "policy": "REPECHAGE_ONLY",
+    "passed": true
+  },
+  "match": {
+    "series": 600,
+    "attempted": 54000,
+    "accepted": 9941,
+    "rejected": 44059,
+    "clockCorrections": 1128,
+    "statuses": {
+      "RUNNING": 4023,
+      "PAUSED": 4409,
+      "PROVISIONAL": 950,
+      "CONFIRMED": 432,
+      "DECISION": 127
+    },
+    "corrections": {
+      "PAUSED": 1128
+    },
+    "passed": true
+  },
+  "findings": [
+    {
+      "id": "RR_EQUAL_WINS_HEAD_TO_HEAD",
+      "status": "observed",
+      "profile": "LEGACY",
+      "description": "A/B have two wins each and C/D one each. Observe whether prior head-to-head resolves those ties without additional bouts. Historical policy and a future wins-only policy must be versioned separately."
+    },
+    {
+      "id": "MIXED_TIEBREAK_COLLAPSED_ROUNDS",
+      "status": "observed",
+      "profile": "REPECHAGE_ONLY",
+      "description": "A three-way pool cycle produces three extra bouts. Observe whether their round numbers collapse to the final base pool round. Three-way tie policy and knockout scheduling still require separate review."
+    }
+  ],
+  "equalWinsLegacyMismatch": {
+    "status": "observed",
+    "standings": [
+      {
+        "entryId": "A",
+        "wins": 2,
+        "lot": 3,
+        "tiedWins": 1
+      },
+      {
+        "entryId": "B",
+        "wins": 2,
+        "lot": 2,
+        "tiedWins": 0
+      },
+      {
+        "entryId": "C",
+        "wins": 1,
+        "lot": 4,
+        "tiedWins": 1
+      },
+      {
+        "entryId": "D",
+        "wins": 1,
+        "lot": 1,
+        "tiedWins": 0
+      }
+    ],
+    "needed": [],
+    "matchesBefore": 6,
+    "matchesAfter": 6
+  },
+  "mixedCollapsedRounds": {
+    "status": "observed",
+    "entries": 12,
+    "pool": "A",
+    "members": ["mixed-2", "mixed-6", "mixed-0"],
+    "lastPoolRound": 3,
+    "newRounds": [3, 3, 3]
+  },
+  "limits": [
+    "Not exhaustive outcome exploration",
+    "No official IJF certification",
+    "No browser, DB, realtime or equipment test",
+    "Draw smoke uses deterministic lexicographic winners, not every possible result",
+    "State smoke checks invariants, not an independent sporting oracle"
+  ]
+}

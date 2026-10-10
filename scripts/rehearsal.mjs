@@ -93,13 +93,15 @@ try {
     'formats-integration',
     'rematches-integration',
     'live-integration',
+    'roster-name-integration',
     'clock-correction-integration',
     'tatami-access-integration',
     'access-session-race-integration',
+    'draw-session-race-integration',
     'athlete-identity-integration',
     'protocol-integration',
   ]) {
-    if (suite === 'live-integration') {
+    if (suite === 'live-integration' || suite === 'protocol-integration') {
       // Independent suites create many valid synthetic logins. Give live/PDF
       // checks a fresh process/IP budget without changing production throttles.
       await stop();

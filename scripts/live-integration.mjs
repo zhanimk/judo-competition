@@ -271,7 +271,11 @@ try {
     });
     assert.equal(state.status, expectedStatus);
     assert.equal(Boolean(state.hold), expectedStatus === 'RUNNING');
-    assert.equal(live.currentMatch.revision, r.body.revision);
+    assert.equal(
+      live.currentMatch.revision,
+      r.body.revision + (expectedStatus === 'PROVISIONAL' ? 1 : 0),
+      'ordinary hold ticks keep the command version; its terminal boundary increments once',
+    );
   }
   assert.equal(live.currentMatch.state.outcome.reason, 'IPPON');
   assert.equal(
@@ -279,7 +283,24 @@ try {
     3,
   );
   assert.equal(live.currentMatch.state.awards.filter((award) => award.active).length, 1);
-  const confirmation = { id: randomUUID(), expectedVersion: r.body.revision, type: 'CONFIRM' };
+  assert.equal(
+    await db.matchEvent.count({ where: { contestId: a, type: 'CLOCK_TERMINAL_REACHED' } }),
+    1,
+  );
+  assert.equal(
+    await db.auditEvent.count({
+      where: { entityId: a, action: 'MATCH_CLOCK_TERMINAL_REACHED' },
+    }),
+    1,
+  );
+  const staleConfirm = await command(m0, a, 'CONFIRM', r.body.revision);
+  assert.equal(staleConfirm.status, 409);
+  assert.equal(staleConfirm.body.message, 'VERSION_CONFLICT');
+  const confirmation = {
+    id: randomUUID(),
+    expectedVersion: live.currentMatch.revision,
+    type: 'CONFIRM',
+  };
   assert.equal((await call(`/tatamis/${m0}/live/${a}/command`, confirmation)).status, 201);
   assert.equal((await call(`/tatamis/${m0}/live/${a}/command`, confirmation)).status, 201);
   assert.equal((await view(m0)).currentMatch, null);

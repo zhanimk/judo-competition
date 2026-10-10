@@ -9,7 +9,12 @@ import { AuthService } from '../apps/api/dist/modules/auth/auth.service.js';
 import { DrawsService } from '../apps/api/dist/modules/draws/draws.service.js';
 import { AssignDto } from '../apps/api/dist/modules/draws/draws.dto.js';
 
-const owner = { id: randomUUID(), role: 'ORGANIZER' };
+const owner = {
+  id: randomUUID(),
+  name: 'Assignment QA',
+  role: 'ORGANIZER',
+  sessionId: randomUUID(),
+};
 const tournamentId = randomUUID();
 const categoryId = randomUUID();
 const matA = randomUUID();
@@ -39,8 +44,20 @@ function harness({ legacyEvents = [], collision = false, failAudit = false } = {
     category: { id: categoryId, tournamentId, homeTatamiId: null },
     events: structuredClone(legacyEvents),
     audit: [],
+    tournament: { id: tournamentId, ownerId: owner.id },
+    sessions: [
+      {
+        id: owner.sessionId,
+        userId: owner.id,
+        expiresAt: new Date(Date.now() + 3600000),
+        invitationId: null,
+        user: { id: owner.id, role: owner.role },
+      },
+    ],
   };
   const notices = [];
+  const locks = [];
+  let afterSessionLock;
   let chain = Promise.resolve();
   const readRow = (data, id) => {
     const row = data.rows[id];
@@ -56,7 +73,24 @@ function harness({ legacyEvents = [], collision = false, failAudit = false } = {
       const operation = chain.then(async () => {
         const staged = structuredClone(saved);
         const tx = {
-          $queryRaw: async () => [],
+          $queryRaw: async (strings, ...values) => {
+            const sql = strings.join('?');
+            locks.push({ sql, values });
+            if (sql.includes('FROM "Session"') && afterSessionLock) {
+              const hook = afterSessionLock;
+              afterSessionLock = undefined;
+              hook(staged);
+            }
+            return [];
+          },
+          session: {
+            findUnique: async ({ where }) =>
+              structuredClone(staged.sessions.find((session) => session.id === where.id) ?? null),
+          },
+          tournament: {
+            findUnique: async ({ where }) =>
+              where.id === tournamentId ? structuredClone(staged.tournament) : null,
+          },
           accessCommand: { findFirst: async () => null },
           rosterCommand: { findFirst: async () => null },
           contest: {
@@ -138,7 +172,27 @@ function harness({ legacyEvents = [], collision = false, failAudit = false } = {
   let service = createService();
   return {
     notices,
+    locks,
     snapshot: () => structuredClone(saved),
+    afterSessionLock: (hook) => {
+      afterSessionLock = hook;
+    },
+    mutateSession: (changes) => {
+      saved.sessions =
+        changes === null ? [] : saved.sessions.map((session) => ({ ...session, ...changes }));
+    },
+    mutateTournament: (changes) => {
+      saved.tournament = { ...saved.tournament, ...changes };
+    },
+    addSession: (user) => {
+      saved.sessions.push({
+        id: user.sessionId,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 3600000),
+        invitationId: null,
+        user: { id: user.id, role: user.role },
+      });
+    },
     mutateRow: (id, changes) => {
       saved.rows[id] = { ...saved.rows[id], ...structuredClone(changes) };
     },
@@ -303,7 +357,9 @@ test('assignment is reserved for the tournament admin and cannot be replayed by 
   ])
     await assert.rejects(h.send(dto, matchA, user), httpError(403));
   assert.deepEqual(h.snapshot(), before);
-  await h.send(h.command(), matchB, { id: randomUUID(), role: 'SUPER_ADMIN' });
+  const admin = { id: randomUUID(), role: 'SUPER_ADMIN', sessionId: randomUUID() };
+  h.addSession(admin);
+  await h.send(h.command(), matchB, admin);
   assert.equal(h.snapshot().rows[matchB].tatamiId, matA);
 });
 
@@ -338,4 +394,78 @@ test('audit storage failure rolls back the entire assignment instead of leaving 
   await assert.rejects(h.send(h.command()), /audit unavailable/);
   assert.deepEqual(h.snapshot(), before);
   assert.equal(h.notices.length, 0);
+});
+
+test('assignment locks tournament, every sorted mat and live session before its contest', async () => {
+  const h = harness();
+  await h.send(h.command());
+  assert.deepEqual(
+    h.locks.slice(0, 4).map((lock) => /FROM "(\w+)"/.exec(lock.sql)?.[1]),
+    ['Tournament', 'Tatami', 'Session', 'Contest'],
+  );
+  assert.match(h.locks[1].sql, /"tournamentId"=\? ORDER BY id FOR UPDATE/);
+  assert.deepEqual(h.locks[1].values, [tournamentId]);
+  assert.deepEqual(h.locks[2].values, [owner.sessionId]);
+});
+
+test('deleted, expired, mismatched or changed-role sessions cannot assign or read an exact receipt', async () => {
+  for (const change of [
+    null,
+    { expiresAt: new Date(0) },
+    { userId: randomUUID() },
+    { user: { id: owner.id, role: 'SUPER_ADMIN' } },
+  ]) {
+    for (const replay of [false, true]) {
+      const h = harness();
+      const dto = h.command();
+      if (replay) await h.send(dto);
+      h.mutateSession(change);
+      const before = h.snapshot();
+      const notices = h.notices.length;
+      await assert.rejects(h.send(dto), httpError(401, 'AUTH_REQUIRED'));
+      assert.deepEqual(h.snapshot(), before);
+      assert.equal(h.notices.length, notices);
+    }
+  }
+});
+
+test('session loss while waiting after initial owner check rejects assignment and exact replay atomically', async () => {
+  for (const replay of [false, true]) {
+    const h = harness();
+    const dto = h.command();
+    if (replay) await h.send(dto);
+    const before = h.snapshot();
+    const notices = h.notices.length;
+    h.afterSessionLock((state) => {
+      state.sessions = [];
+    });
+    await assert.rejects(h.send(dto), httpError(401, 'AUTH_REQUIRED'));
+    assert.deepEqual(h.snapshot(), before);
+    assert.equal(h.notices.length, notices);
+    assert.equal(h.locks.at(-1).sql.includes('FROM "Session"'), true);
+  }
+});
+
+test('fresh owner scope is checked after locking even when initial authorization already passed', async () => {
+  const h = harness();
+  const dto = h.command();
+  await h.send(dto);
+  h.mutateTournament({ ownerId: randomUUID() });
+  const before = h.snapshot();
+  await assert.rejects(h.send(dto), httpError(403, 'FORBIDDEN'));
+  assert.deepEqual(h.snapshot(), before);
+  await assert.rejects(h.send(h.command(), matchB), httpError(403, 'FORBIDDEN'));
+  assert.deepEqual(h.snapshot(), before);
+});
+
+test('a new live session may read the original assignment receipt without applying it again', async () => {
+  const h = harness();
+  const dto = h.command();
+  const first = await h.send(dto);
+  h.mutateSession(null);
+  const renewed = { ...owner, sessionId: randomUUID() };
+  h.addSession(renewed);
+  const before = h.snapshot();
+  assert.deepEqual(await h.send(dto, matchA, renewed), first);
+  assert.deepEqual(h.snapshot(), before);
 });

@@ -312,6 +312,7 @@ function harness() {
         state,
         offlineSessionId: null,
         offlineActorId: null,
+        offlineControlGeneration: null,
         clockAnchorMs: 100,
         clockEpoch: 'old',
         ...extra,
@@ -429,7 +430,15 @@ test('release requires a paused hold-free online encounter', async () => {
   for (const [state, extra, code] of [
     [running(), {}, 'PAUSE_REQUIRED'],
     [running(true), {}, 'RESOLVE_HOLD_FIRST'],
-    [createMatch(rules), { offlineSessionId: randomUUID() }, 'OFFLINE_OWNED'],
+    [
+      createMatch(rules),
+      {
+        offlineSessionId: randomUUID(),
+        offlineActorId: 'offline-judge',
+        offlineControlGeneration: 1,
+      },
+      'OFFLINE_OWNED',
+    ],
   ]) {
     const h = harness();
     await h.command(h.packet());
@@ -478,13 +487,86 @@ test('takeover requires administrator and refuses an unresolved offline reservat
     h.command(h.packet('TAKEOVER', { reason: 'Forbidden replacement' })),
     failure(403, 'FORBIDDEN'),
   );
-  h.active(createMatch(rules), { offlineSessionId: randomUUID(), offlineControlGeneration: 1 });
+  h.active(createMatch(rules), {
+    offlineSessionId: randomUUID(),
+    offlineActorId: h.judge.id,
+    offlineControlGeneration: 1,
+  });
   const before = h.snapshot();
   await assert.rejects(
     h.command(h.packet('TAKEOVER', { reason: 'Device replacement' }), h.owner),
     failure(409, 'OFFLINE_OWNED'),
   );
   assert.deepEqual(h.snapshot(), before);
+});
+
+test('claim, release and takeover fail closed on every partial offline lease without changing the grant or journal', async () => {
+  for (let mask = 1; mask < 7; mask++)
+    for (const type of ['CLAIM', 'RELEASE', 'TAKEOVER']) {
+      const h = harness();
+      await h.command(h.packet());
+      h.active(
+        { ...running(), status: 'PAUSED' },
+        {
+          offlineSessionId: mask & 1 ? randomUUID() : null,
+          offlineActorId: mask & 2 ? h.judge.id : null,
+          offlineControlGeneration: mask & 4 ? 0 : null,
+        },
+      );
+      const before = h.snapshot();
+      await assert.rejects(
+        h.command(
+          h.packet(type, type === 'TAKEOVER' ? { reason: 'Reviewed device replacement' } : {}),
+          type === 'TAKEOVER' ? h.owner : h.judge,
+        ),
+        failure(409, 'OFFLINE_METADATA_INCOMPLETE'),
+      );
+      assert.deepEqual(h.snapshot(), before);
+    }
+});
+
+test('historical access receipts remain read-only after partial offline metadata appears', async () => {
+  for (const partial of [{ offlineActorId: 'saved-actor' }, { offlineControlGeneration: 0 }]) {
+    const h = harness();
+    const claim = h.packet();
+    const original = await h.command(claim);
+    h.active({ ...running(), status: 'PAUSED' }, partial);
+    const before = h.snapshot();
+    assert.deepEqual(await h.command(claim), original);
+    assert.deepEqual(h.snapshot(), before);
+    await assert.rejects(h.command(h.packet()), failure(409, 'OFFLINE_METADATA_INCOMPLETE'));
+    assert.deepEqual(h.snapshot(), before);
+  }
+});
+
+test('logout and revocation still pause partial offline snapshots and preserve their saved ownership evidence', async () => {
+  for (const action of ['LOGOUT', 'REVOKE'])
+    for (const partial of [{ offlineActorId: 'saved-actor' }, { offlineControlGeneration: 0 }]) {
+      const h = harness();
+      await h.command(h.packet());
+      h.active(running(true), partial);
+      const before = h.snapshot();
+      if (action === 'LOGOUT') await h.service.logout(h.judge);
+      else
+        await h.service.revoke(h.owner, h.invitationId, {
+          id: randomUUID(),
+          expectedRevision: before.mat.accessRevision,
+          reason: 'Judge access terminated',
+        });
+      const after = h.snapshot();
+      assert.equal(after.contests[0].status, 'ACTIVE');
+      assert.equal(after.contests[0].state.status, 'PAUSED');
+      assert.equal(after.contests[0].state.elapsedMs, before.contests[0].state.elapsedMs);
+      assert.deepEqual(after.contests[0].state.hold, before.contests[0].state.hold);
+      assert.deepEqual(after.contests[0].state.awards, before.contests[0].state.awards);
+      for (const field of ['offlineSessionId', 'offlineActorId', 'offlineControlGeneration'])
+        assert.equal(after.contests[0][field], before.contests[0][field]);
+      assert.equal(
+        after.sessions.some((session) => session.id === h.judge.sessionId),
+        false,
+      );
+      assert.equal(after.events.at(-1).type, 'CONTROL_ACCESS_PAUSED');
+    }
 });
 test('sporting grant checks live principal, tab identity and generation', async () => {
   const h = harness();

@@ -5,6 +5,7 @@ import { useLanguage } from '../../shared/i18n/provider';
 import type { Tournament } from '../tournaments/types';
 import { ArchivedRoster } from './archived-roster';
 import { savedEntry, type CorrectionMode } from './entry-correction-model';
+import { canCorrectEntryName, savedNameEntry } from './entry-name-model';
 import type { SavedEntry } from './roster-model';
 
 export function SavedRoster({
@@ -19,7 +20,7 @@ export function SavedRoster({
   selectedClubId: string;
   disabled: boolean;
   onClub: (id: string) => void;
-  onCorrect: (entry: SavedEntry, mode: CorrectionMode | 'identity') => void;
+  onCorrect: (entry: SavedEntry, mode: CorrectionMode | 'identity' | 'name') => void;
   onUpdate: () => Promise<void>;
 }) {
   const { text } = useLanguage();
@@ -135,6 +136,7 @@ export function SavedRoster({
               <tbody>
                 {visible.map((entry) => {
                   const record = savedEntry(entry, entry.category);
+                  const nameRecord = savedNameEntry(entry, entry.category);
                   const correctionDisabled = disabled || tournament.status !== 'DRAFT' || !record;
                   return (
                     <tr key={entry.id}>
@@ -143,6 +145,16 @@ export function SavedRoster({
                           {entry.lastName} {entry.firstName}
                         </strong>
                         <div className="roster-entry-actions">
+                          {nameRecord && canCorrectEntryName(tournament, nameRecord) && (
+                            <button
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => onCorrect(nameRecord, 'name')}
+                              aria-label={`${text('Исправить ФИО', 'Аты-жөнін түзету')}: ${entry.lastName} ${entry.firstName}`}
+                            >
+                              {text('Исправить ФИО', 'Аты-жөнін түзету')}
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={correctionDisabled || !record?.athleteId}

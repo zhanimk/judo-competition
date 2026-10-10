@@ -11,7 +11,7 @@
     "build": "npm run build -w @judo/engine && npm run build -w @judo/api && npm run build -w @judo/web",
     "typecheck": "npm run build -w @judo/engine && npm run typecheck --workspaces --if-present",
     "test": "npm run build -w @judo/engine && npm run test -w @judo/engine && npm run test -w @judo/web && npm run test:scripts && npm run test:api",
-    "test:api": "npm run build -w @judo/api && node --test scripts/api-regression.test.mjs scripts/assignment-regression.test.mjs scripts/roster-regression.test.mjs scripts/athlete-regression.test.mjs scripts/access-regression.test.mjs scripts/clock-correction-regression.test.mjs scripts/scheduling-regression.test.mjs scripts/protocol-regression.test.mjs scripts/pdf-pagination-regression.test.mjs",
+    "test:api": "npm run build -w @judo/api && node --test scripts/api-regression.test.mjs scripts/assignment-regression.test.mjs scripts/roster-regression.test.mjs scripts/roster-name-regression.test.mjs scripts/athlete-regression.test.mjs scripts/access-regression.test.mjs scripts/clock-correction-regression.test.mjs scripts/scheduling-regression.test.mjs scripts/protocol-regression.test.mjs scripts/pdf-pagination-regression.test.mjs",
     "test:scripts": "node --test scripts/test/*.test.mjs",
     "start": "npm run start -w @judo/web",
     "check": "npm run format:check && npm run check:boundaries && npm run typecheck && npm test && npm run build",
