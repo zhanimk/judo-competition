@@ -499,6 +499,8 @@ export function generateDraw(
   seed: number,
   policy: 'LEGACY' | 'REPECHAGE_ONLY' | 'KNOCKOUT_FROM_SIX' = 'LEGACY',
 ): Draw {
+  if (!['LEGACY', 'REPECHAGE_ONLY', 'KNOCKOUT_FROM_SIX'].includes(policy))
+    throw new Error('DRAW_POLICY_UNSUPPORTED');
   if (policy === 'KNOCKOUT_FROM_SIX') {
     if (!NEW_DRAW_FORMATS.some((f) => f === format)) throw new Error('FORMAT_UNSUPPORTED');
     if (entries.length <= 5 || (format === 'ROUND_ROBIN' && entries.length >= 8))

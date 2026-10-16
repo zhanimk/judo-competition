@@ -253,6 +253,11 @@ export function applyCommand(input: MatchState, c: Command): MatchState {
         );
         if (terminal) delta = Math.min(delta, Math.max(0, terminal.ms - s.hold.elapsedMs));
       }
+      requireCondition(
+        (s.phase !== 'GOLDEN' || Number.isSafeInteger(s.goldenMs + delta)) &&
+          (!s.hold || Number.isSafeInteger(s.hold.elapsedMs + delta)),
+        'INVALID_TIME',
+      );
       if (s.phase === 'REGULAR') s.elapsedMs = Math.min(s.rules.durationMs, s.elapsedMs + delta);
       else s.goldenMs += delta;
       if (s.hold) {

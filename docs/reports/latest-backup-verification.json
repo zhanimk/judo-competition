@@ -1,18 +1,18 @@
 {
-  "startedAt": "2026-10-16T14:53:29.934Z",
+  "startedAt": "2026-10-16T15:35:35.308Z",
   "passed": true,
-  "output": "tmp/backups/verified-2026-10-16T14-53-29.932Z-fa718ecd",
-  "dumpPath": "tmp/backups/verified-2026-10-16T14-53-29.932Z-fa718ecd/database.dump",
-  "schema": "qa_rehearsal_1171adb16fda4bfabbfe41bda97eae49",
-  "verificationDatabase": "qa_restore_1435e97e52e04504a54e9344810ddad3",
+  "output": "tmp/backups/verified-2026-10-16T15-35-35.305Z-96724e6f",
+  "dumpPath": "tmp/backups/verified-2026-10-16T15-35-35.305Z-96724e6f/database.dump",
+  "schema": "qa_rehearsal_0c33621188ca4545a803ef12d2877450",
+  "verificationDatabase": "qa_restore_03c5bd9f31814265a222078abac9993a",
   "verificationDatabaseRemoved": true,
   "versions": {
     "server": "180003",
     "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
     "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
   },
-  "dumpBytes": 809438,
-  "dumpSha256": "6d3e581a67d90999c3711daad5edc9a7d82509adfffbf1516ae4f450d99ab661",
+  "dumpBytes": 810236,
+  "dumpSha256": "5560b7a28b09cace43221301f08edcdcf435bd68876d3f4bf841a55ef0e362f8",
   "tables": [
     {
       "name": "AccessCommand",
@@ -121,5 +121,5 @@
     }
   ],
   "schemaStructureMatched": true,
-  "finishedAt": "2026-10-16T14:53:30.367Z"
+  "finishedAt": "2026-10-16T15:35:35.738Z"
 }
