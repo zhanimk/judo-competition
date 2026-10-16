@@ -5,7 +5,7 @@ export type TiebreakPayload = {
   expectedVersion: number;
   impactToken: string;
   reason: string;
-  procedure: 'ROUND_ROBIN';
+  procedure: 'ROUND_ROBIN' | 'ORDERED_PLACES';
   parent: string;
   pool?: string;
   members: string[];
@@ -40,7 +40,7 @@ export function readPendingTiebreak(storage: Store, tournamentId: string): Pendi
     !Number.isSafeInteger(p.expectedVersion) ||
     p.expectedVersion < 1 ||
     !/^[a-f0-9]{64}$/.test(p.impactToken) ||
-    p.procedure !== 'ROUND_ROBIN' ||
+    !['ROUND_ROBIN', 'ORDERED_PLACES'].includes(p.procedure) ||
     typeof p.reason !== 'string' ||
     p.reason.trim().length < 3 ||
     p.reason.trim().length > 1000 ||
@@ -79,7 +79,7 @@ export async function deliverPendingTiebreak(
       !Number.isSafeInteger(receipt.version) ||
       receipt.version <= value.payload.expectedVersion ||
       !Array.isArray(receipt.addedContestIds) ||
-      !receipt.addedContestIds.length ||
+      (value.payload.procedure === 'ROUND_ROBIN' && !receipt.addedContestIds.length) ||
       !Array.isArray(receipt.changedContestIds)
     )
       throw new Error('TIEBREAK_RESPONSE_INVALID');

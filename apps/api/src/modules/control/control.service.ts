@@ -182,6 +182,8 @@ export class ControlService {
       if (offlineOwned && dto.type !== 'RELEASE_OFFLINE')
         throw new ConflictException('OFFLINE_OWNED');
       const savedDraw = row.draw.snapshot as unknown as Draw;
+      if (dto.type === 'REOPEN' && savedDraw.withdrawnEntryIds?.length)
+        throw new ConflictException('WITHDRAWAL_REVIEW_REQUIRED');
       const savedMatch = savedDraw.matches.find((m) => m.id === row.key);
       // Pool corrections can invalidate generated tie-break rounds. Knockout medal
       // corrections do not alter group standings and use the normal dependency guard.

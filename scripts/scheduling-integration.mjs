@@ -133,7 +133,7 @@ try {
     for (let i = 0; i < count; i++)
       await post(`/tournaments/${tournament}/categories/${c.id}/entries`, {
         firstName: 'QA',
-        lastName: String(i),
+        lastName: `${name} ${i}`,
         club: 'Club' + i,
         birthYear: year,
       });

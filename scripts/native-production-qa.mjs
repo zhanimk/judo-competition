@@ -41,6 +41,7 @@ const services = {},
     base,
     createdAt: new Date().toISOString(),
   };
+const smallDrawMatrix = process.env.QA_SMALL_DRAW_MATRIX === '1';
 let created = false,
   closing = false,
   redis;
@@ -225,21 +226,30 @@ try {
   ).body;
   const getTournament = async () => (await call(`/tournaments/${tournament.id}`)).body;
   const categories = [];
-  for (const [index, count] of [4, 3, 2].entries()) {
+  for (const [index, count] of (smallDrawMatrix
+    ? [2, 3, 4, 5, 6, 7, 8, 8, 8]
+    : [4, 3, 2]
+  ).entries()) {
     const current = await getTournament();
     categories.push(
       (
         await call(`/tournaments/${tournament.id}/categories`, {
           id: randomUUID(),
           expectedRevision: current.administrationRevision,
-          name: ['U12 · −30 кг', 'U14 · −42 кг', 'U16 · +73 кг'][index],
-          format: 'REPECHAGE',
+          name: smallDrawMatrix
+            ? `QA ${String(index + 1).padStart(2, '0')} · ${count} участников · ${index === 7 ? 'ROUND_ROBIN' : index === 8 ? 'MIXED' : 'REPECHAGE'}`
+            : ['U12 · −30 кг', 'U14 · −42 кг', 'U16 · +73 кг'][index],
+          format: index === 7 ? 'ROUND_ROBIN' : index === 8 ? 'MIXED' : 'REPECHAGE',
           gender: 'MALE',
-          birthYearFrom: [2015, 2013, 2011][index],
-          birthYearTo: [2016, 2014, 2012][index],
-          maxWeightGrams: index === 2 ? null : [30000, 42000][index],
-          ...(index === 2 ? { minWeightGrams: 73000 } : {}),
-          durationSeconds: [120, 180, 240][index],
+          birthYearFrom: smallDrawMatrix ? 2012 : [2015, 2013, 2011][index],
+          birthYearTo: smallDrawMatrix ? 2013 : [2016, 2014, 2012][index],
+          maxWeightGrams: smallDrawMatrix
+            ? 20000 + index * 5000
+            : index === 2
+              ? null
+              : [30000, 42000][index],
+          ...(!smallDrawMatrix && index === 2 ? { minWeightGrams: 73000 } : {}),
+          durationSeconds: [120, 180, 240][index % 3],
         })
       ).body,
     );
@@ -262,7 +272,7 @@ try {
     const entries = categories.flatMap((category, categoryIndex) =>
       Array.from({ length: category.syntheticCount }, (_, i) => ({
         i,
-        firstName: ['Айдын', 'Данияр', 'Нұржан', 'Әли'][i],
+        firstName: ['Айдын', 'Данияр', 'Нұржан', 'Әли', 'Әлихан', 'Бекзат', 'Ерасыл', 'Арман'][i],
         lastName: `ТЕСТ-${categoryIndex + 1}-${i + 1}`,
         birthYear: category.birthYearFrom,
         gender: 'MALE',
@@ -374,6 +384,7 @@ try {
     email,
     password,
     tournamentId: tournament.id,
+    smallDrawMatrix,
     loginUrl: webOrigin + '/login',
     tournamentUrl: webOrigin + `/tournaments/${tournament.id}`,
     publicUrl: webOrigin + `/public/tournaments/${tournament.id}`,

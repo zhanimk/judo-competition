@@ -21,10 +21,10 @@ export function RoundStandings({
     : draw.positions.flatMap((e) => (e ? [e.id] : []));
   const matches = draw.matches.filter((m) => !poolId || m.pool === poolId);
   const matchKeys = new Set(matches.map((m) => m.id));
-  const confirmed = contests.filter(
-    (c) => c.status === 'CONFIRMED' && c.winnerEntryId && matchKeys.has(c.key),
+  const confirmed = contests.filter((c) => c.status === 'CONFIRMED' && matchKeys.has(c.key));
+  const winners = Object.fromEntries(
+    confirmed.filter((c) => c.winnerEntryId).map((c) => [c.key, c.winnerEntryId!]),
   );
-  const winners = Object.fromEntries(confirmed.map((c) => [c.key, c.winnerEntryId!]));
   const final = poolStandings(draw, winners, poolId);
   const awaitingReview = drawProgress(draw, winners).pendingReviews.some(
     (review) => review.pool === poolId,
@@ -61,7 +61,7 @@ export function RoundStandings({
               <th>{text('Место', 'Орын')}</th>
               <th>{text('Участник / клуб', 'Қатысушы / клуб')}</th>
               <th>{text('Жребий', 'Жеребе')}</th>
-              <th>{text('Проведено', 'Өткізілген')}</th>
+              <th>{text('Завершено', 'Аяқталған')}</th>
               <th>
                 {draw.tieRanking === 'WINS_ONLY'
                   ? text('Победы в основном круге', 'Негізгі айналымдағы жеңістер')
@@ -97,12 +97,19 @@ export function RoundStandings({
               return (
                 <tr key={id}>
                   <td>
-                    <b className="standing-place">{final ? index + 1 : '—'}</b>
+                    <b className="standing-place">
+                      {final && !draw.withdrawnEntryIds?.includes(id) ? index + 1 : '—'}
+                    </b>
                   </td>
                   <td>
                     <strong>
                       {e?.lastName} {e?.firstName}
                     </strong>
+                    {draw.withdrawnEntryIds?.includes(id) && (
+                      <small>
+                        {text('Удалён из дальнейших встреч', 'Келесі белдесулерден шығарылған')}
+                      </small>
+                    )}
                     <small>{e?.club}</small>
                   </td>
                   <td>{members.indexOf(id) + 1}</td>

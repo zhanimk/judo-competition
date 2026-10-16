@@ -1,57 +1,62 @@
 {
-  "startedAt": "2026-10-09T16:40:53.786Z",
+  "startedAt": "2026-10-16T11:55:59.128Z",
   "passed": true,
-  "output": "tmp/backups/verified-2026-10-09T16-40-53.784Z-73552c7d",
-  "dumpPath": "tmp/backups/verified-2026-10-09T16-40-53.784Z-73552c7d/database.dump",
-  "schema": "public",
-  "verificationDatabase": "qa_restore_3240340f3b8e4ee79c189659eeb478b4",
+  "output": "tmp/backups/verified-2026-10-16T11-55-59.126Z-fcf99d3b",
+  "dumpPath": "tmp/backups/verified-2026-10-16T11-55-59.126Z-fcf99d3b/database.dump",
+  "schema": "qa_rehearsal_24db930099624c16bde3a9df290c3178",
+  "verificationDatabase": "qa_restore_77ff9991ac5349aaa54577a94a6f0071",
   "verificationDatabaseRemoved": true,
   "versions": {
     "server": "180003",
     "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
     "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
   },
-  "dumpBytes": 93422,
-  "dumpSha256": "33d212e3d8d88a323303d2445fcf65fe7fd1f36c5cf1977c06e861520cd2e01b",
+  "dumpBytes": 799254,
+  "dumpSha256": "33489a8e2926bb85e6bad4018f4484b54978e736286ecc2542b1e472309a74d4",
   "tables": [
     {
       "name": "AccessCommand",
-      "rows": 0,
+      "rows": 10,
       "matched": true
     },
     {
       "name": "Athlete",
-      "rows": 34,
+      "rows": 1221,
       "matched": true
     },
     {
       "name": "AuditEvent",
-      "rows": 359,
+      "rows": 643,
       "matched": true
     },
     {
       "name": "Category",
-      "rows": 45,
+      "rows": 15,
       "matched": true
     },
     {
       "name": "Club",
-      "rows": 6,
+      "rows": 22,
       "matched": true
     },
     {
       "name": "Contest",
-      "rows": 47,
+      "rows": 78,
+      "matched": true
+    },
+    {
+      "name": "DrawCommand",
+      "rows": 32,
       "matched": true
     },
     {
       "name": "DrawRecord",
-      "rows": 5,
+      "rows": 11,
       "matched": true
     },
     {
       "name": "Entry",
-      "rows": 34,
+      "rows": 56,
       "matched": true
     },
     {
@@ -60,41 +65,61 @@
       "matched": true
     },
     {
+      "name": "LiveOutbox",
+      "rows": 585,
+      "matched": true
+    },
+    {
       "name": "MatchEvent",
-      "rows": 160,
+      "rows": 664,
       "matched": true
     },
     {
-      "name": "RosterCommand",
-      "rows": 2,
+      "name": "ProtocolArtifact",
+      "rows": 3,
       "matched": true
     },
     {
-      "name": "Session",
-      "rows": 23,
-      "matched": true
-    },
-    {
-      "name": "Tatami",
+      "name": "ProtocolCommand",
       "rows": 6,
       "matched": true
     },
     {
+      "name": "RosterCommand",
+      "rows": 67,
+      "matched": true
+    },
+    {
+      "name": "Session",
+      "rows": 6,
+      "matched": true
+    },
+    {
+      "name": "Tatami",
+      "rows": 14,
+      "matched": true
+    },
+    {
       "name": "Tournament",
-      "rows": 2,
+      "rows": 11,
+      "matched": true
+    },
+    {
+      "name": "TournamentCommand",
+      "rows": 37,
       "matched": true
     },
     {
       "name": "User",
-      "rows": 2,
+      "rows": 6,
       "matched": true
     },
     {
       "name": "_prisma_migrations",
-      "rows": 15,
+      "rows": 17,
       "matched": true
     }
   ],
   "schemaStructureMatched": true,
-  "finishedAt": "2026-10-09T16:40:54.121Z"
+  "finishedAt": "2026-10-16T11:55:59.534Z"
 }

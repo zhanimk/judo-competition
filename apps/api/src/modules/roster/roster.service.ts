@@ -375,6 +375,7 @@ export class RosterService {
         });
         const category = tournament.categories.find((category) => category.id === categoryId);
         if (!category) throw new NotFoundException('CATEGORY_NOT_FOUND');
+        if (category.draw?.status === 'CONFIRMED') throw new ConflictException('DRAW_LOCKED');
         const clubName = cleanName(dto.club);
         if (clubName.length < 2) throw new BadRequestException('CLUB_NAME_REQUIRED');
         const available = await scopedAthleteIds(tx, id, tournament.ownerId, selected);

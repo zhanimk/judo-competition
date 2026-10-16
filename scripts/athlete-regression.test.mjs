@@ -168,6 +168,9 @@ function fixture({
         if (!matchesWhere(value.category, wanted)) return false;
       } else if (wanted && typeof wanted === 'object' && 'in' in wanted) {
         if (!wanted.in.includes(value[key])) return false;
+      } else if (wanted && typeof wanted === 'object' && 'notIn' in wanted) {
+        if (value[key] === null || value[key] === undefined || wanted.notIn.includes(value[key]))
+          return false;
       } else if (wanted && typeof wanted === 'object' && 'not' in wanted) {
         if (value[key] === wanted.not) return false;
       } else if (wanted && typeof wanted === 'object' && 'gt' in wanted) {
@@ -446,6 +449,21 @@ test('rest follows archived aliases across tournaments and the current target pr
   assert.deepEqual(blocked.snapshot(), before);
   const allowed = fixture({ foreignStatus: 'CONFIRMED', recentAgo: 200000, restMs: 100000 });
   assert.equal((await allowed.send(allowed.command())).status, 'ACTIVE');
+});
+
+test('unfought walkovers do not create rest while withdrawal from a started bout retains rest', async () => {
+  for (const resultReason of ['WALKOVER', 'NO_CONTEST']) {
+    const h = fixture({ foreignStatus: 'CONFIRMED' });
+    h.mutate((s) => {
+      s.rows[1].resultReason = resultReason;
+    });
+    assert.equal((await h.send(h.command())).status, 'ACTIVE');
+  }
+  const fought = fixture({ foreignStatus: 'CONFIRMED' });
+  fought.mutate((s) => {
+    s.rows[1].resultReason = 'WITHDRAWAL';
+  });
+  await assert.rejects(fought.send(fought.command()), conflict('REST_REQUIRED'));
 });
 
 test('historical rest boundary allows equality while a newer confirmation is blocked', async () => {

@@ -135,6 +135,16 @@ export async function fixtureRequest(base, path, data, cookie = '') {
       ...(drawCommand[2] === 'preview' ? { expectedVersion: state?.draw?.version ?? 0 } : {}),
     };
   }
+  const singleEntry = /^\/tournaments\/([^/]+)\/categories\/[^/]+\/entries$/.exec(path);
+  if (data && !data.id && singleEntry) {
+    const current = await raw(base, `/tournaments/${singleEntry[1]}`, undefined, cookie);
+    const tournament = current.ok ? await current.json() : null;
+    payload = {
+      ...data,
+      id: randomUUID(),
+      expectedRosterRevision: tournament?.rosterRevision ?? 0,
+    };
+  }
   const response = await raw(base, path, payload, cookie);
   if (data && invite && response.ok) {
     const issued = await response.clone().json();

@@ -112,6 +112,7 @@ function harness(draw = v4(createRoundRobin(entries(3), 12)), results) {
       .filter(Boolean)
       .map((entry, i) => ({
         id: entry.id,
+        athleteId: entry.id,
         categoryId,
         firstName: 'QA',
         lastName: 'Athlete-' + i,
@@ -127,6 +128,14 @@ function harness(draw = v4(createRoundRobin(entries(3), 12)), results) {
       ownerId: owner.id,
       status: 'RUNNING',
       rulesSnapshot: {
+        shidoLimit: 3,
+        wazaForIppon: 2,
+        enabledScores: ['YUKO', 'WAZA_ARI', 'IPPON'],
+        holdThresholds: [
+          { ms: 5000, score: 'YUKO' },
+          { ms: 10000, score: 'WAZA_ARI' },
+          { ms: 20000, score: 'IPPON' },
+        ],
         version: 'custom-2026-v4',
         drawPolicy: 'REPECHAGE_ONLY',
         tieBreak: 'REMATCH',
@@ -135,6 +144,7 @@ function harness(draw = v4(createRoundRobin(entries(3), 12)), results) {
       },
     },
     commands: [],
+    events: [],
     audit: [],
     outbox: [],
     collisions: [],
@@ -162,10 +172,15 @@ function harness(draw = v4(createRoundRobin(entries(3), 12)), results) {
     tournament: {
       findUnique: async () => structuredClone(data.tournament),
       findUniqueOrThrow: async () => structuredClone(data.tournament),
+      update: async ({ data: patch }) => {
+        Object.assign(data.tournament, structuredClone(patch));
+        return structuredClone(data.tournament);
+      },
     },
     entry: { findMany: async () => structuredClone(data.roster) },
     category: {
-      findUniqueOrThrow: async () => structuredClone(data.category),
+      findUniqueOrThrow: async () =>
+        structuredClone({ ...data.category, tournament: data.tournament }),
       findMany: async () => [
         {
           ...data.category,
@@ -212,6 +227,14 @@ function harness(draw = v4(createRoundRobin(entries(3), 12)), results) {
       },
     },
     contest: {
+      findUniqueOrThrow: async ({ where }) =>
+        structuredClone(
+          data.rows.find((row) =>
+            where.id
+              ? row.id === where.id
+              : row.drawId === where.drawId_key.drawId && row.key === where.drawId_key.key,
+          ),
+        ),
       findMany: async (args) => {
         queries.push({ delegate: 'contest.findMany', args });
         const { where, include } = args;
@@ -323,9 +346,16 @@ function harness(draw = v4(createRoundRobin(entries(3), 12)), results) {
       findFirst: async ({ where }) =>
         data.collisions.find((id) => where.id.in.includes(id)) ? { id: 'collision' } : null,
     },
-    matchEvent: { findFirst: async () => null },
+    matchEvent: {
+      findFirst: async () => null,
+      create: async ({ data: event }) => {
+        data.events.push(structuredClone(event));
+      },
+    },
+    tatami: { update: async () => ({}) },
     auditEvent: {
       create: async ({ data: event }) => {
+        if (data.syntheticAuditFailure) throw new Error('synthetic audit failure');
         data.audit.push(structuredClone(event));
       },
     },
@@ -635,6 +665,153 @@ test('three-way manual review creates no champion and full additional circle has
   );
 });
 
+test('manual places bind exact order, finish RR without bouts and replay one immutable audited receipt', async () => {
+  const h = harness();
+  const review = (await h.service.tiebreakImpact(categoryId, owner)).reviews[0];
+  const approval = {
+    parent: review.parent,
+    pool: review.pool,
+    members: [...review.members].reverse(),
+    procedure: 'ORDERED_PLACES',
+  };
+  const preview = await h.service.tiebreakImpact(categoryId, owner, approval);
+  const dto = {
+    ...approval,
+    id: randomUUID(),
+    expectedVersion: preview.expectedVersion,
+    impactToken: preview.reviews[0].impactToken,
+    reason: 'Места по оценкам и шидо',
+  };
+  const before = h.snapshot();
+  await assert.rejects(
+    h.service.tiebreak(categoryId, { ...dto, members: [...dto.members].reverse() }, owner),
+    errorIs(409, 'IMPACT_CHANGED'),
+  );
+  assert.deepEqual(h.snapshot(), before);
+  const [result, retry] = await Promise.all([
+    h.service.tiebreak(categoryId, dto, owner),
+    h.service.tiebreak(categoryId, dto, owner),
+  ]);
+  assert.deepEqual(retry, result);
+  assert.equal(result.addedContestIds.length, 0);
+  assert.equal(result.progress.complete, true);
+  assert.deepEqual(
+    result.progress.places.map((p) => p.entryId),
+    approval.members,
+  );
+  const after = h.snapshot();
+  assert.equal(after.tournament.status, 'FINISHED');
+  assert.deepEqual(after.rows, before.rows);
+  assert.equal(after.commands.length, 1);
+  assert.equal(after.outbox.length, 1);
+  assert.equal(after.audit.filter((a) => a.action === 'TOURNAMENT_FINISHED').length, 1);
+  assert.deepEqual(await h.service.tiebreak(categoryId, dto, owner), result);
+  assert.deepEqual(h.snapshot(), after);
+});
+
+test('withdrawal is audited, versioned and replayable without deleting entry or result history', async () => {
+  const h = harness(v4(createRoundRobin(entries(3), 12)), {});
+  const entryId = h.snapshot().roster[0].id;
+  const preview = await h.service.withdrawalImpact(categoryId, entryId, owner);
+  const dto = {
+    id: randomUUID(),
+    entryId,
+    expectedVersion: preview.expectedVersion,
+    impactToken: preview.impactToken,
+    reason: 'Удалить из дальнейших встреч',
+  };
+  const before = h.snapshot();
+  const first = await h.service.withdraw(categoryId, dto, owner);
+  const after = h.snapshot();
+  assert.deepEqual(after.roster, before.roster);
+  assert.deepEqual(after.record.snapshot.withdrawnEntryIds, [entryId]);
+  assert.equal(after.rows.filter((r) => r.resultReason === 'WALKOVER').length, 2);
+  assert.equal(after.events.length, 2);
+  assert.equal(after.audit.filter((a) => a.action === 'ENTRY_WITHDRAWN').length, 1);
+  assert.equal(after.outbox.length, 1);
+  assert.ok(after.rows.filter((r) => r.state).every((r) => r.state.awards.length === 0));
+  assert.deepEqual(await h.service.withdraw(categoryId, dto, owner), first);
+  assert.deepEqual(h.snapshot(), after);
+  await assert.rejects(
+    h.service.withdraw(categoryId, { ...dto, reason: 'Changed intent' }, owner),
+    errorIs(409, 'COMMAND_ID_REUSED'),
+  );
+  const nextId = after.roster.find((e) => e.id !== entryId).id;
+  const nextPreview = await h.service.withdrawalImpact(categoryId, nextId, owner);
+  await h.service.withdraw(
+    categoryId,
+    {
+      ...dto,
+      id: randomUUID(),
+      entryId: nextId,
+      expectedVersion: nextPreview.expectedVersion,
+      impactToken: nextPreview.impactToken,
+    },
+    owner,
+  );
+  assert.equal(h.snapshot().tournament.status, 'FINISHED');
+  assert.deepEqual(
+    h
+      .snapshot()
+      .rows.filter((r) => after.rows.some((old) => old.id === r.id && old.status === 'CONFIRMED')),
+    after.rows.filter((r) => r.status === 'CONFIRMED'),
+  );
+});
+
+test('withdrawal preview cannot bypass changed sporting state or offline ownership', async () => {
+  const h = harness(v4(createRoundRobin(entries(3), 12)), {}),
+    entryId = h.snapshot().roster[0].id;
+  const preview = await h.service.withdrawalImpact(categoryId, entryId, owner);
+  h.mutate((s) => {
+    s.rows[0].clockAnchorMs = 123;
+  });
+  const before = h.snapshot();
+  const dto = {
+    id: randomUUID(),
+    entryId,
+    expectedVersion: preview.expectedVersion,
+    impactToken: preview.impactToken,
+    reason: 'Test withdrawal',
+  };
+  await assert.rejects(h.service.withdraw(categoryId, dto, owner), errorIs(409, 'IMPACT_CHANGED'));
+  assert.deepEqual(h.snapshot(), before);
+  h.mutate((s) => {
+    s.rows[0].offlineActorId = owner.id;
+  });
+  const offline = await h.service.withdrawalImpact(categoryId, entryId, owner);
+  assert.equal(offline.blocked, true);
+  await assert.rejects(
+    h.service.withdraw(categoryId, { ...dto, impactToken: offline.impactToken }, owner),
+    errorIs(409, 'WITHDRAWAL_MATCH_REQUIRES_REVIEW'),
+  );
+});
+
+test('withdrawal never commits automatic outcomes or receipts if audit storage fails', async () => {
+  const h = harness(v4(createRoundRobin(entries(3), 12)), {}),
+    entryId = h.snapshot().roster[0].id;
+  const preview = await h.service.withdrawalImpact(categoryId, entryId, owner);
+  h.mutate((s) => {
+    s.syntheticAuditFailure = true;
+  });
+  const before = h.snapshot();
+  await assert.rejects(
+    h.service.withdraw(
+      categoryId,
+      {
+        id: randomUUID(),
+        entryId,
+        expectedVersion: preview.expectedVersion,
+        impactToken: preview.impactToken,
+        reason: 'Test transaction rollback',
+      },
+      owner,
+    ),
+    /synthetic audit failure/,
+  );
+  assert.deepEqual(h.snapshot(), before);
+  assert.equal(h.notices.length, 0);
+});
+
 test('manual impact is actor-bound and binds saved sporting state even without a revision change', async () => {
   const h = harness(),
     dto = await h.command(),
@@ -855,7 +1032,7 @@ test('128-athlete round-robin queue fetches one snapshot/result set for all 8128
   assert.deepEqual(snapshots[0].args.select, {
     id: true,
     snapshot: true,
-    contests: { select: { key: true, status: true, winnerEntryId: true } },
+    contests: { select: { key: true, status: true, winnerEntryId: true, resultReason: true } },
   });
   const readyQuery = h.queries.find((query) => query.delegate === 'contest.findMany').args;
   assert.equal(readyQuery.include.draw.select.snapshot, undefined);

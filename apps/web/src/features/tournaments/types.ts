@@ -34,6 +34,7 @@ export type Tournament = {
     drawPolicy?: string;
     tieRanking?: 'WINS_ONLY';
     tieMany?: 'ADMIN_REVIEW';
+    categories?: Record<string, { resolvedFormat: string }>;
     approvedAt?: string;
   };
   id: string;

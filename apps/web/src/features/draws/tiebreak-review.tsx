@@ -13,11 +13,12 @@ import {
   type TiebreakReceipt,
 } from './pending-tiebreak';
 import './tiebreak-review.css';
-type Review = {
+import { ManualTieDecision } from './manual-tie-decision';
+export type Review = {
   parent: string;
   pool?: string;
   members: string[];
-  procedure: 'ROUND_ROBIN';
+  procedure: 'ROUND_ROBIN' | 'ORDERED_PLACES';
   impactToken: string;
   additionalMatches: unknown[];
   changedRounds: { id: string; key: string; beforeRound: number; afterRound: number }[];
@@ -152,7 +153,7 @@ export function TiebreakReview({
         expectedVersion: impact.expectedVersion,
         impactToken: review.impactToken,
         reason: reason.trim(),
-        procedure: 'ROUND_ROBIN',
+        procedure: review.procedure,
         parent: review.parent,
         ...(review.pool ? { pool: review.pool } : {}),
         members: [...review.members],
@@ -195,8 +196,8 @@ export function TiebreakReview({
         <div>
           <p role="status">
             {text(
-              'Сохранена команда утверждения дополнительного круга. Пока её результат неизвестен, новые изменения заблокированы.',
-              'Қосымша айналымды бекіту командасы сақталды. Нәтижесі белгісіз болғанша жаңа өзгерістер бұғатталды.',
+              'Сохранена команда решения равенства. Пока её результат неизвестен, новые изменения заблокированы.',
+              'Теңдікті шешу командасы сақталды. Нәтижесі белгісіз болғанша жаңа өзгерістер бұғатталды.',
             )}
           </p>
           <button disabled={disabled || busy} onClick={() => deliver(pending)}>
@@ -221,8 +222,8 @@ export function TiebreakReview({
         <>
           <p className="field-note">
             {text(
-              'Предлагается дополнительный круг только между участниками с равным числом побед. Он определит порядок внутри этой группы. Если равенство повторится, потребуется новая схватка или новое решение. Ранее проведённые встречи сохраняются.',
-              'Жеңістері тең қатысушылар арасында ғана қосымша айналым ұсынылады. Ол осы топ ішіндегі ретті анықтайды. Теңдік қайталанса, жаңа белдесу немесе жаңа шешім қажет болады. Бұрынғы белдесулер сақталады.',
+              'Можно назначить дополнительный круг или вручную указать порядок мест среди равных участников с причиной, например по оценкам или шидо. Автоматического сравнения оценок нет. Проведённые встречи сохраняются.',
+              'Қосымша айналым тағайындауға немесе тең қатысушылардың орын ретін себебін көрсетіп, мысалы бағалар не шидо бойынша қолмен белгілеуге болады. Бағалар автоматты салыстырылмайды. Өткен белдесулер сақталады.',
             )}
           </p>
           {impact?.reviews.map((review) => (
@@ -273,6 +274,15 @@ export function TiebreakReview({
               >
                 {text('Утвердить дополнительный круг', 'Қосымша айналымды бекіту')}
               </button>
+              <ManualTieDecision
+                key={`${impact.expectedVersion}:${review.parent}:${review.members.join(',')}`}
+                categoryId={categoryId}
+                review={review}
+                name={name}
+                disabled={disabled || busy || !restored || storageError}
+                canApprove={reason.trim().length >= 3}
+                onApprove={approve}
+              />
             </article>
           ))}
         </>

@@ -11,9 +11,16 @@ export async function readJournal<T>(key: string): Promise<T | null> {
   const db = await database();
   try {
     return await new Promise<T | null>((resolve, reject) => {
-      const r = db.transaction('journals').objectStore('journals').get(key);
-      r.onsuccess = () => resolve(r.result ?? null);
+      const tx = db.transaction('journals');
+      const r = tx.objectStore('journals').get(key);
+      let value: T | null = null;
+      r.onsuccess = () => {
+        value = r.result ?? null;
+      };
       r.onerror = () => reject(r.error);
+      tx.oncomplete = () => resolve(value);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error ?? new Error('OFFLINE_READ_ABORTED'));
     });
   } finally {
     db.close();
@@ -23,12 +30,13 @@ export async function writeJournal(key: string, value: unknown) {
   const db = await database();
   try {
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('journals', 'readwrite');
+      // Require the browser's strongest available commit before showing a saved command.
+      const tx = db.transaction('journals', 'readwrite', { durability: 'strict' });
       if (value === null) tx.objectStore('journals').delete(key);
       else tx.objectStore('journals').put(value, key);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error ?? new Error('OFFLINE_WRITE_ABORTED'));
     });
   } finally {
     db.close();

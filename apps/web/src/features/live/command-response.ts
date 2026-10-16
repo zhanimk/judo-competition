@@ -38,9 +38,12 @@ export function isMatchState(value: unknown): value is MatchState {
     (state.outcome === null ||
       (!!state.outcome &&
         side(state.outcome.winner) &&
-        ['IPPON', 'COMBINATION', 'TIME', 'ACCUMULATED_SHIDO', 'GOLDEN_SCORE'].includes(
+        (['IPPON', 'COMBINATION', 'TIME', 'ACCUMULATED_SHIDO', 'GOLDEN_SCORE'].includes(
           state.outcome.reason,
-        ))) &&
+        ) ||
+          (state.status === 'CONFIRMED' &&
+            state.hold === null &&
+            ['WALKOVER', 'WITHDRAWAL'].includes(state.outcome.reason))))) &&
     ['PROVISIONAL', 'CONFIRMED'].includes(state.status) === !!state.outcome &&
     !!state.receipts &&
     typeof state.receipts === 'object' &&

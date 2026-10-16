@@ -57,6 +57,8 @@ export function slotName(c: ProtocolCategory, text: Translate) {
     }
     const id = 'winnerOf' in slot ? slot.winnerOf : slot.loserOf;
     const m = resolved.find((m) => m.id === id);
+    if (m?.voided || (m && 'loserOf' in slot && (m.whiteEmpty || m.blueEmpty)))
+      return text('Нет участника', 'Қатысушы жоқ');
     if (m?.winnerEntryId)
       return name({
         entryId:

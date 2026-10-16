@@ -62,6 +62,21 @@ test('additional round survives a lost response and is retried with the original
   clearPendingTiebreak(store, restored);
   assert.equal(readPendingTiebreak(store, value.tournamentId), null);
 });
+test('manual order survives reload and accepts a receipt without invented added bouts', async () => {
+  const value = fixture(),
+    store = memory();
+  value.payload.procedure = 'ORDERED_PLACES';
+  value.payload.members.reverse();
+  savePendingTiebreak(store, value);
+  const restored = readPendingTiebreak(store, value.tournamentId)!;
+  assert.deepEqual(restored.payload.members, value.payload.members);
+  const result = await deliverPendingTiebreak(restored, async (_id, payload) => {
+    assert.deepEqual(payload, value.payload);
+    return { drawId: value.drawId, version: 3, addedContestIds: [], changedContestIds: [] };
+  });
+  assert.equal(result.kind, 'success');
+});
+
 test('unknown manual command cannot be replaced, retargeted or cleared by another command', () => {
   const value = fixture(),
     store = memory();

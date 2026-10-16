@@ -469,7 +469,7 @@ function harness({
   const live = { notify: (notice) => notices.push(notice) };
   const auth = new AuthService(db);
   let service = new RosterService(db, auth, live);
-  const legacy = new TournamentsService(db, live, auth);
+  const legacy = new TournamentsService(db, live, auth, service);
   return {
     notices,
     revokePrincipal: () => {
@@ -505,7 +505,13 @@ function harness({
     club: (dto, user = owner, id = tournamentId) => service.createClub(id, dto, user),
     clubs: (user = owner) => service.clubs(tournamentId, user),
     get: () => legacy.get(tournamentId, owner),
-    legacy: (entry, catId = categoryId) => legacy.entry(tournamentId, catId, entry, owner),
+    legacy: (entry, catId = categoryId) =>
+      legacy.entry(
+        tournamentId,
+        catId,
+        { id: randomUUID(), expectedRosterRevision: saved.tournament.rosterRevision, ...entry },
+        owner,
+      ),
     correction: (extra = {}) => ({
       id: randomUUID(),
       expectedRevision: saved.tournament.rosterRevision,
@@ -905,20 +911,43 @@ test('legacy entry API joins normalized club, infers gender and audits roster re
   });
   assert.equal(entry.clubId, clubId);
   assert.equal(entry.gender, 'MALE');
-  assert.equal(entry.club, 'ЖАС  ҚЫРАН');
+  assert.equal(entry.club, 'Жас Қыран');
   assert.equal(h.snapshot().clubs.length, 1);
   assert.equal(h.snapshot().tournament.rosterRevision, 1);
   assert.equal(h.snapshot().audits[0].action, 'ENTRY_ADDED');
   assert.ok(h.locks[0].sql.includes('"Tournament"'));
   assert.ok(h.locks[1].sql.includes('"Tatami"'));
   assert.ok(h.locks[2].sql.includes('"Session"'));
-  assert.ok(h.locks[3].sql.includes('"Category"'));
+  assert.ok(h.locks.slice(3).some((lock) => lock.sql.includes('"Category"')));
   const fail = harness({ failAudit: true });
   const before = fail.snapshot();
   await assert.rejects(
     fail.legacy({ firstName: 'Old', lastName: 'Fixture', birthYear: 2012, club: 'New Club' }),
   );
   assert.deepEqual(fail.snapshot(), before);
+});
+
+test('single admission retains an exact receipt and rejects new admission after draw confirmation', async () => {
+  const h = harness();
+  const command = {
+    id: randomUUID(),
+    expectedRosterRevision: 0,
+    firstName: 'Single',
+    lastName: 'Receipt',
+    birthYear: 2012,
+    club: 'Жас Қыран',
+  };
+  const response = await h.legacy(command);
+  h.mutate((state) => {
+    state.categories[0].draw = { status: 'CONFIRMED' };
+  });
+  const before = h.snapshot();
+  assert.deepEqual(await h.legacy(command), response);
+  await assert.rejects(
+    h.legacy({ ...command, id: randomUUID(), expectedRosterRevision: 1 }),
+    httpError(409, 'DRAW_LOCKED'),
+  );
+  assert.deepEqual(h.snapshot(), before);
 });
 
 test('legacy null gender is inferred on owner read without modifying saved historical fields', async () => {

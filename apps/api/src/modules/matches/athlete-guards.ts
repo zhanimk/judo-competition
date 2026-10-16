@@ -89,6 +89,7 @@ export async function requireAvailableAthletes(
         id: { not: row.id },
         status: 'CONFIRMED',
         AND: [
+          { OR: [{ resultReason: null }, { resultReason: { notIn: ['WALKOVER', 'NO_CONTEST'] } }] },
           { OR: participants },
           {
             OR: [

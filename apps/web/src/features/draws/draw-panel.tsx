@@ -17,6 +17,7 @@ import {
   type PendingDraw,
 } from './pending-draw';
 import { TiebreakReview } from './tiebreak-review';
+import { WithdrawEntry } from './withdraw-entry';
 import { ProtocolDownload } from './protocol-download';
 import { CompetitionDraw } from './competition-draw';
 import { request } from '../tournaments/api';
@@ -77,6 +78,7 @@ export function DrawPanel({
     [pendingRestored, setPendingRestored] = useState(false),
     [storageError, setStorageError] = useState(false),
     [tiePending, setTiePending] = useState(false),
+    [withdrawalPending, setWithdrawalPending] = useState(false),
     [pendingDraw, setPendingDraw] = useState<PendingDraw | null>(null);
   const pendingRef = useRef<PendingAssignment | null>(null),
     pendingDrawRef = useRef<PendingDraw | null>(null),
@@ -84,7 +86,7 @@ export function DrawPanel({
     snapshotGeneration = useRef(0);
   const externalBlocked =
     administrationBlocked || busy || !!pending || !!pendingDraw || !pendingRestored || storageError;
-  const blocked = externalBlocked || tiePending;
+  const blocked = externalBlocked || tiePending || withdrawalPending;
 
   const DrawView = CompetitionDraw;
   const category = tournament.categories.find((c) => c.id === categoryId);
@@ -666,8 +668,26 @@ export function DrawPanel({
         tournamentId={tournament.id}
         categoryId={categoryId}
         entries={tournament.categories.flatMap((category) => category.entries ?? [])}
-        disabled={externalBlocked}
+        disabled={externalBlocked || withdrawalPending}
         onPendingChange={setTiePending}
+        onSelectCategory={setCategoryId}
+        onUpdated={() => {
+          setRefresh((v) => v + 1);
+          void onUpdate();
+        }}
+      />
+      <WithdrawEntry
+        tournamentId={tournament.id}
+        categoryId={categoryId}
+        entries={category?.entries ?? []}
+        withdrawnIds={draw?.snapshot.withdrawnEntryIds ?? []}
+        available={
+          draw?.status === 'CONFIRMED' &&
+          draw.snapshot.tieRanking === 'WINS_ONLY' &&
+          tournament.status !== 'FINISHED'
+        }
+        disabled={externalBlocked || tiePending}
+        onPendingChange={setWithdrawalPending}
         onSelectCategory={setCategoryId}
         onUpdated={() => {
           setRefresh((v) => v + 1);

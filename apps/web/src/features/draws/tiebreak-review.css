@@ -43,6 +43,17 @@
 .tiebreak-review button {
   margin: 0.35rem 0.5rem 0.35rem 0;
 }
+.manual-tie-decision {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e9dcc1;
+}
+.manual-tie-decision select {
+  width: 100%;
+  min-height: 44px;
+  min-width: 0;
+  font: inherit;
+}
 @media (max-width: 600px) {
   .tiebreak-review {
     padding: 1rem;

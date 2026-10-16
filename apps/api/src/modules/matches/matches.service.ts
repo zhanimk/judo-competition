@@ -1,4 +1,5 @@
 import { matchRules, profile } from '../rules/profile.js';
+import type { Draw } from '@judo/engine/draw';
 import { readyQueue, unfinishedRound } from '../tatamis/queue.js';
 import {
   Injectable,
@@ -393,6 +394,11 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       await assertTatamiControl(tx, user, tatamiId, dto);
       if (row.revision !== dto.expectedVersion) throw new ConflictException('VERSION_CONFLICT');
       if (row.status === 'CONFIRMED') throw new ConflictException('RESULT_LOCKED');
+      const withdrawals = (row.draw.snapshot as unknown as Draw | null)?.withdrawnEntryIds ?? [];
+      if (
+        withdrawals.some((entryId) => entryId === row.whiteEntryId || entryId === row.blueEntryId)
+      )
+        throw new ConflictException('ENTRY_WITHDRAWN');
       const offline = dto.type.startsWith('OFFLINE_');
       if (!offline && (dto.events !== undefined || dto.sessionId !== undefined))
         throw new BadRequestException('UNEXPECTED_OFFLINE_PAYLOAD');

@@ -37,14 +37,27 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
+      const cached = await cache.match(navigation ? url.pathname : event.request);
+      // Hashed build resources are immutable. Prepared assets must not wait for
+      // an unreachable host before an offline board can boot.
+      if (!navigation && cached) return cached;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
       try {
-        const response = await fetch(event.request);
+        const response = await fetch(event.request, { signal: controller.signal });
         if (!response.ok) throw new Error('unavailable');
-        if (navigation) await cache.put(url.pathname, response.clone());
-        else await cache.put(event.request, response.clone());
+        try {
+          if (navigation) await cache.put(url.pathname, response.clone());
+          else await cache.put(event.request, response.clone());
+        } catch {
+          // A cache/quota failure must not turn a successful online response
+          // into an outage. PREPARE separately verifies required offline assets.
+        }
         return response;
       } catch {
-        return (await cache.match(navigation ? url.pathname : event.request)) || Response.error();
+        return cached || Response.error();
+      } finally {
+        clearTimeout(timer);
       }
     })(),
   );

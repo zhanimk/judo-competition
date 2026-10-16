@@ -416,7 +416,8 @@ try {
   assert.equal(audits.length, commands.length);
   assert.equal(
     await db.liveOutbox.count({ where: { tournamentId: tournament, kind: 'protocol' } }),
-    commands.length,
+    // Publishing the tournament also invalidates the public document catalog.
+    commands.length + 1,
   );
   assert.equal(history.revision, commands.length);
   await writeFile(

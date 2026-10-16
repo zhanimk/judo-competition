@@ -6,7 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import { PublicParticipants } from './public-participants';
 import { PublicProtocols } from './public-protocols';
 import { SpectatorQueue } from './spectator-queue';
-import type { Draw } from '@judo/engine/draw';
+import { drawFormat, type Draw } from '@judo/engine/draw';
+import { formatLabel } from '../draws/format-label';
 import { PublicResults } from './public-results';
 import { ResultsTable, type ResultContest } from '../live/results-table';
 import { LiveBoard } from '../live/live-board';
@@ -136,7 +137,7 @@ export function PublicCatalog() {
   );
 }
 export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly?: boolean }) {
-  const { text } = useLanguage();
+  const { text, locale } = useLanguage();
   const params = useSearchParams();
   const requestedTab = params.get('view');
   const tab = resultsOnly
@@ -332,24 +333,29 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
                   </label>
                   {category?.draw ? (
                     <>
-                      <div
-                        className="spectator-view-switch"
-                        role="group"
-                        aria-label={text('Вид жеребьёвки', 'Жеребе көрінісі')}
-                      >
-                        <button
-                          aria-pressed={drawMode === 'bracket'}
-                          onClick={() => setDrawMode('bracket')}
+                      <p className="field-note">
+                        {formatLabel(drawFormat(category.draw.snapshot), locale)}
+                      </p>
+                      {category.draw.snapshot.algorithm !== 'custom-round-robin-v1' && (
+                        <div
+                          className="spectator-view-switch"
+                          role="group"
+                          aria-label={text('Вид жеребьёвки', 'Жеребе көрінісі')}
                         >
-                          {text('Сетка', 'Тор')}
-                        </button>
-                        <button
-                          aria-pressed={drawMode === 'list'}
-                          onClick={() => setDrawMode('list')}
-                        >
-                          {text('Список схваток', 'Белдесулер тізімі')}
-                        </button>
-                      </div>
+                          <button
+                            aria-pressed={drawMode === 'bracket'}
+                            onClick={() => setDrawMode('bracket')}
+                          >
+                            {text('Сетка', 'Тор')}
+                          </button>
+                          <button
+                            aria-pressed={drawMode === 'list'}
+                            onClick={() => setDrawMode('list')}
+                          >
+                            {text('Список схваток', 'Белдесулер тізімі')}
+                          </button>
+                        </div>
+                      )}
                       <DrawView
                         listView={drawMode === 'list'}
                         key={category.id}

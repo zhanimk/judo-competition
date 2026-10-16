@@ -381,7 +381,12 @@ export function TournamentWorkspace({ id }: { id: string }) {
                           кг
                         </td>
                         <td>{c.durationSeconds / 60} мин</td>
-                        <td>{formatLabel(c.format, locale)}</td>
+                        <td>
+                          {formatLabel(
+                            t.rulesSnapshot?.categories?.[c.id]?.resolvedFormat ?? c.format,
+                            locale,
+                          )}
+                        </td>
                         <td>{c.entries?.length ?? 0}</td>
                       </tr>
                     ))}

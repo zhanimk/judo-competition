@@ -24,6 +24,9 @@ export function renderBouts(pdf: ProtocolPdf, c: ProtocolCategory) {
     COMBINATION: ['Два Waza-ari', 'Екі Waza-ari'],
     TIME: ['По оценкам', 'Бағалар бойынша'],
     ACCUMULATED_SHIDO: ['Три Shido', 'Үш Shido'],
+    WALKOVER: ['Проход без борьбы', 'Күрессіз өту'],
+    WITHDRAWAL: ['Соперник удалён', 'Қарсылас шығарылды'],
+    NO_CONTEST: ['Оба участника удалены', 'Екі қатысушы да шығарылды'],
     GOLDEN_SCORE: ['Golden Score', 'Golden Score'],
   };
   for (let i = 0; i < data.draw.matches.length; i += 2) {

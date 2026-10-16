@@ -16,9 +16,19 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
   const { draw, winners } = data,
     rawName = slotName(c, text),
     name = (slot: Slot | null) => {
-      if (slot && 'winnerOf' in slot && !winners[slot.winnerOf])
+      if (
+        slot &&
+        'winnerOf' in slot &&
+        !winners[slot.winnerOf] &&
+        !draw.voidMatches?.includes(slot.winnerOf)
+      )
         return text('Победитель схватки ', 'Белдесу жеңімпазы ') + number(slot.winnerOf);
-      if (slot && 'loserOf' in slot && !winners[slot.loserOf])
+      if (
+        slot &&
+        'loserOf' in slot &&
+        !winners[slot.loserOf] &&
+        !draw.voidMatches?.includes(slot.loserOf)
+      )
         return text('Проигравший схватки ', 'Белдесуде жеңілген ') + number(slot.loserOf);
       return pdf.safe(rawName(slot));
     };
@@ -30,6 +40,9 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
       COMBINATION: ['Два Waza-ari', 'Екі Waza-ari'],
       TIME: ['По оценкам', 'Бағалар бойынша'],
       ACCUMULATED_SHIDO: ['Три Shido', 'Үш Shido'],
+      WALKOVER: ['Проход без борьбы', 'Күрессіз өту'],
+      WITHDRAWAL: ['Соперник удалён', 'Қарсылас шығарылды'],
+      NO_CONTEST: ['Оба участника удалены', 'Екі қатысушы да шығарылды'],
       GOLDEN_SCORE: ['Golden Score', 'Golden Score'],
     };
     return row?.status === 'CONFIRMED'
@@ -50,7 +63,11 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         `${text('Тур', 'Айналым')} ${m.round} · ${number(m.id)}`,
         name(m.white),
         name(m.blue),
-        winners[m.id] ? name({ entryId: winners[m.id] }) : text('Ожидает', 'Күтілуде'),
+        winners[m.id]
+          ? name({ entryId: winners[m.id] })
+          : draw.voidMatches?.includes(m.id)
+            ? text('Нет участника', 'Қатысушы жоқ')
+            : text('Ожидает', 'Күтілуде'),
       ]),
       [0.14, 0.3, 0.3, 0.26],
       { compact: true },

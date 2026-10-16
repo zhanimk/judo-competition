@@ -26,6 +26,81 @@ const v4 = (draw: Draw): Draw => ({
   tieRanking: 'WINS_ONLY',
   tieMany: 'ADMIN_REVIEW',
 });
+
+test('manual order resolves only the current three-way cohort without invented bouts or rewritten winners', () => {
+  const draw = v4(createRoundRobin(entries(3), 7));
+  const winners = cycle(draw.matches, groupMembers(draw));
+  const original = structuredClone({ draw, winners });
+  const review = drawProgress(draw, winners).pendingReviews[0];
+  const order = [...review.members].reverse();
+  const resolved = approveAdditionalRound(draw, winners, {
+    ...review,
+    members: order,
+    procedure: 'ORDERED_PLACES',
+  });
+  assert.deepEqual(
+    placements(resolved, winners)?.map((p) => p.entryId),
+    order,
+  );
+  assert.equal(drawProgress(resolved, winners).complete, true);
+  assert.deepEqual(resolved.matches, draw.matches);
+  assert.deepEqual({ draw, winners }, original);
+  assert.throws(
+    () =>
+      approveAdditionalRound(resolved, winners, {
+        ...review,
+        members: order,
+        procedure: 'ORDERED_PLACES',
+      }),
+    /STALE/,
+  );
+  assert.throws(
+    () =>
+      approveAdditionalRound(draw, winners, {
+        ...review,
+        members: [order[0], order[0], order[2]],
+        procedure: 'ORDERED_PLACES',
+      }),
+    /COHORT_INVALID/,
+  );
+  const revoked = { ...winners };
+  delete revoked[draw.matches[0].id];
+  assert.equal(drawProgress(resolved, revoked).complete, false);
+});
+
+test('manual order releases MIXED qualification only after every tied group has a decision', () => {
+  const draw = v4(generateDraw('MIXED', entries(12), 9, 'REPECHAGE_ONLY'));
+  const pools = draw.pools!;
+  const winners = Object.fromEntries(
+    pools.flatMap((p) =>
+      Object.entries(
+        cycle(
+          draw.matches.filter((m) => m.pool === p.id),
+          p.entries,
+        ),
+      ),
+    ),
+  );
+  let resolved = draw;
+  for (const pool of pools) {
+    const review = drawProgress(resolved, winners).pendingReviews.find((r) => r.pool === pool.id)!;
+    assert.ok(review);
+    resolved = approveAdditionalRound(resolved, winners, {
+      ...review,
+      procedure: 'ORDERED_PLACES',
+      members: [...review.members].reverse(),
+    });
+    if (pool !== pools.at(-1))
+      assert.ok(
+        resolveMatches(resolved, winners)
+          .filter((m) => !m.pool)
+          .every((m) => !m.ready),
+      );
+  }
+  assert.equal(drawProgress(resolved, winners).poolStageComplete, true);
+  assert.ok(resolveMatches(resolved, winners).some((m) => !m.pool && m.ready));
+  assert.deepEqual(resolved.matches, draw.matches);
+});
 const groupMembers = (draw: Draw, pool?: string) =>
   pool
     ? draw.pools!.find((p) => p.id === pool)!.entries

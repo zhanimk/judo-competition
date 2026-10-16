@@ -913,11 +913,15 @@ function startTickFixture(h, { lead = false, hold = false, golden = false } = {}
     state.receipts = {};
     saved.row.state = state;
     saved.row.clockEpoch = h.service.epoch;
-    saved.row.clockAnchorMs = 0;
+    // Measure an explicit elapsed interval; hrtime's origin differs across OS/runners.
+    saved.row.clockAnchorMs =
+      Number(process.hrtime.bigint() / 1000000n) - state.rules.durationMs - 1000;
   });
 }
 
-test('terminal clock expiry records one atomic transition and revision for tie or TIME lead', async () => {
+test('terminal clock expiry records one atomic transition and revision for tie or TIME lead', async (t) => {
+  // A freshly booted runner must behave like a long-running workstation.
+  t.mock.method(process.hrtime, 'bigint', () => 10_000_000_000n);
   for (const lead of [false, true]) {
     const h = harness({ offline: false });
     startTickFixture(h, { lead });

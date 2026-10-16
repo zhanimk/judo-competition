@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { applyCommand, createMatch, type Rules } from '@judo/engine/match';
-import { mergeCommandResponse } from '../src/features/live/command-response.ts';
+import { mergeCommandResponse, isMatchState } from '../src/features/live/command-response.ts';
 import type { View } from '../src/features/live/live-board';
 
 const rules: Rules = {
@@ -11,6 +11,26 @@ const rules: Rules = {
   enabledScores: ['YUKO', 'WAZA_ARI', 'IPPON'],
   holdThresholds: [{ ms: 20000, score: 'IPPON' }],
 };
+test('administrative walkover and withdrawal snapshots remain readable for recovery without accepting provisional invented outcomes', () => {
+  for (const reason of ['WALKOVER', 'WITHDRAWAL']) {
+    const state = {
+      ...createMatch(rules),
+      status: 'CONFIRMED',
+      outcome: { winner: 'WHITE', reason },
+    };
+    assert.equal(isMatchState(state), true);
+    assert.equal(isMatchState({ ...state, status: 'PROVISIONAL' }), false);
+    assert.equal(isMatchState({ ...state, hold: { side: 'WHITE', elapsedMs: 10 } }), false);
+  }
+  assert.equal(
+    isMatchState({
+      ...createMatch(rules),
+      status: 'CONFIRMED',
+      outcome: { winner: 'WHITE', reason: 'NO_CONTEST' },
+    }),
+    false,
+  );
+});
 function fixture(): View {
   return {
     tournamentId: 't',

@@ -1,15 +1,32 @@
 import { ConflictException } from '@nestjs/common';
-import type { Contest, DrawRecord, Prisma } from '@prisma/client';
-import { appendRematches, drawProgress, resolveMatches, type Draw } from '@judo/engine/draw';
+import { Prisma, type Contest, type DrawRecord } from '@prisma/client';
+import {
+  appendRematches,
+  drawProgress,
+  resolveMatches,
+  withdrawalProgress,
+  type Draw,
+} from '@judo/engine/draw';
+import { createMatch, type MatchState } from '@judo/engine/match';
+import { matchRules } from '../rules/profile.js';
+import { randomUUID } from 'node:crypto';
+import { lockAthleteIds } from '../roster/athlete-identity.js';
 import { hasOfflineOwnership } from '../matches/offline-ownership.js';
 
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
 export function confirmedDrawWinners(rows: readonly Contest[]) {
-  if (rows.some((row) => row.status === 'CONFIRMED' && !row.winnerEntryId))
+  if (
+    rows.some(
+      (row) =>
+        row.status === 'CONFIRMED' && !row.winnerEntryId && row.resultReason !== 'NO_CONTEST',
+    )
+  )
     throw new ConflictException('DRAW_RESULTS_INVALID');
   return Object.fromEntries(
-    rows.filter((row) => row.status === 'CONFIRMED').map((row) => [row.key, row.winnerEntryId!]),
+    rows
+      .filter((row) => row.status === 'CONFIRMED' && row.winnerEntryId)
+      .map((row) => [row.key, row.winnerEntryId!]),
   );
 }
 
@@ -37,8 +54,11 @@ export async function propagateDraw(
   const before = record.snapshot as unknown as Draw;
   const all = await tx.contest.findMany({ where: { drawId: record.id } });
   const rowsByKey = new Map(all.map((row) => [row.key, row]));
-  const winners = confirmedDrawWinners(all);
-  const snapshot = appendRematches(approvedSnapshot ?? before, winners);
+  const confirmed = confirmedDrawWinners(all);
+  const source = approvedSnapshot ?? before;
+  const automatic = source.withdrawnEntryIds?.length ? withdrawalProgress(source, confirmed) : null;
+  const winners = automatic?.winners ?? confirmed;
+  const snapshot = automatic?.snapshot ?? appendRematches(source, winners);
   const beforeKeys = new Set(before.matches.map((match) => match.id));
   if (
     all.length !== beforeKeys.size ||
@@ -104,6 +124,82 @@ export async function propagateDraw(
     });
     addedContestIds.push(row.id);
   }
+  if (automatic?.walkovers.length) {
+    const entryIds = [
+      ...new Set(
+        automatic.walkovers.flatMap((r) =>
+          [r.whiteEntryId, r.blueEntryId].filter((id): id is string => !!id),
+        ),
+      ),
+    ];
+    const identities = await tx.entry.findMany({
+      where: { id: { in: entryIds } },
+      select: { athleteId: true },
+    });
+    await lockAthleteIds(
+      tx,
+      identities.map((e) => e.athleteId),
+    );
+    const category = await tx.category.findUniqueOrThrow({
+      where: { id: record.categoryId },
+      include: { tournament: true },
+    });
+    for (const result of automatic.walkovers) {
+      const row = await tx.contest.findUniqueOrThrow({
+        where: { drawId_key: { drawId: record.id, key: result.key } },
+      });
+      const current = row.state as unknown as MatchState | null;
+      if (
+        row.status === 'CONFIRMED' ||
+        hasOfflineOwnership(row) ||
+        current?.status === 'RUNNING' ||
+        current?.hold
+      )
+        throw new ConflictException('WITHDRAWAL_MATCH_REQUIRES_REVIEW');
+      const reason = result.winnerEntryId ? (current ? 'WITHDRAWAL' : 'WALKOVER') : 'NO_CONTEST';
+      let state: MatchState | null = null;
+      if (result.winnerEntryId) {
+        state = current
+          ? structuredClone(current)
+          : createMatch(
+              matchRules(category.tournament.rulesSnapshot, category.id, category.durationSeconds),
+            );
+        state.status = 'CONFIRMED';
+        state.version++;
+        state.outcome = {
+          winner: result.winnerEntryId === result.whiteEntryId ? 'WHITE' : 'BLUE',
+          reason,
+        };
+        state.receipts = {};
+      }
+      await tx.contest.update({
+        where: { id: row.id },
+        data: {
+          whiteEntryId: result.whiteEntryId ?? null,
+          blueEntryId: result.blueEntryId ?? null,
+          status: 'CONFIRMED',
+          winnerEntryId: result.winnerEntryId,
+          resultReason: reason,
+          state: state ? json(state) : Prisma.DbNull,
+          confirmedAt: new Date(),
+          endedAt: new Date(),
+          clockAnchorMs: null,
+          clockEpoch: null,
+          revision: { increment: 1 },
+        },
+      });
+      if (row.status === 'ACTIVE' && row.tatamiId)
+        await tx.tatami.update({ where: { id: row.tatamiId }, data: { status: 'IDLE' } });
+      const payload = json({ before: row, result, reason });
+      await tx.matchEvent.create({
+        data: { id: randomUUID(), contestId: row.id, actorId, type: reason, payload },
+      });
+      await tx.auditEvent.create({
+        data: { actorId, tournamentId, entityId: row.id, action: 'MATCH_' + reason, payload },
+      });
+      changedContestIds.push(row.id);
+    }
+  }
   let draw = record;
   if (snapshot !== before) {
     draw = await tx.drawRecord.update({
@@ -115,7 +211,12 @@ export async function propagateDraw(
         actorId,
         tournamentId,
         entityId: record.id,
-        action: approvedSnapshot ? 'TIEBREAK_APPROVED' : 'TIEBREAK_CREATED',
+        action:
+          (snapshot.withdrawnEntryIds?.length ?? 0) !== (before.withdrawnEntryIds?.length ?? 0)
+            ? 'WITHDRAWAL_APPLIED'
+            : approvedSnapshot
+              ? 'TIEBREAK_APPROVED'
+              : 'TIEBREAK_CREATED',
         payload: json({
           beforeVersion: record.version,
           version: draw.version,
@@ -151,7 +252,10 @@ export async function tournamentComplete(tx: Prisma.TransactionClient, tournamen
       category.entries.some((entry) => !memberIds.has(entry.id)) ||
       record.contests.length !== snapshot.matches.length ||
       record.contests.some(
-        (row) => row.status !== 'CONFIRMED' || hasOfflineOwnership(row) || !row.winnerEntryId,
+        (row) =>
+          row.status !== 'CONFIRMED' ||
+          hasOfflineOwnership(row) ||
+          (!row.winnerEntryId && row.resultReason !== 'NO_CONTEST'),
       ) ||
       new Set(record.contests.map((row) => row.key)).size !== snapshot.matches.length ||
       matchIds.size !== snapshot.matches.length ||

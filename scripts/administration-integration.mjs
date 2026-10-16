@@ -178,6 +178,8 @@ async function operations() {
       `/tournaments/${c.tournamentId}/categories/${pair[0].body.id}/entries`,
       {
         firstName: 'Administration QA',
+        id: randomUUID(),
+        expectedRosterRevision: i - 1,
         lastName: 'Athlete-' + i,
         birthYear: 2012,
         club: 'QA Club',

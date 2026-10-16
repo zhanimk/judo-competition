@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-16",
+  "passed": true,
+  "environment": "Native Chrome, production Next/Nest, PostgreSQL disposable qa_ui schema, real Redis 7.4.6, loopback HTTP secure-context exception",
+  "checks": [
+    "Real Redis outage: database commit, original receipt and durable outbox retained",
+    "Redis recovery: readiness and Socket.IO notices restored",
+    "Built web HTTP rewrite and Socket.IO upgrade",
+    "Published PDF download",
+    "Prepare actual service worker cache and IndexedDB journal in Chrome",
+    "Stop only the owned synthetic QA web process",
+    "Add white Yuko without server access",
+    "Reload prepared operator route with server unavailable",
+    "Restore identities, white Yuko, paused clock at 1:51.3 and one pending event",
+    "Resume offline, award blue Ippon and confirm result",
+    "Five pending events retained with locally confirmed result",
+    "Restart QA web and reload operator route",
+    "Server accepts blue Ippon winner, clears active offline match and shows next pair"
+  ],
+  "cleanedUp": true,
+  "limits": [
+    "One browser and one machine; no venue Wi-Fi, physical power loss or cross-device acceptance",
+    "Browser run preceded the final change separating sync error text from local storage error text",
+    "LAN deployment requires trusted HTTPS; loopback HTTP does not validate LAN certificates",
+    "Only a previously prepared current match is available offline; assigning subsequent matches requires server access"
+  ]
+}

@@ -1,12 +1,24 @@
 import type { Prisma } from '@prisma/client';
 import { ConflictException } from '@nestjs/common';
 import { compareScheduledBouts, drawProgress, resolveMatches, type Draw } from '@judo/engine/draw';
-type ResultRow = { key: string; status: string; winnerEntryId: string | null };
+type ResultRow = {
+  key: string;
+  status: string;
+  winnerEntryId: string | null;
+  resultReason?: string | null;
+};
 function winners(rows: readonly ResultRow[]) {
-  if (rows.some((row) => row.status === 'CONFIRMED' && !row.winnerEntryId))
+  if (
+    rows.some(
+      (row) =>
+        row.status === 'CONFIRMED' && !row.winnerEntryId && row.resultReason !== 'NO_CONTEST',
+    )
+  )
     throw new ConflictException('DRAW_RESULTS_INVALID');
   return Object.fromEntries(
-    rows.filter((row) => row.status === 'CONFIRMED').map((row) => [row.key, row.winnerEntryId!]),
+    rows
+      .filter((row) => row.status === 'CONFIRMED' && row.winnerEntryId)
+      .map((row) => [row.key, row.winnerEntryId!]),
   );
 }
 export async function readyQueue(db: Prisma.TransactionClient, tatamiId: string) {
@@ -36,7 +48,7 @@ export async function readyQueue(db: Prisma.TransactionClient, tatamiId: string)
     select: {
       id: true,
       snapshot: true,
-      contests: { select: { key: true, status: true, winnerEntryId: true } },
+      contests: { select: { key: true, status: true, winnerEntryId: true, resultReason: true } },
     },
   });
   const drawById = new Map(draws.map((draw) => [draw.id, draw]));
@@ -82,7 +94,13 @@ export async function unfinishedRound(db: Prisma.TransactionClient, tatamiId: st
     // reviews. Only the pinned home mat owns a missing tie-break circle.
     where: { homeTatamiId: tatamiId },
     include: {
-      draw: { include: { contests: { select: { key: true, status: true, winnerEntryId: true } } } },
+      draw: {
+        include: {
+          contests: {
+            select: { key: true, status: true, winnerEntryId: true, resultReason: true },
+          },
+        },
+      },
     },
   });
   const barriers = categories.flatMap((category) => {

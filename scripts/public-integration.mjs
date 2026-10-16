@@ -63,7 +63,7 @@ try {
         (
           await call(`/tournaments/${tournament}/categories/${c.body.id}/entries`, {
             firstName: 'Әлихан-Нұрсұлтан'.repeat(3),
-            lastName: `Қатысушы ${i} ` + 'Ұзынтегі'.repeat(5),
+            lastName: `Қатысушы ${n}-${i} ` + 'Ұзынтегі'.repeat(5),
             club: 'Бір клуб / Один клуб',
             birthYear: 2012,
           })

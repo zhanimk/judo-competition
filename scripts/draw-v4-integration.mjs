@@ -24,7 +24,7 @@ async function ok(path, data, cookie) {
   assert.ok(response.status < 300, `${path}: ${JSON.stringify(response.body)}`);
   return response.body;
 }
-async function fixture(format, count, label) {
+async function fixture(format, count, label, start = true) {
   const owner = await createTestUser(db);
   userIds.push(owner.id);
   const login = await call('/auth/login', { email: owner.email, password: owner.password });
@@ -71,7 +71,7 @@ async function fixture(format, count, label) {
   assert.equal(preview.snapshot.tieRanking, 'WINS_ONLY');
   assert.equal(preview.snapshot.tieMany, 'ADMIN_REVIEW');
   await ok(`/categories/${category.id}/draw/confirm`, { version: preview.version }, cookie);
-  await ok(`/tournaments/${tournament.id}/start`, {}, cookie);
+  if (start) await ok(`/tournaments/${tournament.id}/start`, {}, cookie);
   const [mat] = await ok(`/tournaments/${tournament.id}/tatamis`, undefined, cookie);
   return { tournamentId: tournament.id, categoryId: category.id, owner, cookie, matId: mat.id };
 }
@@ -331,6 +331,69 @@ async function manualNested() {
   );
 }
 
+async function manualPlaces() {
+  const c = await fixture('ROUND_ROBIN', 3, 'administrator ordered places');
+  const members = (await state(c)).draw.snapshot.positions.map((e) => e.id);
+  assert.equal(await play(c, (row) => cycleWinner(row.whiteEntryId, row.blueEntryId, members)), 3);
+  const review = (await impact(c)).reviews[0];
+  const approval = {
+    parent: review.parent,
+    members: [...review.members].reverse(),
+    procedure: 'ORDERED_PLACES',
+  };
+  const preview = await ok(`/categories/${c.categoryId}/draw/tiebreak-impact`, approval, c.cookie);
+  const dto = {
+    ...command(preview),
+    reason: 'Итоговый порядок по оценкам и шидо, решение администратора',
+  };
+  const before = await state(c);
+  const wrongOrder = await call(
+    `/categories/${c.categoryId}/draw/tiebreak`,
+    { ...dto, members: [...dto.members].reverse() },
+    c.cookie,
+  );
+  assert.equal(wrongOrder.status, 409);
+  assert.equal(wrongOrder.body.message, 'IMPACT_CHANGED');
+  assert.deepEqual(await state(c), before);
+  const result = await ok(`/categories/${c.categoryId}/draw/tiebreak`, dto, c.cookie);
+  assert.deepEqual(result.addedContestIds, []);
+  assert.deepEqual(
+    result.progress.places.map((p) => p.entryId),
+    approval.members,
+  );
+  const after = await state(c);
+  assert.equal(after.tournament.status, 'FINISHED');
+  assert.deepEqual(after.contests, before.contests);
+  assert.deepEqual(await ok(`/categories/${c.categoryId}/draw/tiebreak`, dto, c.cookie), result);
+  assert.deepEqual(await state(c), after);
+  await ok(`/tournaments/${c.tournamentId}/publish`, {}, c.cookie);
+  await ok(
+    `/categories/${c.categoryId}/draw/publication`,
+    { published: true, expectedRevision: 0 },
+    c.cookie,
+  );
+  const publicView = await ok(`/public/tournaments/${c.tournamentId}`, undefined, '');
+  assert.ok(JSON.stringify(publicView).includes(approval.members[0]));
+  for (const lang of ['ru', 'kk']) {
+    const pdf = await fixtureRequest(
+      base,
+      `/tournaments/${c.tournamentId}/protocol.pdf?kind=TEAMS&lang=${lang}`,
+      undefined,
+      c.cookie,
+    );
+    assert.equal(pdf.status, 200);
+    assert.equal(
+      Buffer.from(await pdf.arrayBuffer())
+        .subarray(0, 5)
+        .toString(),
+      '%PDF-',
+    );
+  }
+  console.log(
+    'PASS v4 manual places: actual three-bout cycle, ordered preview, stale order rejection, finish without fake bouts, immutable retry and TEAMS PDF RU/KK',
+  );
+}
+
 async function mixedBarrier() {
   const c = await fixture('MIXED', 12, 'all-group stage barrier');
   const initial = await state(c),
@@ -403,6 +466,140 @@ async function mixedBarrier() {
   );
 }
 
+async function withdraw(c, entryId) {
+  const path = `/categories/${c.categoryId}/draw/withdrawal`;
+  const preview = await ok(path + '-impact', { entryId }, c.cookie);
+  assert.equal(preview.blocked, false);
+  const dto = {
+    id: randomUUID(),
+    entryId,
+    expectedVersion: preview.expectedVersion,
+    impactToken: preview.impactToken,
+    reason: 'Удаление участника, победы соперникам',
+  };
+  const result = await ok(path, dto, c.cookie);
+  const saved = await state(c);
+  assert.deepEqual(await ok(path, dto, c.cookie), result);
+  assert.deepEqual(await state(c), saved);
+  return saved;
+}
+
+async function withdrawalCases() {
+  const rr = await fixture('ROUND_ROBIN', 3, 'withdrawal keeps history');
+  const original = await state(rr),
+    ids = original.draw.snapshot.positions.map((e) => e.id);
+  const first = await withdraw(rr, ids[0]);
+  assert.equal(first.contests.filter((m) => m.resultReason === 'WALKOVER').length, 2);
+  assert.ok(first.contests.filter((m) => m.state).every((m) => m.state.awards.length === 0));
+  const last = await withdraw(rr, ids[1]);
+  assert.equal(last.tournament.status, 'FINISHED');
+  assert.deepEqual(
+    last.contests.filter((m) =>
+      first.contests.some((old) => old.id === m.id && old.status === 'CONFIRMED'),
+    ),
+    first.contests.filter((m) => m.status === 'CONFIRMED'),
+  );
+  assert.equal(await db.entry.count({ where: { categoryId: rr.categoryId } }), 3);
+  const progress = await ok(`/categories/${rr.categoryId}/draw/progress`, undefined, rr.cookie);
+  assert.deepEqual(progress.places, [{ place: 1, entryId: ids[2] }]);
+  const prestart = await fixture('ROUND_ROBIN', 2, 'all removed before start', false);
+  for (const e of (await state(prestart)).draw.snapshot.positions) await withdraw(prestart, e.id);
+  const started = await ok(`/tournaments/${prestart.tournamentId}/start`, {}, prestart.cookie);
+  assert.equal(started.status, 'FINISHED');
+  assert.deepEqual(
+    (await ok(`/categories/${prestart.categoryId}/draw/progress`, undefined, prestart.cookie))
+      .places,
+    [],
+  );
+  const rep = await fixture('REPECHAGE', 8, 'two removed repechage branches');
+  const initial = await state(rep);
+  const quarters = initial.draw.snapshot.matches.filter(
+    (m) => (!m.stage || m.stage === 'MAIN') && m.round === 1,
+  );
+  const a = quarters[0].white.entryId,
+    b = quarters[1].white.entryId;
+  await withdraw(rep, a);
+  const empty = await withdraw(rep, b);
+  assert.ok(
+    empty.contests.some((m) => m.resultReason === 'NO_CONTEST' && m.winnerEntryId === null),
+  );
+  await play(rep, (row) => row.whiteEntryId);
+  const final = await state(rep);
+  assert.equal(final.tournament.status, 'FINISHED');
+  assert.ok(
+    final.contests.some(
+      (m) => m.resultReason === 'WALKOVER' && (m.whiteEntryId === null || m.blueEntryId === null),
+    ),
+  );
+  assert.ok(
+    final.contests
+      .filter((m) => m.resultReason === 'WALKOVER')
+      .every((m) => m.state.awards.length === 0),
+  );
+  const result = await ok(`/categories/${rep.categoryId}/draw/progress`, undefined, rep.cookie);
+  assert.ok(result.places.every((p) => p.entryId !== a && p.entryId !== b));
+  await import('node:fs/promises').then(({ mkdir }) =>
+    mkdir('tmp/pdfs/withdrawal', { recursive: true }),
+  );
+  for (const kind of ['DRAW', 'TEAMS'])
+    for (const lang of ['ru', 'kk']) {
+      const pdf = await fixtureRequest(
+        base,
+        `/tournaments/${rep.tournamentId}/protocol.pdf?kind=${kind}&lang=${lang}`,
+        undefined,
+        rep.cookie,
+      );
+      assert.equal(pdf.status, 200);
+      const buffer = Buffer.from(await pdf.arrayBuffer());
+      assert.equal(buffer.subarray(0, 5).toString(), '%PDF-');
+      const { writeFile } = await import('node:fs/promises');
+      await writeFile(`tmp/pdfs/withdrawal/${kind.toLowerCase()}-${lang}.pdf`, buffer);
+    }
+  console.log(
+    'PASS withdrawals: exact HTTP receipts, RR history/identity retention, empty repechage branch and automatic bronze advance, no fake scores, final medals and DRAW/TEAMS RU/KK',
+  );
+  const mixed = await fixture('MIXED', 12, 'withdrawal after knockout starts');
+  await play(
+    mixed,
+    (row) => [row.whiteEntryId, row.blueEntryId].sort()[0],
+    (row) =>
+      !row.key.startsWith('ko-') && !row.key.startsWith('rep-') && !row.key.startsWith('bronze-'),
+  );
+  const queue = await ok(
+    `/tournaments/${mixed.tournamentId}/tatamis/${mixed.matId}`,
+    undefined,
+    mixed.cookie,
+  );
+  const firstKo = queue.queue.find((m) => m.key.startsWith('ko-') && !m.blockedByRound);
+  assert.ok(firstKo);
+  await play(
+    mixed,
+    (row) => row.whiteEntryId,
+    (row) => row.id === firstKo.id,
+  );
+  const played = await state(mixed);
+  const removed = played.contests.find((m) => m.id === firstKo.id).winnerEntryId;
+  const withdrawn = await withdraw(mixed, removed);
+  assert.ok(withdrawn.draw.snapshot.frozenPoolOrder);
+  assert.deepEqual(
+    withdrawn.contests.filter((m) =>
+      played.contests.some((old) => old.id === m.id && old.status === 'CONFIRMED'),
+    ),
+    played.contests.filter((m) => m.status === 'CONFIRMED'),
+  );
+  await play(mixed, (row) => row.whiteEntryId);
+  const finished = await state(mixed);
+  assert.equal(finished.tournament.status, 'FINISHED');
+  assert.ok(
+    (
+      await ok(`/categories/${mixed.categoryId}/draw/progress`, undefined, mixed.cookie)
+    ).places.every((p) => p.entryId !== removed),
+  );
+  console.log(
+    'PASS MIXED withdrawal preserves qualified pools and started knockout history while future opponents advance',
+  );
+}
+
 try {
   assert.ok(base, 'TEST_API_URL for a disposable rehearsal API is required');
   const schema = new URL(process.env.DATABASE_URL).searchParams.get('schema');
@@ -412,6 +609,8 @@ try {
   await twoPairs();
   await manualNested();
   await mixedBarrier();
+  await manualPlaces();
+  await withdrawalCases();
   console.log(
     'PASS: v4 winner-only draw policy through authenticated HTTP + real PostgreSQL, tie commands, snapshot propagation and completion barriers',
   );

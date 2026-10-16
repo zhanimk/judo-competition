@@ -35,27 +35,35 @@ export function teamReadiness(category: ProtocolCategory): TeamReadinessReason |
       positionIds.some((id) => !entryIds.has(id))
     )
       return 'RESULTS_INCONSISTENT';
-    if (record.contests.some((contest) => contest.status !== 'CONFIRMED' || !contest.winnerEntryId))
+    if (
+      record.contests.some(
+        (contest) =>
+          contest.status !== 'CONFIRMED' ||
+          (!contest.winnerEntryId && contest.resultReason !== 'NO_CONTEST'),
+      )
+    )
       return 'MATCHES_NOT_CONFIRMED';
     const results = categoryResults(category)!;
     const rows = resolveMatches(draw, results.winners);
     if (
       rows.some((match) => {
         const contest = record.contests.find((contest) => contest.key === match.id)!;
+        if (match.voided) return contest.resultReason !== 'NO_CONTEST' || !!contest.winnerEntryId;
         return (
           !match.winnerEntryId ||
-          !match.whiteEntryId ||
-          !match.blueEntryId ||
+          (!match.whiteEntryId && !match.whiteEmpty) ||
+          (!match.blueEntryId && !match.blueEmpty) ||
           match.whiteEntryId === match.blueEntryId ||
-          !entryIds.has(match.whiteEntryId) ||
-          !entryIds.has(match.blueEntryId) ||
-          contest.whiteEntryId !== match.whiteEntryId ||
-          contest.blueEntryId !== match.blueEntryId
+          (!!match.whiteEntryId && !entryIds.has(match.whiteEntryId)) ||
+          (!!match.blueEntryId && !entryIds.has(match.blueEntryId)) ||
+          contest.whiteEntryId !== (match.whiteEntryId ?? null) ||
+          contest.blueEntryId !== (match.blueEntryId ?? null)
         );
       })
     )
       return 'RESULTS_INCONSISTENT';
-    if (!results.places?.length) return 'RESULTS_UNRESOLVED';
+    if (!results.places || (!results.places.length && !draw.withdrawnEntryIds?.length))
+      return 'RESULTS_UNRESOLVED';
     if (
       results.places.some((place) => !entryIds.has(place.entryId)) ||
       new Set(results.places.map((place) => place.entryId)).size !== results.places.length

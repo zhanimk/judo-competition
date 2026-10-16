@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MatchAction } from '../scoreboard/model/types';
 import type { View } from '../live/live-board';
-import { ApiError, request } from '../tournaments/api';
+import { request } from '../tournaments/api';
 import { readJournal, writeJournal, prepareOfflineShell } from './storage';
 import {
   acknowledgeJournalPacket,
@@ -14,6 +14,8 @@ import {
 import { journalControlError } from './journal';
 import { isGrant, sameGrant, type ControlGrant } from '../auth/control-model';
 import { startJournalTabLock, type JournalTabLock } from './tab-lock';
+import { advanceJournalClock } from './clock';
+import { offlineSyncConflict } from './sync-failure';
 import {
   deliverMatchPacket,
   reviewedMatchArchive,
@@ -30,6 +32,7 @@ export function useOfflineMatch(
 ) {
   const [journal, setJournal] = useState<Journal | null>(null),
     [error, setError] = useState(''),
+    [syncError, setSyncError] = useState(''),
     [ready, setReady] = useState(false),
     [restored, setRestored] = useState(!enabled),
     [online, setOnline] = useState(false);
@@ -72,19 +75,17 @@ export function useOfflineMatch(
     });
     return next;
   }
-  function advance(j: Journal) {
-    const at = performance.now(),
-      ms = Math.max(0, Math.floor(at - anchor.current));
-    anchor.current = at;
-    return j.state.status === 'RUNNING' && ms
-      ? appendJournalCommand(j, { type: 'ADVANCE', ms })
-      : j;
+  function advance(j: Journal, action?: MatchAction) {
+    const step = advanceJournalClock(j, anchor.current, performance.now(), action);
+    anchor.current = step.nextAnchor;
+    return step.journal;
   }
   useEffect(() => {
     if (!enabled) return;
     setRestored(false);
     setReady(false);
     setError('');
+    setSyncError('');
     ref.current = null;
     setJournal(null);
     let stopped = false;
@@ -322,11 +323,12 @@ export function useOfflineMatch(
         };
       });
       if (!ref.current) releaseCallback.current();
+      setSyncError('');
     } catch (e) {
       setOnline(false);
-      setError(e instanceof Error ? e.message : 'MATCH_RECEIPT_INVALID');
-      if (e instanceof ApiError && e.status < 500)
-        await mutate((j) => (j ? { ...j, conflict: e.message } : j)).catch(() => {});
+      setSyncError(e instanceof Error ? e.message : 'MATCH_RECEIPT_INVALID');
+      const conflict = offlineSyncConflict(e);
+      if (conflict) await mutate((j) => (j ? { ...j, conflict } : j)).catch(() => {});
     } finally {
       syncing.current = false;
     }
@@ -391,7 +393,7 @@ export function useOfflineMatch(
           control.current.deviceId,
         );
         if (problem) return { ...j, conflict: problem };
-        return appendJournalCommand(advance(j), action);
+        return advance(j, action);
       });
       void synchronize();
     } catch (e) {
@@ -433,6 +435,7 @@ export function useOfflineMatch(
     ready,
     restored,
     error,
+    syncError,
     online,
     arm,
     send,

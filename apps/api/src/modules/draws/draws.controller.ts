@@ -8,6 +8,9 @@ import {
   DrawPreviewDto,
   DrawPublicationDto,
   TiebreakCommandDto,
+  TiebreakApprovalDto,
+  WithdrawalPreviewDto,
+  WithdrawalCommandDto,
 } from './draws.dto.js';
 @Controller()
 export class DrawsController {
@@ -44,12 +47,33 @@ export class DrawsController {
   ) {
     return this.draws.tiebreak(id, dto, user);
   }
+  @Post('categories/:id/draw/tiebreak-impact') tiebreakDecisionImpact(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TiebreakApprovalDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.draws.tiebreakImpact(id, user, dto);
+  }
   @Post('categories/:id/draw/preview') preview(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: DrawPreviewDto,
     @CurrentUser() user: Principal,
   ) {
     return this.draws.preview(id, dto, user);
+  }
+  @Post('categories/:id/draw/withdrawal-impact') withdrawalImpact(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: WithdrawalPreviewDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.draws.withdrawalImpact(id, dto.entryId, user);
+  }
+  @Post('categories/:id/draw/withdrawal') withdraw(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: WithdrawalCommandDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.draws.withdraw(id, dto, user);
   }
   @Post('categories/:id/draw/confirm') confirm(
     @Param('id', ParseUUIDPipe) id: string,

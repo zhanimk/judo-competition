@@ -1,0 +1,108 @@
+{
+  "date": "2026-10-16",
+  "passed": true,
+  "environment": "Isolated synthetic PostgreSQL schema; production Next.js/NestJS; real Redis; localhost",
+  "httpBouts": 110,
+  "categories": [
+    {
+      "participants": 2,
+      "algorithm": "custom-round-robin-v1",
+      "bouts": 1,
+      "finished": true,
+      "adminBeforeAndAfter": true,
+      "publicBeforeAndAfter": true,
+      "publicAndAdminMedalsNamesClubsMatch": true
+    },
+    {
+      "participants": 3,
+      "algorithm": "custom-round-robin-v1",
+      "bouts": 3,
+      "finished": true,
+      "adminBeforeAndAfter": true,
+      "publicBeforeAndAfter": true,
+      "publicAndAdminMedalsNamesClubsMatch": true
+    },
+    {
+      "participants": 4,
+      "algorithm": "custom-round-robin-v1",
+      "bouts": 6,
+      "finished": true,
+      "adminBeforeAndAfter": true,
+      "publicBeforeAndAfter": true,
+      "publicAndAdminMedalsNamesClubsMatch": true
+    },
+    {
+      "participants": 5,
+      "algorithm": "custom-round-robin-v1",
+      "bouts": 10,
+      "finished": true,
+      "adminBeforeAndAfter": true,
+      "publicBeforeAndAfter": true,
+      "publicAndAdminMedalsNamesClubsMatch": true
+    },
+    {
+      "participants": 6,
+      "algorithm": "custom-round-robin-v1",
+      "bouts": 15,
+      "finished": true,
+      "adminBeforeAndAfter": true,
+      "publicBeforeAndAfter": true,
+      "publicAndAdminMedalsNamesClubsMatch": true
+    },
+    {
+      "participants": 7,
+      "algorithm": "custom-round-robin-v1",
+      "bouts": 21,
+      "finished": true,
+      "adminBeforeAndAfter": true,
+      "publicBeforeAndAfter": true,
+      "publicAndAdminMedalsNamesClubsMatch": true
+    },
+    {
+      "participants": 8,
+      "algorithm": "custom-quarter-repechage-v1",
+      "bouts": 11,
+      "finished": true,
+      "adminBeforeAndAfter": true,
+      "publicBeforeAndAfter": true,
+      "publicAndAdminMedalsNamesClubsMatch": true
+    },
+    {
+      "participants": 8,
+      "algorithm": "custom-round-robin-v1",
+      "bouts": 28,
+      "finished": true,
+      "adminBeforeAndAfter": true,
+      "publicBeforeAndAfter": true,
+      "publicAndAdminMedalsNamesClubsMatch": true
+    },
+    {
+      "participants": 8,
+      "algorithm": "custom-pools-knockout-v1",
+      "bouts": 15,
+      "finished": true,
+      "adminBeforeAndAfter": true,
+      "publicBeforeAndAfter": true,
+      "publicAndAdminMedalsNamesClubsMatch": true
+    }
+  ],
+  "browser": "Safari native UI, actual category selection; all nine before/after states",
+  "checks": [
+    "Round-robin pair uniqueness and odd-count resting athletes",
+    "All 110 bouts started, scored by ippon and confirmed through HTTP API",
+    "Every category finished; central match results confirmed",
+    "Final places in public and admin UI match, including two bronze places in repechage and mixed"
+  ],
+  "improvements": [
+    "Public page displays actual frozen format",
+    "Removed redundant round-robin grid/list switch",
+    "Mixed groups precede unresolved knockout stage",
+    "Two-person explanation explicitly describes one final bout"
+  ],
+  "limitations": [
+    "This matrix uses deterministic ippon outcomes without ties; ties and scoring alternatives have separate regression/integration coverage",
+    "Mobile 390x844 header/category selector inspected; complete visual scroll-through of every small draw on mobile was not completed because native UI interaction was interrupted",
+    "Local machine rehearsal does not replace venue Wi-Fi, real laptops, power-loss and printer acceptance"
+  ],
+  "cleanedUp": true
+}

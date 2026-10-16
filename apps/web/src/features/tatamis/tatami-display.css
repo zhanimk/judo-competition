@@ -1,0 +1,187 @@
+/* Dedicated spectator route: keep both athletes and the clock in one viewport.
+   Operator/public multi-tatami layouts use the ordinary board and queue. */
+.platform.tatami-display-page {
+  display: block;
+  padding: 8px;
+  min-height: 100dvh;
+}
+.tatami-display {
+  height: calc(100dvh - 16px);
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tatami-display-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tatami-display-heading h1 {
+  margin: 0;
+  font-size: 16px;
+}
+.tatami-display-heading select {
+  padding: 3px 8px;
+  min-height: 28px;
+  font-size: 12px;
+}
+.tatami-display > .error-box {
+  margin: 0;
+  padding: 6px;
+  font-size: 12px;
+}
+.tatami-display .live-board {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+}
+.tatami-display .live-connection {
+  padding: 0 4px 4px;
+  font-size: 11px;
+}
+.tatami-display .broadcast-board {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tatami-display .broadcast-board .arena-header {
+  padding: 6px 12px;
+  gap: 8px;
+  font-size: clamp(10px, 1.2vw, 18px);
+}
+.tatami-display .broadcast-board .arena-header > strong {
+  font-size: clamp(14px, 1.8vw, 26px);
+}
+.tatami-display .broadcast-board .arena-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+.tatami-display .arena-body > div:not(.timer-zone) {
+  min-height: 0;
+}
+.tatami-display .broadcast-board .athlete {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.tatami-display .broadcast-board .athlete-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.tatami-display .broadcast-board .country-mark {
+  flex: 0 0 clamp(48px, 8vw, 120px);
+  padding: 4px;
+  gap: 3px;
+}
+.tatami-display .broadcast-board .country-flag {
+  width: clamp(36px, 5.5vw, 88px);
+  height: clamp(18px, 2.75vw, 44px);
+  margin: 0;
+}
+.tatami-display .broadcast-board .country-mark > strong {
+  font-size: clamp(18px, 2.5vw, 38px);
+}
+.tatami-display .broadcast-board .country-side {
+  font-size: clamp(7px, 1vw, 12px);
+}
+.tatami-display .broadcast-board .identity {
+  padding: 6px 10px;
+}
+.tatami-display .broadcast-board .identity h2 {
+  font-size: clamp(15px, min(3vw, 5dvh), 48px);
+}
+.tatami-display .broadcast-board .identity p {
+  margin: 4px 0 0;
+  font-size: clamp(10px, 1.2vw, 18px);
+}
+.tatami-display .broadcast-board .scores {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 0 0 48%;
+  gap: clamp(3px, 0.6vw, 12px);
+  padding: 6px 8px 6px 0;
+}
+.tatami-display .broadcast-board .score {
+  min-height: 0;
+  padding: 4px 1px;
+}
+.tatami-display .broadcast-board .score > span {
+  font-size: clamp(7px, 1.2vw, 18px);
+  letter-spacing: 0;
+}
+.tatami-display .broadcast-board .score strong {
+  font-size: clamp(30px, min(6.6vw, 12dvh), 130px);
+  margin: 2px 0;
+}
+.tatami-display .broadcast-board .score small {
+  font-size: clamp(7px, 1vw, 14px);
+}
+.tatami-display .broadcast-board .osaekomi,
+.tatami-display .broadcast-board .osaekomi.active {
+  height: clamp(20px, 4dvh, 40px);
+  min-height: 0;
+  padding: 2px 12px;
+  flex-shrink: 0;
+}
+.tatami-display .broadcast-board .osaekomi strong {
+  font-size: clamp(16px, 3dvh, 30px);
+}
+.tatami-display .broadcast-board .hold-thresholds {
+  padding: 2px 8px;
+  min-height: 0;
+  font-size: 9px;
+}
+.tatami-display .broadcast-board .timer-zone {
+  padding: 4px 12px;
+  gap: 0 10px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.tatami-display .broadcast-board .timer {
+  font-size: clamp(48px, min(11vw, 18dvh), 200px);
+  margin: 0;
+}
+.tatami-display .broadcast-board .timer-caption {
+  font-size: clamp(8px, 1vw, 14px);
+}
+.tatami-display .broadcast-board .timer-category strong {
+  font-size: clamp(10px, 1.6vw, 24px);
+}
+.tatami-display .broadcast-board .timer-category span {
+  margin-top: 2px;
+  font-size: 10px;
+}
+.tatami-display .broadcast-board .timer-zone > p {
+  font-size: clamp(9px, 1.2vw, 18px);
+  margin: 0;
+}
+.tatami-display .live-board .result {
+  flex-shrink: 0;
+  margin: 4px 0 0;
+  padding: 4px 12px;
+}
+.tatami-display .live-board .result h2 {
+  font-size: clamp(14px, 2vw, 28px);
+  margin: 2px 0;
+}
+.tatami-display .live-board .result p {
+  margin: 2px 0;
+  font-size: 11px;
+}
+@media (max-width: 480px) {
+  .tatami-display .broadcast-board .arena-header > div:nth-child(2) {
+    display: none;
+  }
+  .tatami-display .broadcast-board .identity {
+    padding: 4px;
+  }
+}

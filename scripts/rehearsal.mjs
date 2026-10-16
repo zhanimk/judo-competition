@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { mkdir, writeFile, open } from 'node:fs/promises';
 import { PrismaClient } from '@prisma/client';
 import { persistenceScenario } from './persistence-scenario.mjs';
+import { offlinePersistenceScenario } from './offline-persistence-scenario.mjs';
 
 // Each run has a new schema and its own API. It never stops the working tournament server.
 const schema = `qa_rehearsal_${randomUUID().replaceAll('-', '')}`;
@@ -93,6 +94,7 @@ try {
     'public-snapshot-integration',
     'control-integration',
     'formats-integration',
+    'scoreboard-protocol-integration',
     'rematches-integration',
     'live-integration',
     'roster-name-integration',
@@ -113,6 +115,7 @@ try {
       [
         'auth-safety-integration',
         'live-integration',
+        'scoreboard-protocol-integration',
         'protocol-integration',
         'draw-v4-integration',
         'draw-128-integration',
@@ -140,6 +143,19 @@ try {
     },
   });
   report.suites.push({ name: 'actual-process-restart-and-persistence', passed: true });
+  report.offlinePersistence = await offlinePersistenceScenario({
+    db,
+    base,
+    output,
+    restart: async ({ crash }) => {
+      await stop(crash);
+      await start();
+    },
+  });
+  report.suites.push({
+    name: 'offline-full-tournament-with-real-transport-failures',
+    passed: true,
+  });
   await run('verified-backup-with-outbox-sequence-and-pdf-bytes', process.execPath, [
     'scripts/verify-database-backup.mjs',
   ]);

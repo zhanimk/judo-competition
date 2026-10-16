@@ -62,7 +62,7 @@ try {
     for (let i = 0; i < count; i++)
       await post(`/tournaments/${tournament}/categories/${c.id}/entries`, {
         firstName: 'Әлихан',
-        lastName: 'QA' + i,
+        lastName: `QA ${format}-${count}-${i}`,
         club: 'Клуб' + (i % 3),
         birthYear: 2012,
       });

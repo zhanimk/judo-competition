@@ -1,67 +1,216 @@
 {
-  "startedAt": "2026-10-10T09:49:19.476Z",
-  "schema": "qa_rehearsal_d2c3e8be8f594fcf8fb2fb6fd5934a3a",
-  "passed": false,
+  "startedAt": "2026-10-16T11:54:20.472Z",
+  "schema": "qa_rehearsal_24db930099624c16bde3a9df290c3178",
+  "passed": true,
   "suites": [
     {
       "name": "migrations",
       "passed": true,
-      "durationMs": 628
+      "durationMs": 781
     },
     {
       "name": "migrations-repeat",
       "passed": true,
-      "durationMs": 543
+      "durationMs": 629
     },
     {
       "name": "integration",
       "passed": true,
-      "durationMs": 260
+      "durationMs": 229
     },
     {
       "name": "auth-integration",
       "passed": true,
-      "durationMs": 355
+      "durationMs": 328
     },
     {
       "name": "auth-safety-integration",
       "passed": true,
-      "durationMs": 1277
+      "durationMs": 1177
     },
     {
       "name": "roster-integration",
       "passed": true,
-      "durationMs": 1080
+      "durationMs": 1006
     },
     {
       "name": "roster-corrections-integration",
       "passed": true,
-      "durationMs": 1205
+      "durationMs": 1130
     },
     {
       "name": "draw-integration",
       "passed": true,
-      "durationMs": 479
+      "durationMs": 499
     },
     {
       "name": "scheduling-integration",
       "passed": true,
-      "durationMs": 893
+      "durationMs": 928
     },
     {
       "name": "public-integration",
       "passed": true,
-      "durationMs": 379
+      "durationMs": 368
     },
     {
       "name": "public-snapshot-integration",
-      "passed": false,
-      "durationMs": 288
+      "passed": true,
+      "durationMs": 332
+    },
+    {
+      "name": "control-integration",
+      "passed": true,
+      "durationMs": 834
+    },
+    {
+      "name": "formats-integration",
+      "passed": true,
+      "durationMs": 5577
+    },
+    {
+      "name": "scoreboard-protocol-integration",
+      "passed": true,
+      "durationMs": 7471
+    },
+    {
+      "name": "rematches-integration",
+      "passed": true,
+      "durationMs": 3069
+    },
+    {
+      "name": "live-integration",
+      "passed": true,
+      "durationMs": 22304
+    },
+    {
+      "name": "roster-name-integration",
+      "passed": true,
+      "durationMs": 887
+    },
+    {
+      "name": "clock-correction-integration",
+      "passed": true,
+      "durationMs": 5313
+    },
+    {
+      "name": "tatami-access-integration",
+      "passed": true,
+      "durationMs": 1656
+    },
+    {
+      "name": "access-session-race-integration",
+      "passed": true,
+      "durationMs": 539
+    },
+    {
+      "name": "draw-session-race-integration",
+      "passed": true,
+      "durationMs": 485
+    },
+    {
+      "name": "athlete-identity-integration",
+      "passed": true,
+      "durationMs": 1000
+    },
+    {
+      "name": "protocol-integration",
+      "passed": true,
+      "durationMs": 6775
+    },
+    {
+      "name": "draw-v4-integration",
+      "passed": true,
+      "durationMs": 6372
+    },
+    {
+      "name": "draw-128-integration",
+      "passed": true,
+      "durationMs": 10972
+    },
+    {
+      "name": "administration-integration",
+      "passed": true,
+      "durationMs": 661
+    },
+    {
+      "name": "protocol-publication-integration",
+      "passed": true,
+      "durationMs": 1023
+    },
+    {
+      "name": "realtime-outbox-integration",
+      "passed": true,
+      "durationMs": 689
+    },
+    {
+      "name": "encrypted-backup-integration",
+      "passed": true,
+      "durationMs": 1024
+    },
+    {
+      "name": "actual-process-restart-and-persistence",
+      "passed": true
+    },
+    {
+      "name": "offline-full-tournament-with-real-transport-failures",
+      "passed": true
+    },
+    {
+      "name": "verified-backup-with-outbox-sequence-and-pdf-bytes",
+      "passed": true,
+      "durationMs": 445
     }
   ],
-  "output": "tmp/rehearsal/qa_rehearsal_d2c3e8be8f594fcf8fb2fb6fd5934a3a",
-  "suiteBoundaryRestarts": 1,
-  "error": "AssertionError [ERR_ASSERTION]: public-snapshot-integration failed; see tmp/rehearsal/qa_rehearsal_d2c3e8be8f594fcf8fb2fb6fd5934a3a/public-snapshot-integration.log\n\n1 !== 0\n\n    at run (file:///Users/zhanetta/Desktop/judo%20competition/scripts/rehearsal.mjs:50:10)\n    at async file:///Users/zhanetta/Desktop/judo%20competition/scripts/rehearsal.mjs:130:5",
+  "output": "tmp/rehearsal/qa_rehearsal_24db930099624c16bde3a9df290c3178",
+  "suiteBoundaryRestarts": 9,
+  "persistence": {
+    "tournamentId": "83090e95-aef4-41b6-92ac-e4396695225a",
+    "confirmedBouts": 3,
+    "crashRestarts": 2,
+    "gracefulRestarts": 1,
+    "checks": [
+      "running hold checkpoint",
+      "fresh DB connection",
+      "paused clock recovery",
+      "session recovery",
+      "club/roster retry after crash without duplicate entries or audit",
+      "update/archive/restore original receipts and archived row after crash",
+      "assignment retry after crash without clock or audit changes",
+      "hold without duplication",
+      "confirmed result and draw recovery",
+      "confirmation retry after crash",
+      "third shido ippon",
+      "completed tournament public results",
+      "PDF after restart"
+    ]
+  },
+  "offlinePersistence": {
+    "passed": true,
+    "tournamentId": "f8ee334f-a7f5-4190-be19-c7bcdb52c7d1",
+    "schema": "qa_rehearsal_24db930099624c16bde3a9df290c3178",
+    "inheritedSchema": "public",
+    "crashRestarts": 5,
+    "gracefulRestarts": 1,
+    "offlineEventCount": 136,
+    "packetSizes": [128, 8],
+    "checks": [
+      "real TCP disconnect before request",
+      "response lost after OFFLINE_OPEN commit",
+      "prefix response lost and API killed",
+      "malformed 200 after final commit",
+      "exact immutable retry after restart",
+      "unsent journal tail retained",
+      "one terminal hold award",
+      "v4 cyclic group and manual places after crash",
+      "withdrawal receipt and empty branch after crash",
+      "complete tournament and three published PDF byte hashes after restart"
+    ],
+    "limits": [
+      "JSON checkpoint is not browser IndexedDB or service worker acceptance",
+      "No physical power loss or venue Wi-Fi test"
+    ]
+  },
   "cleanedUp": true,
-  "finishedAt": "2026-10-10T09:49:27.586Z"
+  "finishedAt": "2026-10-16T11:55:59.558Z"
 }

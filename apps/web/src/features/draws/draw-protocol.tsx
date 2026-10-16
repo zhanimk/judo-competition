@@ -284,10 +284,10 @@ function ProtocolContent({ tournamentId }: { tournamentId: string }) {
                         )}
                         : {d.snapshot.firstRoundClubPairs}.{' '}
                         {text(
-                          c.format === 'ROUND_ROBIN'
+                          (d ? drawFormat(d.snapshot) : c.format) === 'ROUND_ROBIN'
                             ? 'Встречаются все пары, включая одноклубников.'
                             : 'Разведение клубов — эвристика; при преобладании одного клуба встречи могут быть неизбежны.',
-                          c.format === 'ROUND_ROBIN'
+                          (d ? drawFormat(d.snapshot) : c.format) === 'ROUND_ROBIN'
                             ? 'Клубтастарды қоса барлық жұптар кездеседі.'
                             : 'Клубтарды бөлу — эвристика; бір клуб басым болғанда кездесулерді болдырмау мүмкін емес.',
                         )}

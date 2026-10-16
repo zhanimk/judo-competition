@@ -20,8 +20,28 @@ export function CompetitionDraw(props: Props) {
   );
   const places = placements(draw, winners);
   const progress = drawProgress(draw, winners);
+  const groupsFirst = mixed && !progress.poolStageComplete;
+  const groups = mixed && (
+    <details className="draw-bottom-section" open>
+      <summary>{text('Группы: пары и таблицы', 'Топтар: жұптар мен кестелер')}</summary>
+      {draw.pools?.map((pool) => (
+        <section className="draw-stage" key={pool.id}>
+          <h3>
+            {text('Группа', 'Топ')} {pool.id} · {pool.entries.length}{' '}
+            {text('участников', 'қатысушы')}
+          </h3>
+          <MatchList
+            {...props}
+            draw={{ ...draw, matches: draw.matches.filter((m) => m.pool === pool.id) }}
+          />
+          <RoundStandings draw={draw} entries={entries} contests={contests} poolId={pool.id} />
+        </section>
+      ))}
+    </details>
+  );
   return (
     <>
+      {groupsFirst && groups}
       {draw.matches.some((m) => m.stage === 'REPECHAGE') && <RepechageFinal {...props} />}
       {round || draw.size === 2 ? (
         <MatchList {...props} />
@@ -33,24 +53,7 @@ export function CompetitionDraw(props: Props) {
       ) : (
         <TournamentBracket {...props} />
       )}
-      {mixed && (
-        <details className="draw-bottom-section" open>
-          <summary>{text('Группы: пары и таблицы', 'Топтар: жұптар мен кестелер')}</summary>
-          {draw.pools?.map((pool) => (
-            <section className="draw-stage" key={pool.id}>
-              <h3>
-                {text('Группа', 'Топ')} {pool.id} · {pool.entries.length}{' '}
-                {text('участников', 'қатысушы')}
-              </h3>
-              <MatchList
-                {...props}
-                draw={{ ...draw, matches: draw.matches.filter((m) => m.pool === pool.id) }}
-              />
-              <RoundStandings draw={draw} entries={entries} contests={contests} poolId={pool.id} />
-            </section>
-          ))}
-        </details>
-      )}
+      {!groupsFirst && groups}
       {draw.matches.some((m) => m.stage === 'REPECHAGE') && <RepechageRounds {...props} />}
       {!round && !mixed && draw.size > 2 && !props.listView && (
         <details className="draw-bottom-section">

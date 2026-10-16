@@ -23,6 +23,7 @@ import {
   CreateEntryDto,
 } from './dto.js';
 import { RosterService } from '../roster/roster.service.js';
+import { tournamentComplete } from '../draws/draw-propagation.js';
 import { assertUnusedCommandIds } from '../matches/command-ids.js';
 import { isDeepStrictEqual } from 'node:util';
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -132,7 +133,7 @@ export class TournamentsService {
         }
         const categories = requireCompetitionCategories(t.categories);
         await scheduleCategories(tx, id, user);
-        const updated = await tx.tournament.update({
+        let updated = await tx.tournament.update({
           where: { id },
           data: {
             status: 'RUNNING',
@@ -164,6 +165,21 @@ export class TournamentsService {
             payload: {},
           },
         });
+        if (
+          categories.some((c) => (c.draw!.snapshot as unknown as Draw).withdrawnEntryIds?.length) &&
+          (await tournamentComplete(tx, id))
+        ) {
+          updated = await tx.tournament.update({ where: { id }, data: { status: 'FINISHED' } });
+          await tx.auditEvent.create({
+            data: {
+              actorId: user.id,
+              tournamentId: id,
+              entityId: id,
+              action: 'TOURNAMENT_FINISHED',
+              payload: json({ source: 'PRE_START_WITHDRAWALS', commandId: dto.id }),
+            },
+          });
+        }
         return this.record(
           tx,
           id,

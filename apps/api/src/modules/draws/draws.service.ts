@@ -1,3 +1,4 @@
+import { withdrawalPlan } from './withdrawal-plan.js';
 import { profile } from '../rules/profile.js';
 import { LiveService } from '../matches/live.service.js';
 import {
@@ -30,10 +31,16 @@ import type {
   DrawPreviewDto,
   DrawPublicationDto,
   TiebreakCommandDto,
+  WithdrawalCommandDto,
 } from './draws.dto.js';
 import { normalizedName } from '../roster/roster-validation.js';
 import { enqueueLive } from '../matches/live-outbox.js';
-import { confirmedDrawWinners, propagateDraw, unstartedContest } from './draw-propagation.js';
+import {
+  confirmedDrawWinners,
+  propagateDraw,
+  unstartedContest,
+  tournamentComplete,
+} from './draw-propagation.js';
 import { hasOfflineOwnership } from '../matches/offline-ownership.js';
 type FingerprintEntry = {
   id: string;
@@ -74,6 +81,9 @@ function tiebreakPlan(
 ) {
   const before = record.snapshot as unknown as Draw;
   const snapshot = approveAdditionalRound(before, confirmedDrawWinners(rows), approval);
+  const resolvedByKey = new Map(
+    resolveMatches(snapshot, confirmedDrawWinners(rows)).map((m) => [m.id, m]),
+  );
   const additionalMatches = snapshot.matches.filter(
     (match) => !before.matches.some((old) => old.id === match.id),
   );
@@ -95,7 +105,10 @@ function tiebreakPlan(
           parent: approval.parent,
           pool: approval.pool,
           procedure: approval.procedure,
-          members: [...approval.members].sort(),
+          members:
+            approval.procedure === 'ORDERED_PLACES'
+              ? [...approval.members]
+              : [...approval.members].sort(),
         },
         contests: [...rows]
           .sort((a, b) => a.key.localeCompare(b.key))
@@ -114,9 +127,19 @@ function tiebreakPlan(
     impactToken,
     additionalMatches,
     changedRounds,
-    blocked: changedRounds.some(
-      (change) => !unstartedContest(rows.find((row) => row.id === change.id)!),
-    ),
+    blocked:
+      rows.some((row) => {
+        if (hasOfflineOwnership(row)) return true;
+        const match = resolvedByKey.get(row.key);
+        return (
+          match &&
+          (row.whiteEntryId !== (match.whiteEntryId ?? null) ||
+            row.blueEntryId !== (match.blueEntryId ?? null) ||
+            (row.status === 'WAITING' && match.ready)) &&
+          !unstartedContest(row)
+        );
+      }) ||
+      changedRounds.some((change) => !unstartedContest(rows.find((row) => row.id === change.id)!)),
     snapshot,
   };
 }
@@ -203,7 +226,7 @@ export class DrawsService {
     if (!draw || draw.status !== 'CONFIRMED') throw new ConflictException('DRAW_NOT_CONFIRMED');
     return { drawId: draw.id, version: draw.version, ...progress };
   }
-  async tiebreakImpact(id: string, user: Principal) {
+  async tiebreakImpact(id: string, user: Principal, approval?: AdditionalRoundApproval) {
     const category = await this.category(id, user);
     return this.db.$transaction(
       async (tx) => {
@@ -221,6 +244,22 @@ export class DrawsService {
           record.snapshot as unknown as Draw,
           confirmedDrawWinners(record.contests),
         );
+        if (approval) {
+          let impact: ReturnType<typeof tiebreakPlan>;
+          try {
+            impact = tiebreakPlan(
+              record,
+              record.contests,
+              approval,
+              user.id,
+              category.tournamentId,
+            );
+          } catch (error) {
+            throw new ConflictException((error as Error).message);
+          }
+          const { snapshot: _, ...review } = impact;
+          return { drawId: record.id, expectedVersion: record.version, reviews: [review] };
+        }
         const reviews = progress.pendingReviews.map((review) => {
           const { snapshot: _, ...impact } = tiebreakPlan(
             record,
@@ -284,6 +323,21 @@ export class DrawsService {
           category.tournamentId,
           impact.snapshot,
         );
+        if (await tournamentComplete(tx, category.tournamentId)) {
+          await tx.tournament.update({
+            where: { id: category.tournamentId },
+            data: { status: 'FINISHED' },
+          });
+          await tx.auditEvent.create({
+            data: {
+              actorId: user.id,
+              tournamentId: category.tournamentId,
+              entityId: category.tournamentId,
+              action: 'TOURNAMENT_FINISHED',
+              payload: json({ commandId: dto.id, source: 'TIEBREAK_DECISION' }),
+            },
+          });
+        }
         const response = json({
           drawId: record.id,
           version: propagated.draw.version,
@@ -320,6 +374,115 @@ export class DrawsService {
         throw error;
       });
     this.live.notify({ kind: 'queue', tournamentId: category.tournamentId });
+    return result;
+  }
+  async withdrawalImpact(id: string, entryId: string, user: Principal) {
+    const category = await this.category(id, user);
+    return this.db.$transaction(
+      async (tx) => {
+        await assertActivePrincipal(tx, user, {
+          tournamentId: category.tournamentId,
+          lockSession: false,
+        });
+        const record = await tx.drawRecord.findUnique({ where: { categoryId: id } });
+        if (!record || record.status !== 'CONFIRMED')
+          throw new ConflictException('DRAW_NOT_CONFIRMED');
+        const rows = await tx.contest.findMany({ where: { drawId: record.id } });
+        try {
+          const { snapshot: _, ...impact } = withdrawalPlan(record, rows, entryId, user.id);
+          return { drawId: record.id, ...impact };
+        } catch (error) {
+          throw new ConflictException((error as Error).message);
+        }
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
+  async withdraw(id: string, dto: WithdrawalCommandDto, user: Principal) {
+    const category = await this.category(id, user);
+    if (dto.reason.trim().length < 3) throw new BadRequestException('REASON_REQUIRED');
+    const result = await this.db
+      .$transaction(async (tx) => {
+        await lockAdminMutation(tx, user, category.tournamentId);
+        await tx.$queryRaw`SELECT id FROM "Category" WHERE id=${id} FOR UPDATE`;
+        const record = await tx.drawRecord.findUnique({ where: { categoryId: id } });
+        if (!record || record.status !== 'CONFIRMED')
+          throw new ConflictException('DRAW_NOT_CONFIRMED');
+        await tx.$queryRaw`SELECT id FROM "Contest" WHERE "drawId"=${record.id} ORDER BY id FOR UPDATE`;
+        const receipt = await this.receipt(
+          tx,
+          category.tournamentId,
+          id,
+          dto,
+          'WITHDRAW_ENTRY',
+          user,
+        );
+        if (receipt) return receipt.response;
+        await assertUnusedCommandIds(tx, [dto.id], null);
+        if (record.version !== dto.expectedVersion) throw new ConflictException('DRAW_STALE');
+        const tournament = await tx.tournament.findUniqueOrThrow({
+          where: { id: category.tournamentId },
+        });
+        if (!['DRAFT', 'RUNNING'].includes(tournament.status))
+          throw new ConflictException('TOURNAMENT_FINISHED');
+        const rows = await tx.contest.findMany({ where: { drawId: record.id } });
+        let impact: ReturnType<typeof withdrawalPlan>;
+        try {
+          impact = withdrawalPlan(record, rows, dto.entryId, user.id);
+        } catch (error) {
+          throw new ConflictException((error as Error).message);
+        }
+        if (impact.impactToken !== dto.impactToken) throw new ConflictException('IMPACT_CHANGED');
+        if (impact.blocked) throw new ConflictException('WITHDRAWAL_MATCH_REQUIRES_REVIEW');
+        const current = await tx.category.findUniqueOrThrow({ where: { id } });
+        const propagated = await propagateDraw(
+          tx,
+          record,
+          current.homeTatamiId,
+          user.id,
+          category.tournamentId,
+          impact.snapshot,
+        );
+        if (await tournamentComplete(tx, category.tournamentId)) {
+          await tx.tournament.update({
+            where: { id: category.tournamentId },
+            data: { status: 'FINISHED' },
+          });
+          await tx.auditEvent.create({
+            data: {
+              actorId: user.id,
+              tournamentId: category.tournamentId,
+              entityId: category.tournamentId,
+              action: 'TOURNAMENT_FINISHED',
+              payload: json({ commandId: dto.id, source: 'WITHDRAWAL' }),
+            },
+          });
+        }
+        const response = json({
+          drawId: record.id,
+          version: propagated.draw.version,
+          entryId: dto.entryId,
+          changedContestIds: propagated.changedContestIds,
+          progress: propagated.progress,
+        });
+        await tx.auditEvent.create({
+          data: {
+            actorId: user.id,
+            tournamentId: category.tournamentId,
+            entityId: dto.entryId,
+            action: 'ENTRY_WITHDRAWN',
+            payload: json({ command: dto, response }),
+          },
+        });
+        await enqueueLive(tx, { tournamentId: category.tournamentId, kind: 'queue' });
+        return this.save(tx, category.tournamentId, id, dto, 'WITHDRAW_ENTRY', user, response);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+          throw new ConflictException('COMMAND_ID_REUSED');
+        throw error;
+      });
+    this.live.notify({ tournamentId: category.tournamentId, kind: 'queue' });
     return result;
   }
   async publication(id: string, dto: DrawPublicationDto, user: Principal) {

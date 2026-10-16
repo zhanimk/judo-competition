@@ -50,11 +50,11 @@ async function stream(tournamentId, options) {
   );
   return { socket, notices };
 }
-async function writeNotice(tournamentId, kind, description) {
+async function writeNotice(tournamentId, kind, venue) {
   await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${tournamentId} FOR UPDATE`;
-    if (description !== undefined)
-      await tx.tournament.update({ where: { id: tournamentId }, data: { description } });
+    if (venue !== undefined)
+      await tx.tournament.update({ where: { id: tournamentId }, data: { venue } });
     await enqueueLive(tx, { tournamentId, kind });
   });
   return db.liveOutbox.findFirstOrThrow({ where: { tournamentId }, orderBy: { id: 'desc' } });
@@ -93,18 +93,15 @@ try {
   await assert.rejects(
     db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id=${id} FOR UPDATE`;
-      await tx.tournament.update({ where: { id }, data: { description: 'Must roll back' } });
+      await tx.tournament.update({ where: { id }, data: { venue: 'Must roll back' } });
       await enqueueLive(tx, { tournamentId: id, kind: 'roster' });
       throw new Error('synthetic transaction rollback');
     }),
     /synthetic transaction rollback/,
   );
   assert.equal(await db.liveOutbox.count({ where: { tournamentId: id } }), before);
-  assert.equal(
-    (await db.tournament.findUniqueOrThrow({ where: { id } })).description,
-    baseline.description,
-  );
-  const committed = await writeNotice(id, 'roster', 'Committed private synthetic description');
+  assert.equal((await db.tournament.findUniqueOrThrow({ where: { id } })).venue, baseline.venue);
+  const committed = await writeNotice(id, 'roster', 'Committed private synthetic venue');
   await waitFor(
     () => privateStream.notices.some((e) => e.cursor === committed.id.toString()),
     'committed notification',
@@ -115,8 +112,8 @@ try {
     'publication mark',
   );
   assert.equal(
-    (await db.tournament.findUniqueOrThrow({ where: { id } })).description,
-    'Committed private synthetic description',
+    (await db.tournament.findUniqueOrThrow({ where: { id } })).venue,
+    'Committed private synthetic venue',
   );
   const lastCursor = committed.id.toString();
   privateStream.socket.disconnect();

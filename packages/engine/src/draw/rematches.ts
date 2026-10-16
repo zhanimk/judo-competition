@@ -20,7 +20,7 @@ export type AdditionalRoundApproval = Readonly<{
   parent: string;
   pool?: string;
   members: readonly string[];
-  procedure: 'ROUND_ROBIN';
+  procedure: 'ROUND_ROBIN' | 'ORDERED_PLACES';
 }>;
 export type DrawProgress = Readonly<{
   phase: 'GROUPS' | 'TIEBREAK' | 'ADMIN_REVIEW' | 'KNOCKOUT' | 'COMPLETE';
@@ -72,11 +72,13 @@ export function rematchStandings(
       winners,
     );
     if (!rows) return null;
+    const withdrawn = rows.filter((r) => draw.withdrawnEntryIds?.includes(r.entryId));
+    const competing = rows.filter((r) => !draw.withdrawnEntryIds?.includes(r.entryId));
     // The immutable lot stabilizes display/cohort member order, never awards a
     // place to athletes with equal wins. Every such cohort must be resolved.
     if (winsOnly) rows.sort((a, b) => b.wins - a.wins || a.lot - b.lot);
     const groups: Standing[][] = [];
-    for (const row of rows) {
+    for (const row of competing) {
       const previous = groups.at(-1);
       if (
         previous &&
@@ -94,6 +96,28 @@ export function rematchStandings(
         continue;
       }
       const tied = group.map((r) => r.entryId);
+      const decision = winsOnly
+        ? [...(draw.tieDecisions ?? [])].reverse().find((d) => {
+            if (
+              d.parent !== parent ||
+              d.pool !== pool ||
+              d.members.length !== tied.length ||
+              new Set(d.members).size !== tied.length ||
+              !tied.every((id) => d.members.includes(id)) ||
+              d.sourceResults.length !== matches.length
+            )
+              return false;
+            const sources = new Map(d.sourceResults.map((r) => [r.matchId, r.winnerEntryId]));
+            return (
+              sources.size === matches.length &&
+              matches.every((m) => sources.get(m.id) === (winners[m.id] ?? null))
+            );
+          })
+        : undefined;
+      if (decision && tied.length >= 3) {
+        result.push(...decision.members.map((id) => group.find((row) => row.entryId === id)!));
+        continue;
+      }
       const round = draw.tieRounds?.find(
         (r) =>
           r.parent === parent &&
@@ -113,7 +137,7 @@ export function rematchStandings(
       if (!resolved) complete = false;
       else result.push(...resolved.map((r) => group.find((g) => g.entryId === r.entryId)!));
     }
-    return complete ? result : null;
+    return complete ? [...result, ...withdrawn] : null;
   }
   const base = draw.matches.filter(
     (m) =>
@@ -185,11 +209,13 @@ function nextRound(draw: Draw, parent: string): number {
 
 function requirements(draw: Draw, winners: Readonly<Record<string, string>>): TieRequirement[] {
   return groupPools(draw).flatMap((pool) =>
-    rematchStandings(draw, winners, pool).needed.map((need) => ({
-      ...need,
-      members: [...need.members],
-      round: nextRound(draw, need.parent),
-    })),
+    (pool && draw.frozenPoolOrder?.[pool] ? [] : rematchStandings(draw, winners, pool).needed).map(
+      (need) => ({
+        ...need,
+        members: [...need.members],
+        round: nextRound(draw, need.parent),
+      }),
+    ),
   );
 }
 
@@ -288,7 +314,8 @@ export function approveAdditionalRound(
   approval: AdditionalRoundApproval,
 ): Draw {
   if (!isWinsOnlyTiePolicy(draw)) throw new Error('TIEBREAK_V4_REQUIRED');
-  if (approval.procedure !== 'ROUND_ROBIN') throw new Error('TIEBREAK_PROCEDURE_UNSUPPORTED');
+  if (!['ROUND_ROBIN', 'ORDERED_PLACES'].includes(approval.procedure))
+    throw new Error('TIEBREAK_PROCEDURE_UNSUPPORTED');
   if (
     !Array.isArray(approval.members) ||
     approval.members.length < 3 ||
@@ -304,5 +331,28 @@ export function approveAdditionalRound(
       need.members.every((id) => approval.members.includes(id)),
   );
   if (!pending) throw new Error('TIEBREAK_REVIEW_STALE');
+  if (approval.procedure === 'ORDERED_PLACES') {
+    const sourceMatches = draw.matches.filter((m) =>
+      approval.parent.startsWith('base:')
+        ? !m.tieBreakRound &&
+          (approval.pool ? m.pool === approval.pool : draw.algorithm === 'custom-round-robin-v1')
+        : m.tieBreakRound === approval.parent,
+    );
+    return {
+      ...draw,
+      tieDecisions: [
+        ...(draw.tieDecisions ?? []),
+        {
+          parent: approval.parent,
+          pool: approval.pool,
+          members: [...approval.members],
+          sourceResults: sourceMatches.map((m) => ({
+            matchId: m.id,
+            winnerEntryId: winners[m.id] ?? null,
+          })),
+        },
+      ],
+    };
+  }
   return addRounds(draw, [pending], 'ROUND_ROBIN');
 }

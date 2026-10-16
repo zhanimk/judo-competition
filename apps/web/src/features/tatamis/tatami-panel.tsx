@@ -82,13 +82,13 @@ export function TatamiPanel({
           ← {text('К турниру', 'Турнирге оралу')}
         </Link>
       )}
-      <div className="page-heading">
+      <div className={display ? 'tatami-display-heading' : 'page-heading'}>
         <div>
-          <p className="kicker">{data.tournament.name}</p>
+          {!display && <p className="kicker">{data.tournament.name}</p>}
           <h1>
             {text('Татами', 'Татами')} {data.number}
           </h1>
-          <p>{data.tournament.city}</p>
+          {!display && <p>{data.tournament.city}</p>}
         </div>
         {display && <LanguageSwitch />}
       </div>
@@ -122,7 +122,7 @@ export function TatamiPanel({
           <Invitations tatamiId={tatamiId} />
         </div>
       )}
-      <QueueView items={data.queue} />
+      {!display && <QueueView items={data.queue} />}
     </section>
   );
 }

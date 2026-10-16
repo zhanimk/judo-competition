@@ -405,12 +405,18 @@ export function LiveBoard({
                 'Локальное сохранение или действие не выполнено: ',
                 'Жергілікті сақтау немесе әрекет орындалмады: ',
               )}
-              {offline.error === 'MATCH_RECEIPT_INVALID'
+              {offline.error}
+            </p>
+          )}
+          {offline.syncError && (
+            <p className="error">
+              {text('Синхронизация пока не подтверждена: ', 'Синхрондау әлі расталмады: ')}
+              {offline.syncError === 'MATCH_RECEIPT_INVALID'
                 ? text(
                     'Ответ сервера не удалось проверить. Исходный пакет и журнал сохранены для повтора.',
                     'Сервер жауабын тексеру мүмкін болмады. Бастапқы пакет пен журнал қайталау үшін сақталған.',
                   )
-                : offline.error}
+                : offline.syncError}
             </p>
           )}
           <div className="form-actions">

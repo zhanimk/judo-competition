@@ -20,6 +20,17 @@ export type Draw = Readonly<{
   /** Missing fields preserve the historical head-to-head/rematch profile. */
   tieRanking?: 'WINS_ONLY';
   tieMany?: 'ADMIN_REVIEW';
+  withdrawnEntryIds?: readonly string[];
+  voidMatches?: readonly string[];
+  frozenPoolOrder?: Readonly<Record<string, readonly string[]>>;
+  frozenPoolWithdrawnIds?: readonly string[];
+  tieDecisions?: readonly Readonly<{
+    parent: string;
+    pool?: string;
+    /** Explicit order inside one equal-wins cohort, never automatic score ranking. */
+    members: readonly string[];
+    sourceResults: readonly Readonly<{ matchId: string; winnerEntryId: string | null }>[];
+  }>[];
   tieRounds?: readonly {
     id: string;
     parent: string;
@@ -136,16 +147,21 @@ function confirmedWinner(winners: Readonly<Record<string, string>>, matchId: str
 /** Replay confirmed winners without mutating the draw. BYEs never become results. */
 export function resolveMatches(draw: Draw, winners: Readonly<Record<string, string>>) {
   const known = new Set(draw.matches.map((m) => m.id));
+  if (
+    new Set(draw.voidMatches ?? []).size !== (draw.voidMatches?.length ?? 0) ||
+    draw.voidMatches?.some((id) => !known.has(id))
+  )
+    throw new Error('VOID_MATCH_INVALID');
   for (const id of Object.keys(winners)) if (!known.has(id)) throw new Error('UNKNOWN_MATCH');
   const blockKnockout =
     isWinsOnlyTiePolicy(draw) &&
     draw.algorithm === 'custom-pools-knockout-v1' &&
     (!draw.pools?.length ||
       draw.pools.some((pool) => poolStandings(draw, winners, pool.id) === null));
-  const resolved = new Map<string, string>();
-  const losers = new Map<string, string>();
+  const resolved = new Map<string, string | null>();
+  const losers = new Map<string, string | null>();
   const rows = [];
-  const resolve = (slot: Slot): string | undefined => {
+  const resolve = (slot: Slot): string | null | undefined => {
     if ('entryId' in slot) return slot.entryId;
     if ('winnerOf' in slot) return resolved.get(slot.winnerOf);
     if ('loserOf' in slot) return losers.get(slot.loserOf);
@@ -157,17 +173,33 @@ export function resolveMatches(draw: Draw, winners: Readonly<Record<string, stri
       blue = blocked ? undefined : resolve(match.blue);
     const winner = confirmedWinner(winners, match.id);
     if (winner !== undefined) {
-      if (!white || !blue) throw new Error('DEPENDENCY_UNCONFIRMED');
+      if (white === undefined || blue === undefined) throw new Error('DEPENDENCY_UNCONFIRMED');
       if (winner !== white && winner !== blue) throw new Error('INVALID_WINNER');
       resolved.set(match.id, winner);
       losers.set(match.id, winner === white ? blue : white);
     }
+    const voided = draw.voidMatches?.includes(match.id) ?? false;
+    if (voided) {
+      if (
+        winner !== undefined ||
+        white === undefined ||
+        blue === undefined ||
+        (white !== null && !draw.withdrawnEntryIds?.includes(white)) ||
+        (blue !== null && !draw.withdrawnEntryIds?.includes(blue))
+      )
+        throw new Error('VOID_MATCH_INVALID');
+      resolved.set(match.id, null);
+      losers.set(match.id, null);
+    }
     rows.push({
       ...match,
-      whiteEntryId: white,
-      blueEntryId: blue,
+      whiteEntryId: white ?? undefined,
+      blueEntryId: blue ?? undefined,
+      whiteEmpty: white === null,
+      blueEmpty: blue === null,
+      voided,
       winnerEntryId: winner,
-      ready: !!white && !!blue && winner === undefined,
+      ready: !!white && !!blue && winner === undefined && !voided,
     });
   }
   return rows;
@@ -279,9 +311,14 @@ export function legacyPoolStandings(
   const matches = draw.matches.filter((m) =>
     poolId ? m.pool === poolId : draw.algorithm === 'custom-round-robin-v1',
   );
-  if (!matches.length || matches.some((m) => !confirmedWinner(winners, m.id))) return null;
+  if (
+    !matches.length ||
+    matches.some((m) => !confirmedWinner(winners, m.id) && !draw.voidMatches?.includes(m.id))
+  )
+    return null;
   const wins = new Map(members.map((id) => [id, 0]));
   for (const m of matches) {
+    if (draw.voidMatches?.includes(m.id)) continue;
     const w = confirmedWinner(winners, m.id)!;
     if (
       !('entryId' in m.white) ||
@@ -312,6 +349,26 @@ export function poolStandings(
   winners: Readonly<Record<string, string>>,
   poolId?: string,
 ) {
+  const frozen = poolId ? draw.frozenPoolOrder?.[poolId] : undefined;
+  if (frozen) {
+    const members = draw.pools?.find((p) => p.id === poolId)?.entries;
+    if (
+      !members ||
+      frozen.length !== members.length ||
+      new Set(frozen).size !== members.length ||
+      members.some((id) => !frozen.includes(id))
+    )
+      throw new Error('FROZEN_POOL_INVALID');
+    const original = rematchStandings(
+      { ...draw, withdrawnEntryIds: draw.frozenPoolWithdrawnIds },
+      winners,
+      poolId,
+    ).standings;
+    if (!original) throw new Error('FROZEN_POOL_RESULTS_CHANGED');
+    if (original.some((row, index) => row.entryId !== frozen[index]))
+      throw new Error('FROZEN_POOL_RESULTS_CHANGED');
+    return original;
+  }
   return draw.tieBreak === 'REMATCH'
     ? rematchStandings(draw, winners, poolId).standings
     : legacyPoolStandings(draw, winners, poolId);
@@ -434,10 +491,12 @@ export function placements(
   winners: Readonly<Record<string, string>>,
 ): { place: number; entryId: string }[] | null {
   const rows = resolveMatches(draw, winners);
-  if (rows.some((m) => !m.winnerEntryId)) return null;
+  if (rows.some((m) => !m.winnerEntryId && !m.voided)) return null;
   if (draw.algorithm === 'custom-round-robin-v1')
     return (
-      poolStandings(draw, winners)?.map((r, i) => ({ place: i + 1, entryId: r.entryId })) ?? null
+      poolStandings(draw, winners)
+        ?.filter((r) => !draw.withdrawnEntryIds?.includes(r.entryId))
+        .map((r, i) => ({ place: i + 1, entryId: r.entryId })) ?? null
     );
   const final = rows.filter((m) => !m.stage || m.stage === 'MAIN').at(-1)!;
   return [
@@ -451,7 +510,7 @@ export function placements(
     ...rows
       .filter((m) => m.stage === 'BRONZE')
       .map((m) => ({ place: 3, entryId: m.winnerEntryId! })),
-  ];
+  ].filter((place) => !!place.entryId && !draw.withdrawnEntryIds?.includes(place.entryId));
 }
 
 /** Transitive sporting dependencies, including loser routes and pool rankings. */
@@ -546,6 +605,7 @@ export function compareScheduledBouts(a: ScheduledBout, b: ScheduledBout) {
 }
 
 export { bracketNodes, type BracketNode } from './bracket.ts';
+export { withdrawalProgress, withdrawEntry } from './withdrawals.ts';
 
 export {
   appendRematches,

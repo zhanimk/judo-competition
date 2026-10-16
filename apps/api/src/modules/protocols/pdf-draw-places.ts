@@ -57,8 +57,18 @@ export function paintDrawPlaces(
       height: 12,
     });
   const cardWidth = horizontal
-    ? (width - 20 - gap * (data.rows.length - 1)) / data.rows.length
+    ? (width - 20 - gap * (data.rows.length - 1)) / Math.max(1, data.rows.length)
     : width - 20;
+  if (data.complete && data.rows.length === 0)
+    d.font('Regular')
+      .fontSize(9)
+      .fillColor(ink.muted)
+      .text(
+        pdf.text('Нет участников для присуждения мест', 'Орын берілетін қатысушылар жоқ'),
+        x + 10,
+        y + 51,
+        { width: width - 20 },
+      );
   for (const [i, row] of data.rows.entries()) {
     const rx = x + 10 + (horizontal ? i * (cardWidth + gap) : 0);
     const ry = y + 51 + (horizontal ? 0 : i * (rowHeight + gap));
