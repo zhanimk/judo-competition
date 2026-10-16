@@ -1,11 +1,12 @@
 import type { Rules } from '@judo/engine/match';
 export type Profile = Omit<Rules, 'durationMs'> & {
   version: string;
-  drawPolicy?: 'REPECHAGE_ONLY';
+  drawPolicy?: 'REPECHAGE_ONLY' | 'KNOCKOUT_FROM_SIX';
   official: false;
   tieBreak: 'PUBLISHED_LOT' | 'REMATCH';
   tieRanking?: 'WINS_ONLY';
   tieMany?: 'ADMIN_REVIEW';
+  roundRobinMedals?: 'TWO_BRONZE_FOR_FOUR_FIVE';
   restMs: number;
   categories?: Record<string, { durationSeconds: number; format: string; resolvedFormat?: string }>;
   approvedAt?: string;
@@ -27,7 +28,9 @@ export const legacyProfile = (): Profile => ({
 });
 export const currentProfile = (): Profile => ({
   ...legacyProfile(),
-  version: 'custom-2026-v4',
+  version: 'custom-2026-v6',
+  drawPolicy: 'KNOCKOUT_FROM_SIX',
+  roundRobinMedals: 'TWO_BRONZE_FOR_FOUR_FIVE',
   tieRanking: 'WINS_ONLY',
   tieMany: 'ADMIN_REVIEW',
 });

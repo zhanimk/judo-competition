@@ -40,7 +40,8 @@
     "test:scheduling": "node --env-file=apps/api/.env scripts/scheduling-integration.mjs",
     "test:protocols": "npm run build -w @judo/engine && npm run build -w @judo/api && node --env-file=apps/api/.env scripts/protocol-integration.mjs",
     "test:mini:prepare": "node --env-file=apps/api/.env scripts/mini-tournament.mjs prepare",
-    "test:mini:run": "node --env-file=apps/api/.env scripts/mini-tournament.mjs run"
+    "test:mini:run": "node --env-file=apps/api/.env scripts/mini-tournament.mjs run",
+    "start:local": "node --env-file=apps/api/.env scripts/start-local.mjs"
   },
   "engines": {
     "node": ">=24"

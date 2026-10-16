@@ -9,7 +9,7 @@ import {
 } from '../src/draw/index.ts';
 const entries = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ id: `e${i}`, clubId: `c${i % 5}` }));
-test('new policy: 2–7 entrants use round robin, never fake bronze bouts', () => {
+test('stored REPECHAGE_ONLY policy: 2–7 entrants retain round robin without fake bronze bouts', () => {
   for (const format of ['REPECHAGE', 'MIXED', 'ROUND_ROBIN'])
     for (let n = 2; n < 8; n++) {
       const d = generateDraw(format, entries(n), 42, 'REPECHAGE_ONLY');
@@ -87,4 +87,38 @@ test('stored legacy formats keep their original medal rules', () => {
     const d = generateDraw(format, entries(8), 42);
     assert.equal(d.matches.filter((m) => m.stage === 'BRONZE').length, 0);
   }
+});
+
+test('v6: six/seven competitors use a real knockout with BYEs and two distinct bronze winners', () => {
+  for (const n of [6, 7])
+    for (const format of ['REPECHAGE', 'MIXED', 'ROUND_ROBIN'])
+      for (let seed = 0; seed < 100; seed++) {
+        const d = generateDraw(format, entries(n), seed, 'KNOCKOUT_FROM_SIX');
+        assert.equal(d.algorithm, 'custom-quarter-repechage-v1');
+        assert.equal(d.positions.filter((e) => !e).length, 8 - n);
+        assert.equal(d.matches.filter((m) => m.stage === 'REPECHAGE').length, n - 6);
+        assert.equal(d.matches.length, n === 6 ? 7 : 9);
+        assert.equal(d.matches.filter((m) => m.stage === 'BRONZE').length, 2);
+        const winners: Record<string, string> = {};
+        for (const m of d.matches) {
+          const row = resolveMatches(d, winners).find((r) => r.id === m.id)!;
+          assert.ok(row.ready, `${n} ${seed} ${m.id}`);
+          assert.notEqual(row.whiteEntryId, row.blueEntryId);
+          winners[m.id] = row.whiteEntryId!;
+        }
+        assert.deepEqual(
+          placements(d, winners)!.map((p) => p.place),
+          [1, 2, 3, 3],
+        );
+        assert.equal(new Set(placements(d, winners)!.map((p) => p.entryId)).size, 4);
+        for (const bronze of d.matches.filter((m) => m.stage === 'BRONZE')) {
+          const incomplete = { ...winners };
+          delete incomplete[bronze.id];
+          assert.equal(placements(d, incomplete), null);
+        }
+        assert.equal(
+          generateDraw(format, entries(n), seed, 'REPECHAGE_ONLY').algorithm,
+          'custom-round-robin-v1',
+        );
+      }
 });

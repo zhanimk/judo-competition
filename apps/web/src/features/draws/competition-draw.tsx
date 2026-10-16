@@ -5,7 +5,7 @@ import { MatchList } from './match-list';
 import { useLanguage } from '../../shared/i18n/provider';
 import { ResultPlaces } from './result-places';
 import { RoundStandings } from './round-standings';
-import { placements, drawProgress } from '@judo/engine/draw';
+import { placements, bronzeMedalCount, drawProgress } from '@judo/engine/draw';
 import type { ComponentProps } from 'react';
 type Props = ComponentProps<typeof TournamentBracket> & { listView?: boolean };
 export function CompetitionDraw(props: Props) {
@@ -23,7 +23,11 @@ export function CompetitionDraw(props: Props) {
   const groupsFirst = mixed && !progress.poolStageComplete;
   const groups = mixed && (
     <details className="draw-bottom-section" open>
-      <summary>{text('Группы: пары и таблицы', 'Топтар: жұптар мен кестелер')}</summary>
+      <summary>
+        {props.readOnly
+          ? text('Группы', 'Топтар')
+          : text('Группы: пары и таблицы', 'Топтар: жұптар мен кестелер')}
+      </summary>
       {draw.pools?.map((pool) => (
         <section className="draw-stage" key={pool.id}>
           <h3>
@@ -34,7 +38,10 @@ export function CompetitionDraw(props: Props) {
             {...props}
             draw={{ ...draw, matches: draw.matches.filter((m) => m.pool === pool.id) }}
           />
-          <RoundStandings draw={draw} entries={entries} contests={contests} poolId={pool.id} />
+          <details className="draw-bottom-section">
+            <summary>{text('Таблица', 'Кесте')}</summary>
+            <RoundStandings draw={draw} entries={entries} contests={contests} poolId={pool.id} />
+          </details>
         </section>
       ))}
     </details>
@@ -42,41 +49,46 @@ export function CompetitionDraw(props: Props) {
   return (
     <>
       {groupsFirst && groups}
-      {draw.matches.some((m) => m.stage === 'REPECHAGE') && <RepechageFinal {...props} />}
-      {round || draw.size === 2 ? (
-        <MatchList {...props} />
-      ) : props.listView ? (
-        <MatchList
-          {...props}
-          draw={{ ...draw, matches: draw.matches.filter((m) => !m.stage || m.stage === 'MAIN') }}
-        />
-      ) : (
-        <TournamentBracket {...props} />
+      {!props.readOnly && draw.matches.some((m) => m.stage === 'BRONZE') && (
+        <RepechageFinal {...props} />
       )}
+      {(!mixed || progress.poolStageComplete) &&
+        (round || draw.size === 2 ? (
+          <MatchList {...props} />
+        ) : props.listView ? (
+          <MatchList
+            {...props}
+            draw={{ ...draw, matches: draw.matches.filter((m) => !m.stage || m.stage === 'MAIN') }}
+          />
+        ) : (
+          <TournamentBracket {...props} />
+        ))}
       {!groupsFirst && groups}
-      {draw.matches.some((m) => m.stage === 'REPECHAGE') && <RepechageRounds {...props} />}
+      {draw.matches.some((m) => m.stage === 'BRONZE') && <RepechageRounds {...props} />}
       {!round && !mixed && draw.size > 2 && !props.listView && (
         <details className="draw-bottom-section">
           <summary>{text('Все пары по турам', 'Айналымдар бойынша барлық жұптар')}</summary>
           <MatchList {...props} />
         </details>
       )}
-      {round && (
-        <details className="draw-bottom-section" open>
-          <summary>{text('Таблица участников', 'Қатысушылар кестесі')}</summary>
+      {round &&
+        (props.readOnly ? (
+          <details className="draw-bottom-section">
+            <summary>{text('Таблица', 'Кесте')}</summary>
+            <RoundStandings draw={draw} entries={entries} contests={contests} />
+          </details>
+        ) : (
           <RoundStandings draw={draw} entries={entries} contests={contests} />
-        </details>
-      )}
+        ))}
       {progress.pendingReviews.length > 0 && (
         <p className="info-note" role="status">
           {text(
-            'Равенство трёх и более участников: требуется решение администратора. Места и выход из группы ожидают разрешения равенства.',
-            'Үш не одан көп қатысушының көрсеткіші тең: әкімшінің шешімі қажет. Орындар мен топтан шығу теңдік шешілгенше анықталмайды.',
+            'Равенство: ожидается решение администратора.',
+            'Теңдік: әкімшінің шешімі күтілуде.',
           )}
         </p>
       )}
-      {places && <ResultPlaces places={places} entries={entries} />}
-      {(round || mixed) && (
+      {(round || mixed) && !props.readOnly && (
         <details className="draw-bottom-section">
           <summary>{text('Как определяются места', 'Орындар қалай анықталады')}</summary>
           <p className="field-note">
@@ -97,6 +109,7 @@ export function CompetitionDraw(props: Props) {
           </p>
         </details>
       )}
+      <ResultPlaces places={places} entries={entries} bronzeSlots={bronzeMedalCount(draw)} />
     </>
   );
 }

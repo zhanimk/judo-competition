@@ -1,4 +1,5 @@
 'use client';
+import { PublicInformation } from './public-information';
 import { Brand } from '../../components/layout/brand';
 import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
@@ -6,10 +7,9 @@ import { useSearchParams } from 'next/navigation';
 import { PublicParticipants } from './public-participants';
 import { PublicProtocols } from './public-protocols';
 import { SpectatorQueue } from './spectator-queue';
-import { drawFormat, type Draw } from '@judo/engine/draw';
-import { formatLabel } from '../draws/format-label';
+import { type Draw } from '@judo/engine/draw';
 import { PublicResults } from './public-results';
-import { ResultsTable, type ResultContest } from '../live/results-table';
+import { type ResultContest } from '../live/results-table';
 import { LiveBoard } from '../live/live-board';
 import { subscribeTournament } from '../../shared/live/subscribe';
 import { pollSnapshots } from '../../shared/live/snapshot-poller';
@@ -137,18 +137,18 @@ export function PublicCatalog() {
   );
 }
 export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly?: boolean }) {
-  const { text, locale } = useLanguage();
+  const { text } = useLanguage();
   const params = useSearchParams();
   const requestedTab = params.get('view');
   const tab = resultsOnly
     ? 'results'
-    : requestedTab === 'entries' || requestedTab === 'draw' || requestedTab === 'protocols'
+    : requestedTab === 'information' ||
+        requestedTab === 'entries' ||
+        requestedTab === 'draw' ||
+        requestedTab === 'protocols'
       ? requestedTab
       : 'tatamis';
   const [drawMode, setDrawMode] = useState('bracket');
-  useEffect(() => {
-    if (window.matchMedia('(max-width: 640px)').matches) setDrawMode('list');
-  }, []);
   const [t, setT] = useState<PublicTournament | null>(null),
     [error, setError] = useState(false),
     [matId, setMatId] = useState(''),
@@ -217,14 +217,17 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
       ) : (
         <>
           <div className="public-hero compact">
-            <h1>{t.name}</h1>
-            <p>
-              {t.city} · {t.venue}
-              <span className="public-date">
-                {t.startDate.split('-').reverse().join('.')}{' '}
-                {t.endDate !== t.startDate && '— ' + t.endDate.split('-').reverse().join('.')}
-              </span>
-            </p>
+            <div className="public-event-heading">
+              <p className="public-event-eyebrow">JUDO CHILD LEAGUE</p>
+              <h1>{t.name}</h1>
+              <p>
+                {t.city} · {t.venue}
+                <span className="public-date">
+                  {t.startDate.split('-').reverse().join('.')}{' '}
+                  {t.endDate !== t.startDate && '— ' + t.endDate.split('-').reverse().join('.')}
+                </span>
+              </p>
+            </div>
             <div className="public-facts">
               <span>
                 <b>{entries.length}</b> {text('участников', 'қатысушы')}
@@ -239,6 +242,7 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
           </div>
           <nav className="spectator-nav" aria-label={text('Разделы турнира', 'Турнир бөлімдері')}>
             {[
+              ['information', text('О турнире', 'Турнир туралы')],
               ['tatamis', text('Смотреть схватки', 'Белдесулерді көру')],
               ['entries', text('Участники', 'Қатысушылар')],
               ['draw', text('Сетки', 'Торлар')],
@@ -263,6 +267,7 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
             <PublicResults tournament={t} />
           ) : (
             <>
+              {tab === 'information' && <PublicInformation id={id} />}
               {tab === 'tatamis' && (
                 <>
                   <div className="spectator-section-heading">
@@ -333,9 +338,6 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
                   </label>
                   {category?.draw ? (
                     <>
-                      <p className="field-note">
-                        {formatLabel(drawFormat(category.draw.snapshot), locale)}
-                      </p>
                       {category.draw.snapshot.algorithm !== 'custom-round-robin-v1' && (
                         <div
                           className="spectator-view-switch"
@@ -368,13 +370,6 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
                         readOnly
                         onAssign={() => {}}
                       />
-                      <details className="draw-bottom-section">
-                        <summary>{text('Результаты схваток', 'Белдесу нәтижелері')}</summary>
-                        <ResultsTable
-                          entries={category.entries}
-                          contests={category.draw.contests}
-                        />
-                      </details>
                     </>
                   ) : (
                     <p className="state-box">

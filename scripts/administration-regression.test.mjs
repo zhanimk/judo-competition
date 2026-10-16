@@ -446,3 +446,100 @@ test('START and category state changes roll back if command audit fails after mu
   await assert.rejects(h.service.category(tournamentId, categoryCommand(), owner), /unavailable/);
   assert.deepEqual(h.snapshot(), before);
 });
+
+test('information: draft stays private, publication freezes content, hide preserves draft and history', async () => {
+  const h = harness();
+  h.mutate((s) => {
+    s.tournaments[0].publishedAt = new Date();
+  });
+  const content = {
+    description: 'Регламент',
+    weighing: '16 октября 08:00, зал 2',
+    address: 'Астана',
+    mapUrl: 'https://2gis.kz/astana',
+    imageData: '',
+  };
+  const save = { ...h.command(), ...content, action: 'SAVE' };
+  await h.service.saveInformation(tournamentId, save, owner);
+  assert.equal(h.snapshot().tournaments[0].publicInformation.published, null);
+  const publish = { ...h.command(), ...content, action: 'PUBLISH' };
+  const receipt = await h.service.saveInformation(tournamentId, publish, owner);
+  const published = h.snapshot();
+  assert.deepEqual(await h.service.saveInformation(tournamentId, publish, owner), receipt);
+  assert.deepEqual(h.snapshot(), published);
+  await h.service.saveInformation(
+    tournamentId,
+    { ...h.command(), ...content, description: 'Новая редакция', action: 'SAVE' },
+    owner,
+  );
+  let state = h.snapshot().tournaments[0].publicInformation;
+  assert.equal(state.published.description, 'Регламент');
+  assert.equal(state.draft.description, 'Новая редакция');
+  await assert.rejects(
+    h.service.saveInformation(tournamentId, { ...save, id: randomUUID() }, owner),
+    errorIs(409, 'ADMINISTRATION_STALE'),
+  );
+  await assert.rejects(
+    h.service.saveInformation(tournamentId, { ...publish, description: 'Changed' }, owner),
+    errorIs(409, 'COMMAND_ID_REUSED'),
+  );
+  await h.service.saveInformation(
+    tournamentId,
+    { ...h.command(), ...state.draft, action: 'HIDE' },
+    owner,
+  );
+  state = h.snapshot().tournaments[0].publicInformation;
+  assert.equal(state.published, null);
+  assert.equal(state.draft.description, 'Новая редакция');
+  assert.equal(h.snapshot().commands.length, 4);
+  assert.equal(h.snapshot().audit.length, 4);
+});
+
+test('information: no publication for private tournament, expired session or failed audit', async () => {
+  const content = { description: 'Info', weighing: '', address: '', mapUrl: '', imageData: '' };
+  const h = harness();
+  await assert.rejects(
+    h.service.saveInformation(
+      tournamentId,
+      { ...h.command(), ...content, action: 'PUBLISH' },
+      owner,
+    ),
+    errorIs(409, 'Сначала опубликуйте турнир'),
+  );
+  h.mutate((s) => {
+    s.sessions[0].expiresAt = new Date(0);
+  });
+  await assert.rejects(
+    h.service.saveInformation(tournamentId, { ...h.command(), ...content, action: 'SAVE' }, owner),
+    errorIs(401, 'AUTH_REQUIRED'),
+  );
+  const failing = harness({ failAudit: true });
+  const before = failing.snapshot();
+  await assert.rejects(
+    failing.service.saveInformation(
+      tournamentId,
+      { ...failing.command(), ...content, action: 'SAVE' },
+      owner,
+    ),
+    /unavailable/,
+  );
+  assert.deepEqual(failing.snapshot(), before);
+});
+
+test('information: reject executable map URLs and disguised images', async () => {
+  const { informationContent } = await load('modules/tournaments/tournament-information.js');
+  const blank = { description: '', weighing: '', address: '', mapUrl: '', imageData: '' };
+  for (const mapUrl of [
+    'javascript:alert(1)',
+    'data:text/html,x',
+    'https://name:secret@example.com',
+    'not a url',
+  ])
+    assert.throws(() => informationContent({ ...blank, mapUrl }), /ссылку на карту/);
+  for (const imageData of ['data:image/svg+xml;base64,PHN2Zz4=', 'data:image/jpeg;base64,PHN2Zz4='])
+    assert.throws(() => informationContent({ ...blank, imageData }), /Положение|Изображение/);
+  assert.equal(
+    informationContent({ ...blank, mapUrl: ' https://maps.google.com/?q=Astana ' }).mapUrl,
+    'https://maps.google.com/?q=Astana',
+  );
+});

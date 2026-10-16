@@ -1,6 +1,9 @@
 import { fixtureRequest } from './test-access.mjs';
 import { placements, resolveMatches } from '@judo/engine/draw';
-import { categoryResults } from '../apps/api/dist/modules/protocols/protocol-model.js';
+import {
+  categoryResults,
+  teamStandings,
+} from '../apps/api/dist/modules/protocols/protocol-model.js';
 import { drawPlaces } from '../apps/api/dist/modules/protocols/pdf-draw-places.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -47,7 +50,9 @@ try {
     ['REPECHAGE', 8],
     ['MIXED', 12],
     ['ROUND_ROBIN', 2],
+    ['ROUND_ROBIN', 4],
     ['ROUND_ROBIN', 5],
+    ['REPECHAGE', 6],
     ['REPECHAGE', 7],
   ]) {
     const c = await post(`/tournaments/${tournament}/categories`, {
@@ -67,7 +72,7 @@ try {
         birthYear: 2012,
       });
     const preview = await post(`/categories/${c.id}/draw/preview`);
-    if (count < 8) assert.equal(preview.snapshot.algorithm, 'custom-round-robin-v1');
+    if (count < 6) assert.equal(preview.snapshot.algorithm, 'custom-round-robin-v1');
     else assert.equal(preview.snapshot.matches.filter((m) => m.stage === 'BRONZE').length, 2);
     assert.equal((await call(`/tournaments/${tournament}/start`, {})).status, 409);
     await post(`/categories/${c.id}/draw/confirm`, { version: preview.version });
@@ -90,17 +95,18 @@ try {
   );
   const frozen = (await db.tournament.findUniqueOrThrow({ where: { id: tournament } }))
     .rulesSnapshot;
-  assert.equal(frozen.version, 'custom-2026-v4');
+  assert.equal(frozen.version, 'custom-2026-v6');
   assert.equal(frozen.tieRanking, 'WINS_ONLY');
   assert.equal(frozen.tieMany, 'ADMIN_REVIEW');
-  assert.equal(frozen.drawPolicy, 'REPECHAGE_ONLY');
+  assert.equal(frozen.roundRobinMedals, 'TWO_BRONZE_FOR_FOUR_FIVE');
+  assert.equal(frozen.drawPolicy, 'KNOCKOUT_FROM_SIX');
   for (const c of await db.category.findMany({
     where: { tournamentId: tournament },
     include: { _count: { select: { entries: true } } },
   })) {
     assert.equal(
       frozen.categories[c.id].resolvedFormat,
-      c._count.entries < 8 ? 'ROUND_ROBIN' : c.format,
+      c._count.entries < 6 ? 'ROUND_ROBIN' : c.format,
     );
   }
   const mats = (await call(`/tournaments/${tournament}/tatamis`)).body;
@@ -185,7 +191,7 @@ try {
     (n, d) => n + d.snapshot.matches.filter((m) => m.tieBreakRound).length,
     0,
   );
-  assert.equal(completed, 66 + extra);
+  assert.equal(completed, 67 + extra);
   assert.ok(shidoLoser, 'the semifinals must exercise a third-Shido loss');
   const shidoCategory = await db.category.findFirstOrThrow({
     where: { tournamentId: tournament, name: 'REPECHAGE8' },
@@ -290,7 +296,27 @@ try {
       printed.rows.map((r) => r.entry.id),
       result.places.filter((p) => p.place <= 3).map((p) => p.entryId),
     );
-    if (c.entries.length >= 8) {
+    if ([4, 5].includes(c.entries.length)) {
+      assert.equal(result.draw.roundRobinMedals, 'TWO_BRONZE_FOR_FOUR_FIVE');
+      assert.deepEqual(
+        printed.rows.map((r) => r.place),
+        [1, 2, 3, 3],
+      );
+      assert.equal(result.places.filter((p) => p.place > 3).length, c.entries.length - 4);
+      const teams = teamStandings([c]).teams;
+      assert.equal(
+        teams.reduce((sum, team) => sum + team.bronze, 0),
+        2,
+      );
+      const pending = structuredClone(c);
+      pending.draw.contests[0].status = 'PROVISIONAL';
+      assert.deepEqual(
+        drawPlaces(pending).rows.map((r) => r.place),
+        [1, 2, 3, 3],
+      );
+      assert.ok(drawPlaces(pending).rows.every((r) => !r.entry));
+    }
+    if (c.entries.length >= 6) {
       assert.deepEqual(
         printed.rows.map((r) => r.place),
         [1, 2, 3, 3],

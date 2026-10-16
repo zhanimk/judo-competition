@@ -20,6 +20,7 @@ export async function useLegacyRules(db, tournamentId) {
   delete rules.drawPolicy;
   delete rules.tieRanking;
   delete rules.tieMany;
+  delete rules.roundRobinMedals;
   await db.tournament.update({ where: { id: tournamentId }, data: { rulesSnapshot: rules } });
 }
 
@@ -49,8 +50,9 @@ export async function createTestEntries(db, entries) {
 /** Explicit historical v3 auto-circle fixtures, never the new tournament default. */
 export async function useLegacyV3Rules(db, tournamentId) {
   const t = await db.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
-  const rules = { ...t.rulesSnapshot, version: 'custom-2026-v3' };
+  const rules = { ...t.rulesSnapshot, version: 'custom-2026-v3', drawPolicy: 'REPECHAGE_ONLY' };
   delete rules.tieRanking;
   delete rules.tieMany;
+  delete rules.roundRobinMedals;
   await db.tournament.update({ where: { id: tournamentId }, data: { rulesSnapshot: rules } });
 }

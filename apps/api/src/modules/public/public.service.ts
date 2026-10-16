@@ -1,3 +1,4 @@
+import { informationState } from '../tournaments/tournament-information.js';
 import { MatchesService } from '../matches/matches.service.js';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service.js';
@@ -14,6 +15,14 @@ export class PublicService {
     private readonly db: DatabaseService,
     private readonly matches: MatchesService,
   ) {}
+  async information(id: string) {
+    const t = await this.db.tournament.findFirst({
+      where: { id, publishedAt: { not: null } },
+      select: { publicInformation: true },
+    });
+    if (!t) throw new NotFoundException('PUBLIC_TOURNAMENT_NOT_FOUND');
+    return { information: informationState(t.publicInformation).published };
+  }
   list() {
     return this.db.tournament.findMany({
       where: { publishedAt: { not: null } },

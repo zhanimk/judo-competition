@@ -1,8 +1,10 @@
 'use client';
+import { TournamentInformationEditor } from './tournament-information-editor';
 import { subscribeTournament } from '../../shared/live/subscribe';
 import { pollSnapshots } from '../../shared/live/snapshot-poller';
 import { formatLabel } from '../draws/format-label';
 import { NEW_DRAW_FORMATS } from '@judo/engine/draw';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
 import { ProtocolPublications } from '../protocols/protocol-publications';
@@ -20,11 +22,14 @@ import { startReadiness } from './start-readiness';
 import styles from './tournament-workspace.module.css';
 export function TournamentWorkspace({ id }: { id: string }) {
   const { text, locale } = useLanguage();
+  const searchParams = useSearchParams();
+  const requestedSection = searchParams.get('section');
   const [t, setT] = useState<Tournament | null>(null),
-    [tab, setTab] = useState('overview'),
+    [tab, setTab] = useState(requestedSection === 'draw' ? 'draw' : 'overview'),
     [error, setError] = useState(''),
     [loaded, setLoaded] = useState(false);
   const [rosterPending, setRosterPending] = useState(false);
+  const [informationSaved, setInformationSaved] = useState(0);
   const pollerRef = useRef<{ refresh: () => Promise<void>; stop: () => void } | null>(null);
   const [category, setCategory] = useState({
     name: '',
@@ -40,11 +45,15 @@ export function TournamentWorkspace({ id }: { id: string }) {
     await pollerRef.current?.refresh();
   }
   const administration = useAdministrationCommand(id, async (command) => {
+    if (command.operation === 'INFORMATION') setInformationSaved((v) => v + 1);
     if (command.operation === 'CATEGORY') setCategory((current) => ({ ...current, name: '' }));
     await load();
     if (command.operation === 'START') setTab('tatamis');
   });
   const busy = administration.blocked;
+  useEffect(() => {
+    if (requestedSection === 'draw' && !busy && !rosterPending) setTab('draw');
+  }, [searchParams]);
   const applyReceipt = useCallback(
     (receipt: Receipt) => {
       setT((current) => (current?.id === id ? mergeRosterReceipt(current, receipt) : current));
@@ -168,21 +177,24 @@ export function TournamentWorkspace({ id }: { id: string }) {
           <p className={styles.location}>
             {t.city} · {t.venue} · {t.startDate} — {t.endDate}
           </p>
-          <p className={styles.rules}>
-            {text('Регламент', 'Ереже')}: {t.rulesSnapshot?.version ?? '—'} ·{' '}
-            {t.rulesSnapshot?.approvedAt
-              ? text('Версия зафиксирована при запуске', 'Нұсқа басталған кезде бекітілді')
-              : text('Будет зафиксирован при запуске', 'Басталған кезде бекітіледі')}{' '}
-            ·{' '}
-            {t.rulesSnapshot?.tieRanking === 'WINS_ONLY'
-              ? text(
-                  'Равенство: двое — новая схватка; трое и более — решение администратора',
-                  'Теңдік: екеуі — жаңа белдесу; үш не одан көп — әкімшінің шешімі',
-                )
-              : t.rulesSnapshot?.tieBreak === 'REMATCH'
-                ? text('При равенстве — дополнительные встречи', 'Тең болса — қосымша белдесулер')
-                : text('Правила прежней версии', 'Алдыңғы нұсқа ережелері')}
-          </p>
+          <details className={styles.ruleDetails}>
+            <summary>{text('Регламент турнира', 'Турнир ережесі')}</summary>
+            <p className={styles.rules}>
+              {text('Регламент', 'Ереже')}: {t.rulesSnapshot?.version ?? '—'} ·{' '}
+              {t.rulesSnapshot?.approvedAt
+                ? text('Версия зафиксирована при запуске', 'Нұсқа басталған кезде бекітілді')
+                : text('Будет зафиксирован при запуске', 'Басталған кезде бекітіледі')}{' '}
+              ·{' '}
+              {t.rulesSnapshot?.tieRanking === 'WINS_ONLY'
+                ? text(
+                    'Равенство: двое — новая схватка; трое и более — решение администратора',
+                    'Теңдік: екеуі — жаңа белдесу; үш не одан көп — әкімшінің шешімі',
+                  )
+                : t.rulesSnapshot?.tieBreak === 'REMATCH'
+                  ? text('При равенстве — дополнительные встречи', 'Тең болса — қосымша белдесулер')
+                  : text('Правила прежней версии', 'Алдыңғы нұсқа ережелері')}
+            </p>
+          </details>
         </div>
         <div className={styles.actions}>
           {t.status === 'DRAFT' ? (
@@ -210,6 +222,7 @@ export function TournamentWorkspace({ id }: { id: string }) {
       <nav className="tabs" aria-label={text('Разделы турнира', 'Турнир бөлімдері')}>
         {[
           ['overview', text('Обзор', 'Шолу')],
+          ['information', text('Информация и положение', 'Ақпарат және ереже')],
           ['categories', text('Категории', 'Санаттар')],
           ['entries', text('Участники', 'Қатысушылар')],
           ['draw', text('Жеребьёвка', 'Жеребе')],
@@ -234,6 +247,15 @@ export function TournamentWorkspace({ id }: { id: string }) {
         <p className="error-box" role="alert">
           {error}
         </p>
+      )}
+      {tab === 'information' && (
+        <TournamentInformationEditor
+          id={id}
+          saveVersion={informationSaved}
+          blocked={busy || rosterPending}
+          tournamentPublished={!!t.publishedAt}
+          onSave={(data) => administration.send('INFORMATION', data)}
+        />
       )}
       {tab === 'overview' && (
         <>
@@ -498,10 +520,15 @@ export function TournamentWorkspace({ id }: { id: string }) {
               </select>
             </label>
             <p className="field-note">
-              {text(
-                '2–7 участников — круговая автоматически. От 8 — выбранная система. Олимпийская и смешанная: утешение от четвертьфинала и два третьих места. Пользовательский регламент.',
-                '2–7 қатысушы — автоматты түрде айналмалы жүйе. 8-ден бастап — таңдалған жүйе. Олимпиадалық және аралас: ширек финалдан жұбаныш және екі үшінші орын. Бапталатын ереже.',
-              )}
+              {t.rulesSnapshot?.drawPolicy === 'KNOCKOUT_FROM_SIX'
+                ? text(
+                    '2–5 участников — круговая. 6–7 — сетка с двумя бронзами. С 8 — выбранная система. Проходы без соперника не считаются схватками.',
+                    '2–5 қатысушы — айналмалы жүйе. 6–7 — екі қоласы бар тор. 8-ден бастап — таңдалған жүйе. Қарсылассыз өту белдесу болып саналмайды.',
+                  )
+                : text(
+                    '2–7 участников — круговая автоматически. От 8 — выбранная система. Олимпийская и смешанная: утешение от четвертьфинала и два третьих места. Пользовательский регламент.',
+                    '2–7 қатысушы — автоматты түрде айналмалы жүйе. 8-ден бастап — таңдалған жүйе. Олимпиадалық және аралас: ширек финалдан жұбаныш және екі үшінші орын. Бапталатын ереже.',
+                  )}
             </p>
             <button className="solid-button" disabled={busy || t.status !== 'DRAFT'}>
               {busy ? text('Сохраняем…', 'Сақталуда…') : text('Добавить категорию', 'Санатты қосу')}

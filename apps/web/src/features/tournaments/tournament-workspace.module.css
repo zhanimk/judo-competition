@@ -75,3 +75,12 @@ a.publish:hover {
     justify-self: start;
   }
 }
+
+.ruleDetails {
+  margin-top: 8px;
+}
+.ruleDetails > summary {
+  color: #61728b;
+  font-size: 12px;
+  cursor: pointer;
+}

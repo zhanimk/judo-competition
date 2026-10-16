@@ -1,3 +1,4 @@
+import { informationContent, informationState } from './tournament-information.js';
 import { enqueueLive } from '../matches/live-outbox.js';
 import { drawFormat, type Draw } from '@judo/engine/draw';
 import { currentProfile, profile } from '../rules/profile.js';
@@ -17,6 +18,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../../database/database.service.js';
 import {
+  TournamentInformationDto,
   AdministrationCommandDto,
   CreateTournamentDto,
   CreateCategoryDto,
@@ -94,6 +96,54 @@ export class TournamentsService {
     });
     await enqueueLive(tx, { tournamentId, kind });
     return json(response);
+  }
+  async information(id: string, user: Principal) {
+    await this.auth.owner(user, id);
+    const t = await this.db.tournament.findUniqueOrThrow({
+      where: { id },
+      select: { publicInformation: true, administrationRevision: true },
+    });
+    return {
+      ...informationState(t.publicInformation),
+      administrationRevision: t.administrationRevision,
+    };
+  }
+  async saveInformation(id: string, dto: TournamentInformationDto, user: Principal) {
+    await this.auth.owner(user, id);
+    const content = informationContent(dto);
+    return this.db.$transaction(async (tx) => {
+      await lockAdminMutation(tx, user, id);
+      const receipt = await this.receipt(tx, id, dto, 'INFORMATION', user);
+      if (receipt) return receipt.response;
+      const t = await this.requireRevision(tx, id, dto);
+      const previous = informationState(t.publicInformation);
+      if (dto.action === 'PUBLISH' && !t.publishedAt)
+        throw new ConflictException('Сначала опубликуйте турнир');
+      const state = {
+        draft: content,
+        published:
+          dto.action === 'PUBLISH' ? content : dto.action === 'HIDE' ? null : previous.published,
+      };
+      const updated = await tx.tournament.update({
+        where: { id },
+        data: {
+          publicInformation: json(state),
+          administrationRevision: { increment: 1 },
+        },
+      });
+      return this.record(
+        tx,
+        id,
+        dto,
+        'INFORMATION',
+        user,
+        {
+          administrationRevision: updated.administrationRevision,
+          action: dto.action,
+        },
+        'protocol',
+      );
+    });
   }
   async start(id: string, dto: AdministrationCommandDto, user: Principal) {
     await this.auth.owner(user, id);
@@ -254,6 +304,7 @@ export class TournamentsService {
     if (!['ORGANIZER', 'SUPER_ADMIN'].includes(user.role))
       throw new ForbiddenException('FORBIDDEN');
     return this.db.tournament.findMany({
+      omit: { publicInformation: true },
       where: user.role === 'SUPER_ADMIN' ? {} : { ownerId: user.id },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -266,6 +317,7 @@ export class TournamentsService {
   async get(id: string, user: Principal) {
     await this.auth.owner(user, id);
     const t = await this.db.tournament.findUnique({
+      omit: { publicInformation: true },
       where: { id },
       include: {
         tatamis: { orderBy: { number: 'asc' } },

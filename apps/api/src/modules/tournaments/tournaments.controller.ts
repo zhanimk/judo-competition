@@ -3,6 +3,7 @@ import type { Principal } from '../auth/auth.types.js';
 import { Controller, Get, Post, Param, Body, ParseUUIDPipe } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service.js';
 import {
+  TournamentInformationDto,
   AdministrationCommandDto,
   CreateTournamentDto,
   CreateCategoryDto,
@@ -16,6 +17,19 @@ export class TournamentsController {
   }
   @Get(':id') get(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: Principal) {
     return this.service.get(id, user);
+  }
+  @Get(':id/information') information(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.information(id, user);
+  }
+  @Post(':id/information') saveInformation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TournamentInformationDto,
+    @CurrentUser() user: Principal,
+  ) {
+    return this.service.saveInformation(id, dto, user);
   }
   @Post(':id/publish') publish(
     @Param('id', ParseUUIDPipe) id: string,

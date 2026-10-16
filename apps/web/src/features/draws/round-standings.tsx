@@ -1,5 +1,5 @@
 'use client';
-import { poolStandings, drawProgress, type Draw } from '@judo/engine/draw';
+import { poolStandings, placements, drawProgress, type Draw } from '@judo/engine/draw';
 import type { Entry } from '../tournaments/types';
 import type { ResultContest } from '../live/results-table';
 import { useLanguage } from '../../shared/i18n/provider';
@@ -29,6 +29,8 @@ export function RoundStandings({
   const awaitingReview = drawProgress(draw, winners).pendingReviews.some(
     (review) => review.pool === poolId,
   );
+  const medalPlaces =
+    !poolId && draw.algorithm === 'custom-round-robin-v1' ? placements(draw, winners) : null;
   const order = final?.map((r) => r.entryId) ?? members;
   return (
     <section className="round-standings">
@@ -40,18 +42,15 @@ export function RoundStandings({
       </div>
       <p className="field-note">
         {final
-          ? text(
-              'Все встречи подтверждены. Места определены по регламенту категории.',
-              'Барлық белдесулер расталды. Орындар санат ережесі бойынша анықталды.',
-            )
+          ? text('Итоговые места', 'Қорытынды орындар')
           : awaitingReview
             ? text(
-                'Основной круг завершён. Места ожидают утверждённой процедуры при равенстве.',
-                'Негізгі айналым аяқталды. Теңдік кезіндегі бекітілген рәсім аяқталғанша орындар анықталмайды.',
+                'Равенство: ожидается решение администратора',
+                'Теңдік: әкімшінің шешімі күтілуде',
               )
             : text(
-                'Пока идут встречи, участники показаны по номеру жребия. Итоговые места появятся после подтверждения всех результатов.',
-                'Белдесулер өтіп жатқанда қатысушылар жеребе нөмірімен көрсетіледі. Қорытынды орындар барлық нәтижелер расталғаннан кейін пайда болады.',
+                'Места ещё не определены · порядок по жребию',
+                'Орындар әлі анықталмаған · жеребе ретімен',
               )}
       </p>
       <div className="table-wrap">
@@ -60,15 +59,17 @@ export function RoundStandings({
             <tr>
               <th>{text('Место', 'Орын')}</th>
               <th>{text('Участник / клуб', 'Қатысушы / клуб')}</th>
-              <th>{text('Жребий', 'Жеребе')}</th>
-              <th>{text('Завершено', 'Аяқталған')}</th>
-              <th>
-                {draw.tieRanking === 'WINS_ONLY'
-                  ? text('Победы в основном круге', 'Негізгі айналымдағы жеңістер')
-                  : text('Победы', 'Жеңістер')}
+              <th>{text('Схватки', 'Белдесулер')}</th>
+              <th
+                title={
+                  draw.tieRanking === 'WINS_ONLY'
+                    ? text('Победы в основном круге', 'Негізгі айналымдағы жеңістер')
+                    : undefined
+                }
+              >
+                {text('Победы', 'Жеңістер')}
               </th>
               <th>{text('Поражения', 'Жеңілістер')}</th>
-              <th>{text('Осталось', 'Қалғаны')}</th>
             </tr>
           </thead>
           <tbody>
@@ -98,7 +99,9 @@ export function RoundStandings({
                 <tr key={id}>
                   <td>
                     <b className="standing-place">
-                      {final && !draw.withdrawnEntryIds?.includes(id) ? index + 1 : '—'}
+                      {final && !draw.withdrawnEntryIds?.includes(id)
+                        ? (medalPlaces?.find((p) => p.entryId === id)?.place ?? index + 1)
+                        : '—'}
                     </b>
                   </td>
                   <td>
@@ -112,7 +115,6 @@ export function RoundStandings({
                     )}
                     <small>{e?.club}</small>
                   </td>
-                  <td>{members.indexOf(id) + 1}</td>
                   <td>
                     {played} / {total}
                   </td>
@@ -125,7 +127,6 @@ export function RoundStandings({
                     )}
                   </td>
                   <td>{played - allWins}</td>
-                  <td>{total - played}</td>
                 </tr>
               );
             })}

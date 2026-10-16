@@ -1,5 +1,6 @@
 import { isDefinitiveCommandRejection } from './api.ts';
-export type AdministrationOperation = 'CREATE' | 'CATEGORY' | 'START' | 'SCHEDULE' | 'PUBLISH';
+export type AdministrationOperation =
+  'CREATE' | 'CATEGORY' | 'START' | 'SCHEDULE' | 'PUBLISH' | 'INFORMATION';
 export type AdministrationPending = {
   scope: string;
   operation: AdministrationOperation;
@@ -18,7 +19,9 @@ export function readAdministrationPending(
   if (
     !value ||
     value.scope !== scope ||
-    !['CREATE', 'CATEGORY', 'START', 'SCHEDULE', 'PUBLISH'].includes(value.operation) ||
+    !['CREATE', 'CATEGORY', 'START', 'SCHEDULE', 'PUBLISH', 'INFORMATION'].includes(
+      value.operation,
+    ) ||
     !value.payload ||
     !uuid.test(value.payload.id) ||
     (value.operation === 'CREATE'
@@ -45,7 +48,7 @@ export function clearAdministrationPending(store: Store, value: AdministrationPe
 export function administrationPath(value: AdministrationPending) {
   return value.operation === 'CREATE'
     ? '/tournaments'
-    : `/tournaments/${value.scope}/${{ CATEGORY: 'categories', START: 'start', SCHEDULE: 'schedule', PUBLISH: 'publish' }[value.operation]}`;
+    : `/tournaments/${value.scope}/${{ INFORMATION: 'information', CATEGORY: 'categories', START: 'start', SCHEDULE: 'schedule', PUBLISH: 'publish' }[value.operation]}`;
 }
 export async function deliverAdministrationPending(
   value: AdministrationPending,

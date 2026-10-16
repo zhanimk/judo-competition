@@ -7,6 +7,9 @@ import {
   resolveMatches,
   poolStandings,
   placements,
+  bronzeMedalCount,
+  approveAdditionalRound,
+  drawProgress,
 } from '../src/draw/index.ts';
 const entries = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ id: `e${i}`, clubId: `c${i % 7}` }));
@@ -128,4 +131,64 @@ test('dependency closure includes loser repechage and every pool-qualified playo
   const affected = dependentMatches(mixed, opening.id);
   assert.equal(affected.length, mixed.matches.filter((m) => m.stage === 'MAIN').length);
   assert.equal(dependentMatches(createRoundRobin(entries(4), 1), 'r1-m1').length, 0);
+});
+
+test('v5: four/five round-robin entrants award two bronzes; historical snapshots keep ordinal places', () => {
+  for (const count of [2, 3, 4, 5, 6, 7]) {
+    const old = createRoundRobin(entries(count), 42);
+    const winners = Object.fromEntries(
+      old.matches.map((m) => {
+        assert.ok('entryId' in m.white && 'entryId' in m.blue);
+        return [m.id, [m.white.entryId, m.blue.entryId].sort()[0]!];
+      }),
+    );
+    assert.deepEqual(
+      placements(old, winners)!.map((p) => p.place),
+      Array.from({ length: count }, (_, i) => i + 1),
+    );
+    const next = { ...old, roundRobinMedals: 'TWO_BRONZE_FOR_FOUR_FIVE' as const };
+    assert.equal(bronzeMedalCount(next), count < 3 ? 0 : [4, 5].includes(count) ? 2 : 1);
+    assert.deepEqual(
+      placements(next, winners)!.map((p) => p.place),
+      Array.from({ length: count }, (_, i) => ([4, 5].includes(count) && i === 3 ? 3 : i + 1)),
+    );
+    assert.equal(new Set(placements(next, winners)!.map((p) => p.entryId)).size, count);
+    assert.deepEqual(
+      placements(old, winners)!.map((p) => p.place),
+      Array.from({ length: count }, (_, i) => i + 1),
+    );
+  }
+});
+
+test('v5 bronze policy does not bypass unfinished matches or equal-wins review', () => {
+  const draw = {
+    ...createRoundRobin(entries(5), 42),
+    tieBreak: 'REMATCH' as const,
+    tieRanking: 'WINS_ONLY' as const,
+    tieMany: 'ADMIN_REVIEW' as const,
+    roundRobinMedals: 'TWO_BRONZE_FOR_FOUR_FIVE' as const,
+  };
+  assert.equal(placements(draw, {}), null);
+  const winners = Object.fromEntries(
+    draw.matches.map((m) => {
+      assert.ok('entryId' in m.white && 'entryId' in m.blue);
+      const a = Number(m.white.entryId.slice(1)),
+        b = Number(m.blue.entryId.slice(1));
+      return [m.id, (b - a + 5) % 5 <= 2 ? m.white.entryId : m.blue.entryId];
+    }),
+  );
+  assert.equal(placements(draw, winners), null);
+  const pending = drawProgress(draw, winners).pendingReviews[0]!;
+  assert.equal(pending.members.length, 5);
+  const resolved = approveAdditionalRound(draw, winners, {
+    parent: pending.parent,
+    pool: pending.pool,
+    members: [...pending.members].sort(),
+    procedure: 'ORDERED_PLACES',
+  });
+  assert.deepEqual(
+    placements(resolved, winners)!.map((p) => p.place),
+    [1, 2, 3, 3, 5],
+  );
+  assert.equal(placements(resolved, winners)!.filter((p) => p.place <= 3).length, 4);
 });

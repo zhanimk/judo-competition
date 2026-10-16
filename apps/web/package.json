@@ -6,7 +6,7 @@
     "dev": "next dev --webpack --hostname 127.0.0.1 --port 4318",
     "build": "next build",
     "typecheck": "next typegen && tsc --noEmit",
-    "start": "next start --hostname 127.0.0.1 --port 4318",
+    "start": "node ../../scripts/start-web.mjs",
     "test": "node --test test/*.test.ts"
   },
   "dependencies": {

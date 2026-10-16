@@ -60,15 +60,13 @@ export function PublicParticipants({ tournament }: { tournament: PublicTournamen
       <ul className="spectator-participants">
         {filtered.slice(currentPage * 20, (currentPage + 1) * 20).map((e) => (
           <li key={e.id}>
-            <div>
-              <h3>
-                {e.lastName} {e.firstName}
-              </h3>
-              <p>{e.club}</p>
-              <span className="spectator-category">{e.category}</span>
-            </div>
+            <h3>
+              {e.lastName} {e.firstName}
+            </h3>
+            <p>{e.club}</p>
+            <span className="spectator-category">{e.category}</span>
             <Link href={`/public/tournaments/${tournament.id}?view=draw&category=${e.categoryId}`}>
-              {text('Сетка категории', 'Санат торы')} <span aria-hidden="true">→</span>
+              {text('Сетка', 'Тор')} <span aria-hidden="true">→</span>
             </Link>
           </li>
         ))}

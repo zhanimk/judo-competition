@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { TatamiPlan } from '../tournaments/tatami-plan';
 import './draw-workspace.css';
 import { formatLabel } from './format-label';
@@ -60,6 +61,8 @@ export function DrawPanel({
   onSchedule: () => Promise<void>;
 }) {
   const { text, locale } = useLanguage();
+  const searchParams = useSearchParams();
+  const requestedCategory = searchParams.get('category');
   const [refresh, setRefresh] = useState(0);
   useEffect(
     () =>
@@ -68,7 +71,15 @@ export function DrawPanel({
       }),
     [tournament.id],
   );
-  const [categoryId, setCategoryId] = useState(tournament.categories[0]?.id ?? '');
+  const [categoryId, setCategoryId] = useState(
+    tournament.categories.some((c) => c.id === requestedCategory)
+      ? requestedCategory!
+      : (tournament.categories[0]?.id ?? ''),
+  );
+  useEffect(() => {
+    if (requestedCategory && tournament.categories.some((c) => c.id === requestedCategory))
+      setCategoryId(requestedCategory);
+  }, [requestedCategory]);
   const [draw, setDraw] = useState<SavedDraw | null>(null),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true),
@@ -464,6 +475,14 @@ export function DrawPanel({
                   {category.entries?.length ?? 0} {text('участников', 'қатысушы')}
                 </p>
               </div>
+              {tournament.rulesSnapshot?.drawPolicy === 'KNOCKOUT_FROM_SIX' && (
+                <p className="field-note">
+                  {text(
+                    '2–5 — круговая · 6–7 — сетка с двумя бронзами · с 8 — выбранная система',
+                    '2–5 — айналмалы · 6–7 — екі қоласы бар тор · 8-ден — таңдалған жүйе',
+                  )}
+                </p>
+              )}
               {tournament.rulesSnapshot?.drawPolicy === 'REPECHAGE_ONLY' && (
                 <p className="field-note">
                   {text(

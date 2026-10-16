@@ -574,6 +574,7 @@ export class DrawsService {
         tieBreak: rules.tieBreak,
         ...(rules.tieRanking ? { tieRanking: rules.tieRanking } : {}),
         ...(rules.tieMany ? { tieMany: rules.tieMany } : {}),
+        ...(rules.roundRobinMedals ? { roundRobinMedals: rules.roundRobinMedals } : {}),
       };
       const data = {
         status: 'PREVIEW',

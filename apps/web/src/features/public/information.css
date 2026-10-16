@@ -1,0 +1,68 @@
+.information-panel {
+  padding: clamp(16px, 3vw, 32px);
+  margin-top: 20px;
+}
+.tournament-information {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.tournament-information h2 {
+  margin: 0 0 12px;
+}
+.information-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+.information-image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  margin-top: 16px;
+  border: 1px solid #d5dce5;
+}
+.information-image-link {
+  display: inline-block;
+  margin: 8px 0;
+}
+.information-editor {
+  display: grid;
+  gap: 16px;
+}
+.information-editor label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+  min-width: 0;
+}
+.information-editor textarea,
+.information-editor input {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  padding: 12px;
+  font: inherit;
+  border: 1px solid #aab6c5;
+  border-radius: 8px;
+  background: #fff;
+  color: #172334;
+}
+.information-editor textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+.information-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.information-editor details {
+  border-top: 1px solid #d5dce5;
+  padding-top: 16px;
+}
+.information-editor summary {
+  cursor: pointer;
+  margin-bottom: 16px;
+}

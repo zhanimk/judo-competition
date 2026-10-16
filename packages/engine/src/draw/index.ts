@@ -16,6 +16,7 @@ export type Match = Readonly<{
 }>;
 export type Draw = Readonly<{
   medalPolicy?: 'QUARTER_REPECHAGE';
+  roundRobinMedals?: 'TWO_BRONZE_FOR_FOUR_FIVE';
   tieBreak?: 'PUBLISHED_LOT' | 'REMATCH';
   /** Missing fields preserve the historical head-to-head/rematch profile. */
   tieRanking?: 'WINS_ONLY';
@@ -245,8 +246,8 @@ export function createRoundRobin(entries: readonly Entry[], seed: number): Draw 
 }
 
 /** Quarter-final repechage. Eight or more entrants ensure four real quarter-finals. */
-export function createRepechage(entries: readonly Entry[], seed: number): Draw {
-  if (entries.length < 8) throw new Error('REPECHAGE_MIN_8');
+export function createRepechage(entries: readonly Entry[], seed: number, minimum: 6 | 8 = 8): Draw {
+  if (entries.length < minimum) throw new Error(`REPECHAGE_MIN_${minimum}`);
   const base = createDraw(entries, seed);
   return { ...withQuarterRepechage(base), algorithm: 'custom-quarter-repechage-v1' };
 }
@@ -257,7 +258,39 @@ function withQuarterRepechage(base: Draw): Draw {
   const rounds = Math.max(...main.map((m) => m.round));
   const quarters = main.filter((m) => m.round === rounds - 2);
   const semis = main.filter((m) => m.round === rounds - 1);
-  if (quarters.length !== 4 || semis.length !== 2) throw new Error('INCOMPLETE_QUARTER_FINALS');
+  if (semis.length !== 2 || quarters.length < 2 || quarters.length > 4)
+    throw new Error('INCOMPLETE_QUARTER_FINALS');
+  if (quarters.length < 4) {
+    const repechage: Match[] = [],
+      bronze: Match[] = [];
+    for (const [i, semi] of semis.entries()) {
+      const sources = [semi.white, semi.blue].flatMap((slot) =>
+        'winnerOf' in slot && quarters.some((q) => q.id === slot.winnerOf)
+          ? [{ loserOf: slot.winnerOf } as Slot]
+          : [],
+      );
+      if (!sources.length) throw new Error('INCOMPLETE_QUARTER_FINALS');
+      const suffix = i === 0 ? 'a' : 'b';
+      let source = sources[0]!;
+      if (sources.length === 2) {
+        const id = `rep-${suffix}`;
+        repechage.push({ id, round: rounds, stage: 'REPECHAGE', white: source, blue: sources[1]! });
+        source = { winnerOf: id };
+      }
+      bronze.push({
+        id: `bronze-${suffix}`,
+        round: rounds + 1,
+        stage: 'BRONZE',
+        white: source,
+        blue: { loserOf: semis[1 - i]!.id },
+      });
+    }
+    return {
+      ...base,
+      medalPolicy: 'QUARTER_REPECHAGE',
+      matches: [...base.matches, ...repechage, ...bronze],
+    };
+  }
   const extras: Match[] = [
     {
       id: 'rep-a',
@@ -464,8 +497,16 @@ export function generateDraw(
   format: string,
   entries: readonly Entry[],
   seed: number,
-  policy: 'LEGACY' | 'REPECHAGE_ONLY' = 'LEGACY',
+  policy: 'LEGACY' | 'REPECHAGE_ONLY' | 'KNOCKOUT_FROM_SIX' = 'LEGACY',
 ): Draw {
+  if (policy === 'KNOCKOUT_FROM_SIX') {
+    if (!NEW_DRAW_FORMATS.some((f) => f === format)) throw new Error('FORMAT_UNSUPPORTED');
+    if (entries.length <= 5 || (format === 'ROUND_ROBIN' && entries.length >= 8))
+      return createRoundRobin(entries, seed);
+    return format === 'MIXED' && entries.length >= 8
+      ? createMixed(entries, seed, true)
+      : createRepechage(entries, seed, 6);
+  }
   if (policy === 'REPECHAGE_ONLY') {
     if (!NEW_DRAW_FORMATS.some((f) => f === format)) throw new Error('FORMAT_UNSUPPORTED');
     if (entries.length < 8 || format === 'ROUND_ROBIN') return createRoundRobin(entries, seed);
@@ -485,6 +526,19 @@ export function generateDraw(
   }
 }
 
+/** Medal slots describe the persisted draw policy, never a change to old snapshots. */
+export function bronzeMedalCount(draw: Draw): number {
+  if (draw.algorithm !== 'custom-round-robin-v1')
+    return draw.matches.filter((m) => m.stage === 'BRONZE').length;
+  const members = draw.positions.filter((e) => e && !draw.withdrawnEntryIds?.includes(e.id)).length;
+  if (members < 3) return 0;
+  return draw.roundRobinMedals === 'TWO_BRONZE_FOR_FOUR_FIVE' &&
+    [4, 5].includes(draw.positions.filter(Boolean).length) &&
+    members >= 4
+    ? 2
+    : 1;
+}
+
 /** Only confirmed, complete categories receive placements. No fabricated bronze for formats without bronze bouts. */
 export function placements(
   draw: Draw,
@@ -492,12 +546,16 @@ export function placements(
 ): { place: number; entryId: string }[] | null {
   const rows = resolveMatches(draw, winners);
   if (rows.some((m) => !m.winnerEntryId && !m.voided)) return null;
-  if (draw.algorithm === 'custom-round-robin-v1')
-    return (
-      poolStandings(draw, winners)
-        ?.filter((r) => !draw.withdrawnEntryIds?.includes(r.entryId))
-        .map((r, i) => ({ place: i + 1, entryId: r.entryId })) ?? null
-    );
+  if (draw.algorithm === 'custom-round-robin-v1') {
+    const standings = poolStandings(draw, winners);
+    if (!standings) return null;
+    const twoBronze =
+      draw.roundRobinMedals === 'TWO_BRONZE_FOR_FOUR_FIVE' &&
+      [4, 5].includes(draw.positions.filter(Boolean).length);
+    return standings
+      .filter((r) => !draw.withdrawnEntryIds?.includes(r.entryId))
+      .map((r, i) => ({ place: twoBronze && i === 3 ? 3 : i + 1, entryId: r.entryId }));
+  }
   const final = rows.filter((m) => !m.stage || m.stage === 'MAIN').at(-1)!;
   return [
     { place: 1, entryId: final.winnerEntryId! },

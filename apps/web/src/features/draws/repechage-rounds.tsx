@@ -21,7 +21,10 @@ export function medalRounds(draw: Draw) {
           [m.white, m.blue].some((s) => 'winnerOf' in s && s.winnerOf === repechage.id),
       ),
     }));
-  return { final, semis, quarters, branches };
+  const directBronzes = draw.matches.filter(
+    (m) => m.stage === 'BRONZE' && !branches.some((b) => b.bronze?.id === m.id),
+  );
+  return { final, semis, quarters, branches, directBronzes };
 }
 export function RepechageFinal(props: Props) {
   const { text } = useLanguage();
@@ -41,7 +44,7 @@ export function RepechageFinal(props: Props) {
 }
 export function RepechageRounds(props: Props) {
   const { text } = useLanguage();
-  const { branches, semis, quarters } = medalRounds(props.draw);
+  const { branches, semis, quarters, directBronzes } = medalRounds(props.draw);
   const labels: Record<string, string> = {};
   for (const [i, m] of quarters.entries())
     labels[`loser:${m.id}`] =
@@ -58,9 +61,27 @@ export function RepechageRounds(props: Props) {
       aria-label={text('Утешение и схватки за 3-е место', 'Жұбаныш және 3-орын үшін белдесулер')}
     >
       <div className="medal-rounds-heading">
-        <h3>{text('Утешительные встречи и бронза', 'Жұбаныш белдесулері және қола')}</h3>
+        <h3>
+          {branches.length
+            ? text('Утешительные встречи и бронза', 'Жұбаныш белдесулері және қола')
+            : text('Схватки за бронзу', 'Қола үшін белдесулер')}
+        </h3>
         <span>{text('Две встречи — два третьих места', 'Екі белдесу — екі үшінші орын')}</span>
       </div>
+      {directBronzes.map((match, i) => (
+        <section className="medal-bronze" key={match.id}>
+          <h4>
+            {text('За 3-е место', '3-орын үшін')} · {branches.length + i + 1}
+          </h4>
+          <MatchList
+            {...props}
+            draw={{ ...props.draw, matches: [match] }}
+            compact
+            stageLabel={text('За 3-е место', '3-орын үшін')}
+            slotLabels={labels}
+          />
+        </section>
+      ))}
       {branches.map((b, i) => (
         <div className="medal-branch" key={b.repechage.id}>
           <section>

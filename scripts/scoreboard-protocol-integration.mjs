@@ -73,7 +73,7 @@ try {
     tatamiCount: 3,
   });
   for (const [format, count, durationSeconds] of [
-    ['ROUND_ROBIN', 7, 120],
+    ['ROUND_ROBIN', 8, 120],
     ['REPECHAGE', 9, 180],
     ['MIXED', 12, 240],
   ]) {

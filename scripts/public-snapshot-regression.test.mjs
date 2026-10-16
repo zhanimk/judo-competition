@@ -269,3 +269,25 @@ test('hidden draw state stays private while its public scoreboard/queue still re
   assert.equal(result.tatamis[0].queue.length, 2);
   assert.equal(JSON.stringify(result).includes('PRIVATE COMMAND FINGERPRINT'), false);
 });
+
+test('public information returns only the released version and requires tournament publication', async () => {
+  const secret = { description: 'PRIVATE DRAFT', imageData: 'private image' };
+  let row = { publicInformation: { draft: secret, published: null } };
+  const db = {
+    tournament: {
+      findFirst: async ({ where, select }) => {
+        assert.deepEqual(where, { id: tournamentId, publishedAt: { not: null } });
+        assert.deepEqual(select, { publicInformation: true });
+        return row;
+      },
+    },
+  };
+  const service = new PublicService(db, {});
+  assert.deepEqual(await service.information(tournamentId), { information: null });
+  row.publicInformation.published = { description: 'RELEASED' };
+  assert.deepEqual(await service.information(tournamentId), {
+    information: { description: 'RELEASED' },
+  });
+  row = null;
+  await assert.rejects(service.information(tournamentId), (error) => error.getStatus() === 404);
+});

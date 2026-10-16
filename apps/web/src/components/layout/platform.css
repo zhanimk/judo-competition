@@ -990,3 +990,39 @@
     font-size: 12px;
   }
 }
+
+.platform:not(.public-site) .tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  gap: 16px;
+}
+.platform:not(.public-site) .tabs button {
+  flex: 0 0 auto;
+  border-radius: 0;
+  font-size: 13px;
+  padding: 12px 4px;
+}
+.platform:not(.public-site) .tabs button.active {
+  border-radius: 0;
+  background: transparent;
+  border-bottom-color: #b7954e;
+  color: #203e68;
+}
+.platform:not(.public-site) .form-panel,
+.platform:not(.public-site) .panel {
+  border-radius: 12px;
+}
+.platform:not(.public-site) :is(button, input, select, textarea) {
+  border-radius: 8px;
+}
+.platform:not(.public-site) table th {
+  font-size: 11px;
+  letter-spacing: 0.4px;
+}
+.platform:not(.public-site) table td {
+  font-size: 13px;
+}
+.platform:not(.public-site) button:disabled {
+  cursor: not-allowed;
+}

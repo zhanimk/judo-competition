@@ -6,6 +6,7 @@ datasource db {
  url = env("DATABASE_URL")
 }
 model Tournament {
+ publicInformation Json?
  administrationRevision Int @default(0)
  tournamentCommands TournamentCommand[]
  protocolRevision Int @default(0)

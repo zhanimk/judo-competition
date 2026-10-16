@@ -73,7 +73,7 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
       { compact: true },
     );
   // Medal overview comes first: final above two distinct repechage -> bronze paths.
-  if (draw.matches.some((m) => m.stage === 'REPECHAGE')) {
+  if (draw.matches.some((m) => m.stage === 'BRONZE')) {
     pdf.section(
       title,
       `${subtitle} · ${text('Финал и встречи за 3-е место', 'Финал және 3-орын үшін белдесулер')}`,
@@ -100,22 +100,28 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         76,
       );
     paint(final, text('ФИНАЛ · за 1-е место', 'ФИНАЛ · 1-орын үшін'), 36, top, chartWidth);
-    for (const [i, rep] of draw.matches.filter((m) => m.stage === 'REPECHAGE').entries()) {
-      const bronze = draw.matches.find(
-        (m) => m.stage === 'BRONZE' && 'winnerOf' in m.white && m.white.winnerOf === rep.id,
-      )!;
+    for (const [i, bronze] of draw.matches.filter((m) => m.stage === 'BRONZE').entries()) {
+      const source = bronze.white;
+      const rep =
+        'winnerOf' in source
+          ? draw.matches.find((m) => m.id === source.winnerOf && m.stage === 'REPECHAGE')
+          : undefined;
       const y = top + 128 + i * 118;
-      d.strokeColor('#8999ae')
-        .lineWidth(1)
-        .moveTo(36 + cardW, y + 38)
-        .lineTo(rightX, y + 38)
-        .stroke();
-      d.moveTo(rightX - 5, y + 35)
-        .lineTo(rightX, y + 38)
-        .lineTo(rightX - 5, y + 41)
-        .stroke();
-      paint(rep, text('УТЕШЕНИЕ', 'ЖҰБАНЫШ') + ' ' + (i + 1), 36, y, cardW);
-      paint(bronze, text('ЗА 3-е МЕСТО', '3-ОРЫН ҮШІН') + ' · ' + (i + 1), rightX, y, cardW);
+      if (rep) {
+        d.strokeColor('#8999ae')
+          .lineWidth(1)
+          .moveTo(36 + cardW, y + 38)
+          .lineTo(rightX, y + 38)
+          .stroke();
+        d.moveTo(rightX - 5, y + 35)
+          .lineTo(rightX, y + 38)
+          .lineTo(rightX - 5, y + 41)
+          .stroke();
+        paint(rep, text('УТЕШЕНИЕ', 'ЖҰБАНЫШ') + ' ' + (i + 1), 36, y, cardW);
+        paint(bronze, text('ЗА 3-е МЕСТО', '3-ОРЫН ҮШІН') + ' · ' + (i + 1), rightX, y, cardW);
+      } else {
+        paint(bronze, text('ЗА 3-е МЕСТО', '3-ОРЫН ҮШІН') + ' · ' + (i + 1), 36, y, chartWidth);
+      }
     }
     paintDrawPlaces(pdf, c, 36 + chartWidth + PLACES_SIDEBAR_GAP, top - 13, PLACES_SIDEBAR_WIDTH);
   }

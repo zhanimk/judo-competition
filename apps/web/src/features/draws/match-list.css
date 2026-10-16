@@ -315,3 +315,110 @@
   font-weight: 700;
   color: #314966;
 }
+
+.pair-explanation {
+  margin: 8px 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.pair-explanation summary,
+.pair-score-details summary {
+  cursor: pointer;
+}
+.round-robin-schedule .round-tabs {
+  margin: 8px 0;
+}
+.round-robin-schedule .round-tabs button {
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+.round-robin-schedule .pair-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.round-robin-schedule .pair-card {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr) 120px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+.round-robin-schedule .pair-card > header,
+.round-robin-schedule .pair-card > footer {
+  padding: 10px;
+  border: 0;
+  align-content: center;
+  justify-content: flex-start;
+  gap: 6px;
+  font-size: 12px;
+}
+.round-robin-schedule .pair-athlete {
+  padding: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.round-robin-schedule .pair-side {
+  font-size: 10px;
+  padding: 0;
+}
+.round-robin-schedule .pair-identity strong {
+  font-size: 15px;
+}
+.round-robin-schedule .pair-score-details {
+  grid-column: 1;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .round-robin-schedule .pair-card {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .round-robin-schedule .pair-card > header,
+  .round-robin-schedule .pair-card > footer {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+    padding: 6px 10px;
+  }
+}
+
+.result-places {
+  padding: 24px;
+  border: 1px solid #d9e2ee;
+  border-top: 4px solid #ccab52;
+  border-radius: 14px;
+  background: #fff;
+}
+.result-places .round-section-heading h3 {
+  font-size: 20px;
+  color: #20314b;
+}
+.medal-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.medal-card {
+  min-width: 0;
+  padding: 18px 12px;
+  gap: 12px;
+}
+.medal-card.place-2 {
+  background: #f1f4f8;
+  border-color: #cbd5e2;
+}
+.medal-pending strong {
+  color: #8995a6;
+}
+@media (max-width: 1000px) {
+  .medal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .result-places {
+    padding: 16px;
+  }
+  .medal-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .medal-card strong {
+    font-size: 14px;
+  }
+}

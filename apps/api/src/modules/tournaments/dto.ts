@@ -38,3 +38,12 @@ export class CreateCategoryDto extends AdministrationCommandDto {
   @IsInt() @Min(30) @Max(1200) durationSeconds!: number;
 }
 export { SingleEntryCommitDto as CreateEntryDto } from '../roster/roster.dto.js';
+
+export class TournamentInformationDto extends AdministrationCommandDto {
+  @IsIn(['SAVE', 'PUBLISH', 'HIDE']) action!: 'SAVE' | 'PUBLISH' | 'HIDE';
+  @IsString() @Length(0, 5000) description!: string;
+  @IsString() @Length(0, 2000) weighing!: string;
+  @IsString() @Length(0, 500) address!: string;
+  @IsString() @Length(0, 2000) mapUrl!: string;
+  @IsString() @Length(0, 700000) imageData!: string;
+}

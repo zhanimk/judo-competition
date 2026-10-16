@@ -18,6 +18,11 @@ export class PublicController {
     private readonly service: PublicService,
     private readonly publications: ProtocolPublicationsService,
   ) {}
+  @Get(':id/information')
+  @Header('Cache-Control', 'no-store')
+  information(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.information(id);
+  }
   @Get(':id/protocols')
   @Header('Cache-Control', 'no-store')
   protocols(@Param('id', ParseUUIDPipe) id: string, @Query() query: ProtocolHistoryQuery) {

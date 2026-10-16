@@ -672,3 +672,69 @@
     width: 100%;
   }
 }
+
+.club-roster .roster-entry-actions {
+  display: block;
+  margin-top: 6px;
+}
+.club-roster .roster-entry-actions > summary {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+  color: #34577f;
+  font-size: 12px;
+  padding: 6px 0;
+  min-height: 36px;
+  list-style: none;
+}
+.club-roster .roster-entry-actions > summary::after {
+  content: '⌄';
+}
+.club-roster .roster-entry-actions[open] > summary::after {
+  transform: rotate(180deg);
+}
+.club-roster .roster-action-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #dfe6ef;
+  border-radius: 8px;
+  background: #fafbfd;
+  max-width: 560px;
+}
+.club-roster .roster-action-reason {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: #697990;
+  margin: 4px 0 0;
+}
+.club-roster .roster-lock-explanation {
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 12px 16px;
+  background: #f5f7fb;
+  border-left: 3px solid #bca16b;
+  margin: 12px 0 18px;
+  color: #50617a;
+}
+.club-roster .roster-withdraw-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  color: #8a3e32;
+  font-size: 12px;
+  min-height: 44px;
+  text-decoration: none;
+  border: 1px solid #e8d1c9;
+  border-radius: 8px;
+  background: #fff9f6;
+}
+.club-roster .roster-saved td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+#withdrawal {
+  scroll-margin-top: 24px;
+}

@@ -1,3 +1,4 @@
+import { bronzeMedalCount } from '@judo/engine/draw';
 import { categoryResults, type ProtocolCategory } from './protocol-model.js';
 import { ProtocolPdf, ink } from './pdf-document.js';
 
@@ -5,11 +6,11 @@ import { ProtocolPdf, ink } from './pdf-document.js';
 export function drawPlaces(c: ProtocolCategory) {
   const data = categoryResults(c);
   const places = data?.places;
-  const expected = data?.draw.matches.some((m) => m.stage === 'BRONZE')
-    ? [1, 2, 3, 3]
-    : data?.draw.algorithm === 'custom-round-robin-v1' && c.entries.length > 2
-      ? [1, 2, 3]
-      : [1, 2];
+  const expected = [
+    1,
+    2,
+    ...Array.from({ length: data ? bronzeMedalCount(data.draw) : 0 }, () => 3),
+  ];
   const rows = places
     ? places.filter((p) => p.place <= 3)
     : expected.map((place) => ({ place, entryId: null }));

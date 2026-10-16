@@ -1,4 +1,5 @@
 'use client';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
 import { request } from '../tournaments/api';
@@ -41,6 +42,7 @@ export function WithdrawEntry({
   onUpdated: () => void;
 }) {
   const { text } = useLanguage();
+  const requestedEntry = useSearchParams().get('withdraw');
   const [entryId, setEntryId] = useState(''),
     [reason, setReason] = useState(''),
     [impact, setImpact] = useState<Impact | null>(null);
@@ -66,9 +68,9 @@ export function WithdrawEntry({
   }, [tournamentId]);
   useEffect(() => {
     setImpact(null);
-    setEntryId('');
+    setEntryId(entries.some((entry) => entry.id === requestedEntry) ? requestedEntry! : '');
     setReason('');
-  }, [categoryId]);
+  }, [categoryId, requestedEntry]);
   useEffect(() => {
     if (!pending) return;
     const warn = (e: BeforeUnloadEvent) => {
@@ -182,7 +184,7 @@ export function WithdrawEntry({
   };
   if (!available && !pending && !storageError) return null;
   return (
-    <section className="tiebreak-review">
+    <section id="withdrawal" className="tiebreak-review">
       <h3>
         {text('Удалить участника из дальнейших встреч', 'Қатысушыны келесі белдесулерден шығару')}
       </h3>

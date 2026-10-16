@@ -1,18 +1,18 @@
 {
-  "startedAt": "2026-10-16T11:55:59.128Z",
+  "startedAt": "2026-10-16T14:53:29.934Z",
   "passed": true,
-  "output": "tmp/backups/verified-2026-10-16T11-55-59.126Z-fcf99d3b",
-  "dumpPath": "tmp/backups/verified-2026-10-16T11-55-59.126Z-fcf99d3b/database.dump",
-  "schema": "qa_rehearsal_24db930099624c16bde3a9df290c3178",
-  "verificationDatabase": "qa_restore_77ff9991ac5349aaa54577a94a6f0071",
+  "output": "tmp/backups/verified-2026-10-16T14-53-29.932Z-fa718ecd",
+  "dumpPath": "tmp/backups/verified-2026-10-16T14-53-29.932Z-fa718ecd/database.dump",
+  "schema": "qa_rehearsal_1171adb16fda4bfabbfe41bda97eae49",
+  "verificationDatabase": "qa_restore_1435e97e52e04504a54e9344810ddad3",
   "verificationDatabaseRemoved": true,
   "versions": {
     "server": "180003",
     "dump": "pg_dump (PostgreSQL) 18.3 (Postgres.app)",
     "restore": "pg_restore (PostgreSQL) 18.3 (Postgres.app)"
   },
-  "dumpBytes": 799254,
-  "dumpSha256": "33489a8e2926bb85e6bad4018f4484b54978e736286ecc2542b1e472309a74d4",
+  "dumpBytes": 809438,
+  "dumpSha256": "6d3e581a67d90999c3711daad5edc9a7d82509adfffbf1516ae4f450d99ab661",
   "tables": [
     {
       "name": "AccessCommand",
@@ -21,12 +21,12 @@
     },
     {
       "name": "Athlete",
-      "rows": 1221,
+      "rows": 1232,
       "matched": true
     },
     {
       "name": "AuditEvent",
-      "rows": 643,
+      "rows": 691,
       "matched": true
     },
     {
@@ -41,7 +41,7 @@
     },
     {
       "name": "Contest",
-      "rows": 78,
+      "rows": 85,
       "matched": true
     },
     {
@@ -56,7 +56,7 @@
     },
     {
       "name": "Entry",
-      "rows": 56,
+      "rows": 57,
       "matched": true
     },
     {
@@ -66,12 +66,12 @@
     },
     {
       "name": "LiveOutbox",
-      "rows": 585,
+      "rows": 633,
       "matched": true
     },
     {
       "name": "MatchEvent",
-      "rows": 664,
+      "rows": 721,
       "matched": true
     },
     {
@@ -86,7 +86,7 @@
     },
     {
       "name": "RosterCommand",
-      "rows": 67,
+      "rows": 68,
       "matched": true
     },
     {
@@ -116,10 +116,10 @@
     },
     {
       "name": "_prisma_migrations",
-      "rows": 17,
+      "rows": 18,
       "matched": true
     }
   ],
   "schemaStructureMatched": true,
-  "finishedAt": "2026-10-16T11:55:59.534Z"
+  "finishedAt": "2026-10-16T14:53:30.367Z"
 }

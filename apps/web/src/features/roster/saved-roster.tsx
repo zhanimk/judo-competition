@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
 import type { Tournament } from '../tournaments/types';
@@ -106,6 +107,20 @@ export function SavedRoster({
             )}
           </span>
         </p>
+        {(tournament.status !== 'DRAFT' ||
+          tournament.categories.some((category) => category.draw?.status === 'CONFIRMED')) && (
+          <p className="roster-lock-explanation" role="note">
+            {tournament.status === 'FINISHED'
+              ? text(
+                  'Турнир завершён. Доступно исправление ФИО; состав и спортивные результаты сохраняются.',
+                  'Турнир аяқталған. Аты-жөнін түзетуге болады; құрам мен спорттық нәтижелер сақталады.',
+                )
+              : text(
+                  'После подтверждения сетки клуб, категория и связь со спортсменом заблокированы. Для прекращения участия выберите «Действия → Снять с дальнейшей борьбы». История сохраняется.',
+                  'Тор расталғаннан кейін клуб, санат және спортшымен байланыс бұғатталады. Қатысуды тоқтату үшін «Әрекеттер → Келесі белдесулерден шығару» таңдаңыз. Тарих сақталады.',
+                )}
+          </p>
+        )}
         {!visible.length ? (
           <div className="roster-empty">
             <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
@@ -137,49 +152,89 @@ export function SavedRoster({
                 {visible.map((entry) => {
                   const record = savedEntry(entry, entry.category);
                   const nameRecord = savedNameEntry(entry, entry.category);
-                  const correctionDisabled = disabled || tournament.status !== 'DRAFT' || !record;
+                  const locked =
+                    tournament.status !== 'DRAFT' || entry.category.draw?.status === 'CONFIRMED';
+                  const correctionDisabled = disabled || locked || !record;
+                  const correctionReason = disabled
+                    ? text(
+                        'Сначала завершите текущее действие или проверьте уведомление выше.',
+                        'Алдымен ағымдағы әрекетті аяқтаңыз немесе жоғарыдағы хабарламаны тексеріңіз.',
+                      )
+                    : locked
+                      ? text(
+                          'Сетка подтверждена: это действие доступно только до подтверждения сетки.',
+                          'Тор расталған: бұл әрекет тор расталғанға дейін ғана қолжетімді.',
+                        )
+                      : !record
+                        ? text(
+                            'Данные заявки неполные. Обновите страницу.',
+                            'Өтінім деректері толық емес. Бетті жаңартыңыз.',
+                          )
+                        : undefined;
                   return (
                     <tr key={entry.id}>
                       <td>
                         <strong>
                           {entry.lastName} {entry.firstName}
                         </strong>
-                        <div className="roster-entry-actions">
-                          {nameRecord && canCorrectEntryName(tournament, nameRecord) && (
+                        <details className="roster-entry-actions">
+                          <summary>{text('Действия', 'Әрекеттер')}</summary>
+                          <div className="roster-action-items">
+                            {nameRecord && canCorrectEntryName(tournament, nameRecord) && (
+                              <button
+                                type="button"
+                                disabled={disabled}
+                                onClick={() => onCorrect(nameRecord, 'name')}
+                                aria-label={`${text('Исправить ФИО', 'Аты-жөнін түзету')}: ${entry.lastName} ${entry.firstName}`}
+                              >
+                                {text('Исправить ФИО', 'Аты-жөнін түзету')}
+                              </button>
+                            )}
                             <button
                               type="button"
-                              disabled={disabled}
-                              onClick={() => onCorrect(nameRecord, 'name')}
-                              aria-label={`${text('Исправить ФИО', 'Аты-жөнін түзету')}: ${entry.lastName} ${entry.firstName}`}
+                              title={correctionReason}
+                              disabled={correctionDisabled || !record?.athleteId}
+                              onClick={() => record && onCorrect(record, 'identity')}
+                              aria-label={`${text('Исправить связь со спортсменом', 'Спортшымен байланысты түзету')}: ${entry.lastName} ${entry.firstName}`}
                             >
-                              {text('Исправить ФИО', 'Аты-жөнін түзету')}
+                              {text('Связь спортсмена', 'Спортшы байланысы')}
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            disabled={correctionDisabled || !record?.athleteId}
-                            onClick={() => record && onCorrect(record, 'identity')}
-                            aria-label={`${text('Исправить связь со спортсменом', 'Спортшымен байланысты түзету')}: ${entry.lastName} ${entry.firstName}`}
-                          >
-                            {text('Связь спортсмена', 'Спортшы байланысы')}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={correctionDisabled}
-                            onClick={() => record && onCorrect(record, 'update')}
-                            aria-label={`${text('Исправить заявку', 'Өтінімді түзету')}: ${entry.lastName} ${entry.firstName}`}
-                          >
-                            {text('Изменить', 'Өзгерту')}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={correctionDisabled}
-                            onClick={() => record && onCorrect(record, 'archive')}
-                            aria-label={`${text('Исключить из состава', 'Құрамнан шығару')}: ${entry.lastName} ${entry.firstName}`}
-                          >
-                            {text('Исключить', 'Шығару')}
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              title={correctionReason}
+                              disabled={correctionDisabled}
+                              onClick={() => record && onCorrect(record, 'update')}
+                              aria-label={`${text('Исправить заявку', 'Өтінімді түзету')}: ${entry.lastName} ${entry.firstName}`}
+                            >
+                              {text('Изменить', 'Өзгерту')}
+                            </button>
+                            <button
+                              type="button"
+                              title={correctionReason}
+                              disabled={correctionDisabled}
+                              onClick={() => record && onCorrect(record, 'archive')}
+                              aria-label={`${text('Исключить из состава', 'Құрамнан шығару')}: ${entry.lastName} ${entry.firstName}`}
+                            >
+                              {text('Исключить', 'Шығару')}
+                            </button>
+                            {!disabled &&
+                              tournament.status !== 'FINISHED' &&
+                              entry.category.draw?.status === 'CONFIRMED' &&
+                              tournament.rulesSnapshot?.tieRanking === 'WINS_ONLY' &&
+                              tournament.rulesSnapshot?.tieMany === 'ADMIN_REVIEW' && (
+                                <Link
+                                  className="roster-withdraw-link"
+                                  href={`/tournaments/${tournament.id}?section=draw&category=${entry.category.id}&withdraw=${entry.id}#withdrawal`}
+                                >
+                                  {text('Снять с дальнейшей борьбы', 'Келесі белдесулерден шығару')}{' '}
+                                  ↗
+                                </Link>
+                              )}
+                            {correctionReason && (
+                              <p className="roster-action-reason">{correctionReason}</p>
+                            )}
+                          </div>
+                        </details>
                       </td>
                       <td>{entry.birthYear ?? '—'}</td>
                       <td>

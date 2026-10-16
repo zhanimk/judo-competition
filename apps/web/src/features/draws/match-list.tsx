@@ -1,4 +1,5 @@
 'use client';
+import { SpectatorMatches } from './spectator-matches';
 import { useState } from 'react';
 import type { Draw, Slot } from '@judo/engine/draw';
 import type { Entry } from '../tournaments/types';
@@ -75,12 +76,22 @@ export function MatchList({
           <small>{e?.club}</small>
           {winner && <span className="pair-winner">✓ {text('Победитель', 'Жеңімпаз')}</span>}
         </div>
-        {c?.status === 'CONFIRMED' && <ScoreSummary state={c.state} side={side} />}
+        {c?.status === 'CONFIRMED' &&
+          (roundRobin ? (
+            <details className="pair-score-details">
+              <summary>{text('Оценки', 'Бағалар')}</summary>
+              <ScoreSummary state={c.state} side={side} />
+            </details>
+          ) : (
+            <ScoreSummary state={c.state} side={side} />
+          ))}
       </div>
     );
   };
+  if (readOnly && roundRobin)
+    return <SpectatorMatches draw={draw} entries={entries} contests={contests} tatamis={tatamis} />;
   return (
-    <section className="match-schedule">
+    <section className={`match-schedule ${roundRobin ? 'round-robin-schedule' : ''}`}>
       {!compact && (
         <>
           <div className="round-section-heading">
@@ -93,22 +104,25 @@ export function MatchList({
               {draw.matches.length} {text('схваток', 'белдесу')}
             </span>
           </div>
-          <p className="field-note">
-            {draw.size === 2
-              ? text(
-                  'Два участника — одна встреча за первое место.',
-                  'Екі қатысушы — бірінші орын үшін бір белдесу.',
-                )
-              : roundRobin
+          <details className="pair-explanation">
+            <summary>{text('О формате', 'Формат туралы')}</summary>
+            <p className="field-note">
+              {draw.size === 2
                 ? text(
-                    'Основной круг: каждый с каждым, включая одноклубников. При равенстве могут назначаться дополнительные встречи.',
-                    'Негізгі айналым: клубтастарды қоса, әрқайсысы әрқайсысымен. Көрсеткіштер тең болса, қосымша белдесулер тағайындалуы мүмкін.',
+                    'Два участника — одна встреча за первое место.',
+                    'Екі қатысушы — бірінші орын үшін бір белдесу.',
                   )
-                : text(
-                    'Следующие пары заполняются после подтверждения результатов.',
-                    'Келесі жұптар нәтижелер расталғаннан кейін толтырылады.',
-                  )}
-          </p>
+                : roundRobin
+                  ? text(
+                      'Основной круг: каждый с каждым, включая одноклубников. При равенстве могут назначаться дополнительные встречи.',
+                      'Негізгі айналым: клубтастарды қоса, әрқайсысы әрқайсысымен. Көрсеткіштер тең болса, қосымша белдесулер тағайындалуы мүмкін.',
+                    )
+                  : text(
+                      'Следующие пары заполняются после подтверждения результатов.',
+                      'Келесі жұптар нәтижелер расталғаннан кейін толтырылады.',
+                    )}
+            </p>
+          </details>
         </>
       )}
       {rounds.length > 1 && (
@@ -151,13 +165,23 @@ export function MatchList({
             <article className="pair-card" key={m.id}>
               <header>
                 <strong>
-                  {(m.tieBreakRound
-                    ? text('Дополнительная встреча', 'Қосымша белдесу')
-                    : stageLabel) ??
-                    (draw.size === 2
-                      ? text('Финал', 'Финал')
-                      : `${text('Тур', 'Айналым')} ${m.round}`)}{' '}
-                  <small>· {m.id}</small>
+                  {roundRobin ? (
+                    m.tieBreakRound ? (
+                      text('Дополнительная', 'Қосымша')
+                    ) : (
+                      `№ ${draw.matches.findIndex((match) => match.id === m.id) + 1}`
+                    )
+                  ) : (
+                    <>
+                      {(m.tieBreakRound
+                        ? text('Дополнительная встреча', 'Қосымша белдесу')
+                        : stageLabel) ??
+                        (draw.size === 2
+                          ? text('Финал', 'Финал')
+                          : `${text('Тур', 'Айналым')} ${m.round}`)}{' '}
+                      <small>· {m.id}</small>
+                    </>
+                  )}
                 </strong>
                 <span
                   className={`match-badge ${done ? 'done' : c?.status === 'ACTIVE' ? 'active' : ''}`}
@@ -187,7 +211,9 @@ export function MatchList({
                 <span>
                   {mat
                     ? `Татами ${mat.number}`
-                    : text('Татами не назначено', 'Татами тағайындалмаған')}
+                    : roundRobin
+                      ? '—'
+                      : text('Татами не назначено', 'Татами тағайындалмаған')}
                 </span>
                 {done ? (
                   <strong>{resultReasonLabel(c.resultReason, locale)}</strong>
