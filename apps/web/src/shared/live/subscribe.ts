@@ -44,7 +44,8 @@ export function subscribeTournament(id: string, onNotice: (v: LiveNotice) => voi
   const socket = io(endpoint.origin, {
     path: '/api/v1/live',
     addTrailingSlash: false,
-    transports: ['websocket'],
+    // Keep cookies on the web origin when an HTTPS rewrite fronts a separate API.
+    transports: process.env.NEXT_PUBLIC_LIVE_TRANSPORT === 'polling' ? ['polling'] : ['websocket'],
     withCredentials: true,
     reconnectionDelay: 2000,
     reconnectionDelayMax: 5000,

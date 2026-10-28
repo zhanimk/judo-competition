@@ -8,6 +8,8 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+.vercel/
+Icon?
 tmp/
 output/
 .aws/

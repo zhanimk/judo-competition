@@ -72,7 +72,7 @@ export class LiveService implements OnModuleDestroy {
     const io = new Server(http, {
       path: '/api/v1/live',
       addTrailingSlash: false,
-      transports: ['websocket'],
+      transports: ['polling', 'websocket'],
       maxHttpBufferSize: 2048,
       pingInterval: 15000,
       pingTimeout: 10000,

@@ -356,3 +356,64 @@ test('Redis disconnection leaves the durable outbox unmarked for later retry', a
   assert.deepEqual(h.emitted, []);
   assert.deepEqual(h.updates, []);
 });
+
+test('polling preserves private LIVE cookie authorization and origin checks', async () => {
+  const { createServer } = await import('node:http');
+  const { io } = await import('socket.io-client');
+  const http = createServer();
+  const origin = 'https://web.example.test';
+  const owner = randomUUID();
+  const db = {
+    tournament: { findUnique: async () => ({ ownerId: owner, publishedAt: null }) },
+    liveOutbox: { findFirst: async () => null, findMany: async () => [] },
+  };
+  const auth = {
+    authenticate: async (cookie) =>
+      cookie === 'judo_session=fixture' ? { id: owner, role: 'ORGANIZER' } : null,
+  };
+  const config = {
+    origins: [origin],
+    allowedOrigin: (value) => value === origin,
+  };
+  const live = new LiveService(db, auth, config, { ready: true });
+  const sockets = [];
+  try {
+    live.attach(http);
+    await new Promise((resolve, reject) => {
+      http.once('error', reject);
+      http.listen(0, '127.0.0.1', resolve);
+    });
+    function client(cookie, requestOrigin = origin) {
+      const socket = io(`http://127.0.0.1:${http.address().port}`, {
+        path: '/api/v1/live',
+        addTrailingSlash: false,
+        transports: ['polling'],
+        auth: { tournamentId: id },
+        extraHeaders: { Origin: requestOrigin, ...(cookie ? { Cookie: cookie } : {}) },
+        autoConnect: false,
+        reconnection: false,
+        timeout: 1500,
+      });
+      sockets.push(socket);
+      return socket;
+    }
+    const authorized = client('judo_session=fixture');
+    const boundary = new Promise((resolve, reject) => {
+      authorized.once('notice', resolve);
+      authorized.once('connect_error', reject);
+    });
+    authorized.connect();
+    assert.deepEqual(await boundary, { kind: 'connected', tournamentId: id, cursor: '0' });
+    for (const socket of [client(), client('judo_session=fixture', 'https://foreign.test')]) {
+      await new Promise((resolve, reject) => {
+        socket.once('connect_error', resolve);
+        socket.once('connect', () => reject(new Error('Unauthorized polling accepted')));
+        socket.connect();
+      });
+    }
+  } finally {
+    for (const socket of sockets) socket.disconnect();
+    await live.onModuleDestroy();
+    if (http.listening) await new Promise((resolve) => http.close(resolve));
+  }
+});
