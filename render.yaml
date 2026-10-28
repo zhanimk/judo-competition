@@ -6,7 +6,7 @@ services:
     plan: free
     region: frankfurt
     buildCommand: npm ci --include=dev && npm run db:generate && npm run build -w @judo/engine && npm run build -w @judo/api
-    startCommand: node scripts/deploy-migrations.mjs && node apps/api/dist/main.js
+    startCommand: node scripts/deploy-migrations.mjs && node scripts/cloud-bootstrap-admin.mjs && node apps/api/dist/main.js
     healthCheckPath: /api/v1/health/ready
     envVars:
       - key: NODE_VERSION
