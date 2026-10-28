@@ -24,6 +24,7 @@ export class ProtocolPdf {
   private sectionTitle = '';
   private subtitle = '';
   private landscape = false;
+  private headerBottom = 0;
   private readonly generated: string;
   private readonly margins = { top: 32, bottom: 44, left: 36, right: 36 };
   constructor(
@@ -121,6 +122,7 @@ export class ProtocolPdf {
         width: this.width,
       });
     d.y += compact ? 10 : 13;
+    this.headerBottom = d.y;
   }
 
   ensure(height: number) {
@@ -264,10 +266,35 @@ export class ProtocolPdf {
         .stroke();
       d.y = y + h;
     };
-    // Keep a table heading with at least its first row, including after another section.
-    this.ensure(rowHeight(headers, true) + (rows[0] ? rowHeight(rows[0], false) : 0));
+    // Keep a table heading with its first two rows when they fit a fresh page.
+    const headingHeight = rowHeight(headers, true);
+    const openingHeight = rows.slice(0, 2).reduce((sum, r) => sum + rowHeight(r, false), 0);
+    this.ensure(
+      headingHeight +
+        (this.headerBottom + headingHeight + openingHeight <= d.page.height - 55
+          ? openingHeight
+          : rows[0]
+            ? rowHeight(rows[0], false)
+            : 0),
+    );
     row(headers, true);
-    rows.forEach((r, i) => row(r, false, i));
+    rows.forEach((r, i) => {
+      // Keep the last two rows together when a lone final row would spill.
+      if (
+        i === rows.length - 2 &&
+        d.y + rowHeight(r, false) <= d.page.height - 55 &&
+        d.y + rowHeight(r, false) + rowHeight(rows[i + 1], false) > d.page.height - 55 &&
+        this.headerBottom +
+          rowHeight(headers, true) +
+          rowHeight(r, false) +
+          rowHeight(rows[i + 1], false) <=
+          d.page.height - 55
+      ) {
+        this.page();
+        row(headers, true);
+      }
+      row(r, false, i);
+    });
     d.y += 16;
   }
   end() {

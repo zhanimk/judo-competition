@@ -44,6 +44,39 @@ function observedPdf(lang, landscape = false) {
   return { pdf, text, calls, pages, automaticPages: () => automaticPages };
 }
 
+test('RU/KK tables keep their final two participants together instead of a lone last page', async () => {
+  for (const lang of ['ru', 'kk']) {
+    const { pdf, calls, automaticPages } = observedPdf(lang);
+    // Enough room for the heading and 15 ordinary rows, but not the sixteenth.
+    pdf.doc.y = pdf.doc.page.height - 55 - 16 * 34;
+    const rows = Array.from({ length: 16 }, (_, i) => [String(i + 1), `QA-${i + 1} Әлихан`]);
+    pdf.table(['№', 'Спортшы'], rows, [0.15, 0.85]);
+    const firstCells = rows.map(([id]) => calls.find((call) => call.value === id));
+    assert.ok(firstCells.every(Boolean));
+    assert.equal(firstCells[14].page, firstCells[15].page);
+    assert.notEqual(firstCells[13].page, firstCells[14].page);
+    assert.equal(automaticPages(), 0);
+    await pdf.end();
+  }
+});
+
+test('a two-participant table moves its heading with both rows at a section boundary', async () => {
+  const { pdf, calls } = observedPdf('kk');
+  pdf.doc.y = pdf.doc.page.height - 55 - 2 * 34;
+  pdf.table(
+    ['№', 'Спортшы'],
+    [
+      ['1', 'Әлихан'],
+      ['2', 'Аслан'],
+    ],
+    [0.15, 0.85],
+  );
+  const cells = calls.filter((call) => ['Спортшы', 'Әлихан', 'Аслан'].includes(call.value));
+  assert.equal(cells.length, 3);
+  assert.equal(new Set(cells.map((cell) => cell.page)).size, 1);
+  await pdf.end();
+});
+
 test('RU/KK multiline tables move whole rows, preserve page margins and repeat their heading', async () => {
   for (const lang of ['ru', 'kk']) {
     const { pdf, text, calls, pages, automaticPages } = observedPdf(lang);
