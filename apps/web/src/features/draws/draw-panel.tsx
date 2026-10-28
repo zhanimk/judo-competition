@@ -475,11 +475,17 @@ export function DrawPanel({
                   {category.entries?.length ?? 0} {text('участников', 'қатысушы')}
                 </p>
               </div>
-              {tournament.rulesSnapshot?.drawPolicy === 'KNOCKOUT_FROM_SIX' && (
+              {['KNOCKOUT_FROM_SIX', 'TWO_FORMATS'].includes(
+                tournament.rulesSnapshot?.drawPolicy ?? '',
+              ) && (
                 <p className="field-note">
                   {text(
-                    '2–5 — круговая · 6–7 — сетка с двумя бронзами · с 8 — выбранная система',
-                    '2–5 — айналмалы · 6–7 — екі қоласы бар тор · 8-ден — таңдалған жүйе',
+                    tournament.rulesSnapshot?.drawPolicy === 'TWO_FORMATS'
+                      ? '2–5 — круговая таблица · от 6 — сетка с утешением и двумя бронзами'
+                      : '2–5 — круговая · 6–7 — сетка с двумя бронзами · с 8 — выбранная система',
+                    tournament.rulesSnapshot?.drawPolicy === 'TWO_FORMATS'
+                      ? '2–5 — айналмалы кесте · 6-дан — жұбаныш пен екі қоласы бар тор'
+                      : '2–5 — айналмалы · 6–7 — екі қоласы бар тор · 8-ден — таңдалған жүйе',
                   )}
                 </p>
               )}

@@ -1,9 +1,9 @@
-import type { BracketNode } from '@judo/engine/draw';
+import type { BracketNode, Draw } from '@judo/engine/draw';
 export { bracketNodes, type BracketNode } from '@judo/engine/draw';
 export const CARD_WIDTH = 272;
-export const CARD_HEIGHT = 164;
+export const CARD_HEIGHT = 116;
 export const COLUMN_GAP = 64;
-export const ROW_PITCH = 196;
+export const ROW_PITCH = 140;
 export const HEADER_HEIGHT = 56;
 export type BracketView = {
   startRound: number;
@@ -11,6 +11,48 @@ export type BracketView = {
   startLeaf: number;
   leafCount: number;
 };
+/** Medal branches retain the engine's sources, including direct bronze routes for 6/7. */
+export function layoutMedalBracket(draw: Draw, offsetY: number) {
+  const bronzes = draw.matches.filter((m) => m.stage === 'BRONZE');
+  const cards: (BracketNode & { x: number; y: number })[] = [];
+  const lines: { from: string; to: string; path: string }[] = [];
+  bronzes.forEach((bronze, index) => {
+    const y = offsetY + HEADER_HEIGHT + index * (ROW_PITCH + 40);
+    const repechage = draw.matches.find(
+      (m) =>
+        m.stage === 'REPECHAGE' &&
+        [bronze.white, bronze.blue].some((slot) => 'winnerOf' in slot && slot.winnerOf === m.id),
+    );
+    const node = (match: typeof bronze, x: number) => ({
+      id: match.id,
+      matchId: match.id,
+      round: match.round,
+      index,
+      leafStart: 0,
+      white: match.white,
+      blue: match.blue,
+      x,
+      y,
+    });
+    cards.push(node(bronze, CARD_WIDTH + COLUMN_GAP));
+    if (repechage) {
+      cards.push(node(repechage, 0));
+      const side = 'winnerOf' in bronze.white && bronze.white.winnerOf === repechage.id ? 0 : 1;
+      const endY = y + 22 + side * 34 + 17;
+      lines.push({
+        from: repechage.id,
+        to: bronze.id,
+        path: `M ${CARD_WIDTH} ${y + CARD_HEIGHT / 2} H ${CARD_WIDTH + COLUMN_GAP / 2} V ${endY} H ${CARD_WIDTH + COLUMN_GAP}`,
+      });
+    }
+  });
+  return {
+    cards,
+    lines,
+    height: bronzes.length ? HEADER_HEIGHT + bronzes.length * (ROW_PITCH + 40) : 0,
+    width: 2 * CARD_WIDTH + COLUMN_GAP,
+  };
+}
 export function layoutBracket(nodes: BracketNode[], view: BracketView) {
   const selected = nodes.filter(
     (n) =>

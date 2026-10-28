@@ -13,6 +13,21 @@ export async function createTestUser(db, role = 'ORGANIZER') {
   return { ...user, password };
 }
 
+/** Explicit historical v6 coverage for large circles/MIXED; never changes working tournaments. */
+export async function useLegacyV6Rules(db, tournamentId) {
+  const t = await db.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+  await db.tournament.update({
+    where: { id: tournamentId },
+    data: {
+      rulesSnapshot: {
+        ...t.rulesSnapshot,
+        version: 'custom-2026-v6',
+        drawPolicy: 'KNOCKOUT_FROM_SIX',
+      },
+    },
+  });
+}
+
 /** Historical fixtures retain v2 rules; new-policy coverage uses the normal tournament API. */
 export async function useLegacyRules(db, tournamentId) {
   const t = await db.tournament.findUniqueOrThrow({ where: { id: tournamentId } });

@@ -95,11 +95,11 @@ try {
   );
   const frozen = (await db.tournament.findUniqueOrThrow({ where: { id: tournament } }))
     .rulesSnapshot;
-  assert.equal(frozen.version, 'custom-2026-v6');
+  assert.equal(frozen.version, 'custom-2026-v7');
   assert.equal(frozen.tieRanking, 'WINS_ONLY');
   assert.equal(frozen.tieMany, 'ADMIN_REVIEW');
   assert.equal(frozen.roundRobinMedals, 'TWO_BRONZE_FOR_FOUR_FIVE');
-  assert.equal(frozen.drawPolicy, 'KNOCKOUT_FROM_SIX');
+  assert.equal(frozen.drawPolicy, 'TWO_FORMATS');
   for (const c of await db.category.findMany({
     where: { tournamentId: tournament },
     include: { _count: { select: { entries: true } } },
@@ -191,7 +191,8 @@ try {
     (n, d) => n + d.snapshot.matches.filter((m) => m.tieBreakRound).length,
     0,
   );
-  assert.equal(completed, 67 + extra);
+  // v7 normalizes the requested MIXED12 into a 12-person knockout (15 bouts).
+  assert.equal(completed, 59 + extra);
   assert.ok(shidoLoser, 'the semifinals must exercise a third-Shido loss');
   const shidoCategory = await db.category.findFirstOrThrow({
     where: { tournamentId: tournament, name: 'REPECHAGE8' },

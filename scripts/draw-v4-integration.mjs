@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { fixtureRequest } from './test-access.mjs';
-import { createTestUser } from './test-user.mjs';
+import { createTestUser, useLegacyV6Rules } from './test-user.mjs';
 import { drawProgress } from '@judo/engine/draw';
 
 // Real API + PostgreSQL only in an explicitly configured disposable rehearsal.
@@ -43,6 +43,7 @@ async function fixture(format, count, label, start = true) {
     cookie,
   );
   tournamentIds.push(tournament.id);
+  if (format === 'MIXED') await useLegacyV6Rules(db, tournament.id);
   const category = await ok(
     `/tournaments/${tournament.id}/categories`,
     {

@@ -85,7 +85,6 @@
 }
 .bracket-viewport {
   overflow: auto;
-  max-height: 760px;
   background: #f7f9fc;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -174,7 +173,7 @@
   background: #f6f9fd;
 }
 .bracket-match-heading {
-  height: 28px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -196,9 +195,9 @@
 .bracket-athlete {
   display: flex;
   align-items: center;
-  height: 49px;
+  height: 34px;
   gap: 8px;
-  padding: 5px 9px;
+  padding: 2px 9px;
   border-bottom: 1px solid #e9edf3;
 }
 .bracket-side {
@@ -253,7 +252,7 @@
   font-size: 17px;
 }
 .bracket-match-footer {
-  height: 36px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -266,7 +265,7 @@
   color: #214e91;
   font-size: 11px;
   padding: 4px 0;
-  min-height: 32px;
+  min-height: 22px;
   border: 0;
   border-radius: 0;
 }
@@ -296,6 +295,30 @@
 .bracket-widget > .field-note {
   padding: 0 18px;
 }
+.platform .bracket-medal-heading {
+  position: absolute;
+  margin: 0;
+  font-size: 14px;
+  color: #78531c;
+}
+.bracket-match.bronze {
+  border-color: #b5854d;
+}
+.bracket-lines path {
+  stroke: #566b88;
+  stroke-width: 2;
+}
+.round-matrix-cell {
+  min-width: 40px;
+  text-align: center;
+  border-left: 1px solid #dce3ec;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.round-matrix-self {
+  background: #e6ebf2;
+  color: #65748b;
+}
 @media (max-width: 760px) {
   .bracket-toolbar {
     padding: 12px;
@@ -303,9 +326,6 @@
   }
   .bracket-sections button {
     font-size: 12px;
-  }
-  .bracket-viewport {
-    max-height: 65vh;
   }
   .bracket-caption {
     font-size: 11px;

@@ -9,6 +9,23 @@ import {
 } from '../src/draw/index.ts';
 const entries = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ id: `e${i}`, clubId: `c${i % 5}` }));
+test('v7: only two formats for every size and requested legacy option; old v6 keeps explicit large circles and pools', () => {
+  for (const format of ['REPECHAGE', 'MIXED', 'ROUND_ROBIN']) {
+    for (let n = 2; n <= 128; n++) {
+      const draw = generateDraw(format, entries(n), 42, 'TWO_FORMATS');
+      assert.equal(drawFormat(draw), n <= 5 ? 'ROUND_ROBIN' : 'REPECHAGE');
+      if (n >= 6) {
+        assert.equal(draw.matches.filter((m) => m.stage === 'BRONZE').length, 2);
+        assert.equal(draw.pools, undefined);
+      }
+    }
+  }
+  assert.equal(
+    drawFormat(generateDraw('ROUND_ROBIN', entries(8), 42, 'KNOCKOUT_FROM_SIX')),
+    'ROUND_ROBIN',
+  );
+  assert.equal(drawFormat(generateDraw('MIXED', entries(12), 42, 'KNOCKOUT_FROM_SIX')), 'MIXED');
+});
 test('stored REPECHAGE_ONLY policy: 2–7 entrants retain round robin without fake bronze bouts', () => {
   for (const format of ['REPECHAGE', 'MIXED', 'ROUND_ROBIN'])
     for (let n = 2; n < 8; n++) {

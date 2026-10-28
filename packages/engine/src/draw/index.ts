@@ -497,10 +497,16 @@ export function generateDraw(
   format: string,
   entries: readonly Entry[],
   seed: number,
-  policy: 'LEGACY' | 'REPECHAGE_ONLY' | 'KNOCKOUT_FROM_SIX' = 'LEGACY',
+  policy: 'LEGACY' | 'REPECHAGE_ONLY' | 'KNOCKOUT_FROM_SIX' | 'TWO_FORMATS' = 'LEGACY',
 ): Draw {
-  if (!['LEGACY', 'REPECHAGE_ONLY', 'KNOCKOUT_FROM_SIX'].includes(policy))
+  if (!['LEGACY', 'REPECHAGE_ONLY', 'KNOCKOUT_FROM_SIX', 'TWO_FORMATS'].includes(policy))
     throw new Error('DRAW_POLICY_UNSUPPORTED');
+  if (policy === 'TWO_FORMATS') {
+    if (!NEW_DRAW_FORMATS.some((f) => f === format)) throw new Error('FORMAT_UNSUPPORTED');
+    return entries.length <= 5
+      ? createRoundRobin(entries, seed)
+      : createRepechage(entries, seed, 6);
+  }
   if (policy === 'KNOCKOUT_FROM_SIX') {
     if (!NEW_DRAW_FORMATS.some((f) => f === format)) throw new Error('FORMAT_UNSUPPORTED');
     if (entries.length <= 5 || (format === 'ROUND_ROBIN' && entries.length >= 8))

@@ -1,5 +1,5 @@
 'use client';
-import { RepechageFinal, RepechageRounds } from './repechage-rounds';
+import { RepechageRounds } from './repechage-rounds';
 import { TournamentBracket } from './tournament-bracket';
 import { MatchList } from './match-list';
 import { useLanguage } from '../../shared/i18n/provider';
@@ -20,7 +20,6 @@ export function CompetitionDraw(props: Props) {
   );
   const places = placements(draw, winners);
   const progress = drawProgress(draw, winners);
-  const groupsFirst = mixed && !progress.poolStageComplete;
   const groups = mixed && (
     <details className="draw-bottom-section" open>
       <summary>
@@ -34,13 +33,13 @@ export function CompetitionDraw(props: Props) {
             {text('Группа', 'Топ')} {pool.id} · {pool.entries.length}{' '}
             {text('участников', 'қатысушы')}
           </h3>
-          <MatchList
-            {...props}
-            draw={{ ...draw, matches: draw.matches.filter((m) => m.pool === pool.id) }}
-          />
+          <RoundStandings draw={draw} entries={entries} contests={contests} poolId={pool.id} />
           <details className="draw-bottom-section">
-            <summary>{text('Таблица', 'Кесте')}</summary>
-            <RoundStandings draw={draw} entries={entries} contests={contests} poolId={pool.id} />
+            <summary>{text('Список схваток', 'Белдесулер тізімі')}</summary>
+            <MatchList
+              {...props}
+              draw={{ ...draw, matches: draw.matches.filter((m) => m.pool === pool.id) }}
+            />
           </details>
         </section>
       ))}
@@ -48,38 +47,28 @@ export function CompetitionDraw(props: Props) {
   );
   return (
     <>
-      {groupsFirst && groups}
-      {!props.readOnly && draw.matches.some((m) => m.stage === 'BRONZE') && (
-        <RepechageFinal {...props} />
+      {round ? (
+        <RoundStandings draw={draw} entries={entries} contests={contests} />
+      ) : props.listView ? (
+        <MatchList
+          {...props}
+          draw={{ ...draw, matches: draw.matches.filter((m) => !m.stage || m.stage === 'MAIN') }}
+        />
+      ) : (
+        <TournamentBracket {...props} />
       )}
-      {(!mixed || progress.poolStageComplete) &&
-        (round || draw.size === 2 ? (
-          <MatchList {...props} />
-        ) : props.listView ? (
-          <MatchList
-            {...props}
-            draw={{ ...draw, matches: draw.matches.filter((m) => !m.stage || m.stage === 'MAIN') }}
-          />
-        ) : (
-          <TournamentBracket {...props} />
-        ))}
-      {!groupsFirst && groups}
-      {draw.matches.some((m) => m.stage === 'BRONZE') && <RepechageRounds {...props} />}
-      {!round && !mixed && draw.size > 2 && !props.listView && (
+      {groups}
+      {props.listView && draw.matches.some((m) => m.stage === 'BRONZE') && (
+        <RepechageRounds {...props} />
+      )}
+      {(round || !props.listView) && (
         <details className="draw-bottom-section">
-          <summary>{text('Все пары по турам', 'Айналымдар бойынша барлық жұптар')}</summary>
+          <summary>
+            {text('Список схваток по турам', 'Айналымдар бойынша белдесулер тізімі')}
+          </summary>
           <MatchList {...props} />
         </details>
       )}
-      {round &&
-        (props.readOnly ? (
-          <details className="draw-bottom-section">
-            <summary>{text('Таблица', 'Кесте')}</summary>
-            <RoundStandings draw={draw} entries={entries} contests={contests} />
-          </details>
-        ) : (
-          <RoundStandings draw={draw} entries={entries} contests={contests} />
-        ))}
       {progress.pendingReviews.length > 0 && (
         <p className="info-note" role="status">
           {text(

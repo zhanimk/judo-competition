@@ -3,7 +3,6 @@ import { TournamentInformationEditor } from './tournament-information-editor';
 import { subscribeTournament } from '../../shared/live/subscribe';
 import { pollSnapshots } from '../../shared/live/snapshot-poller';
 import { formatLabel } from '../draws/format-label';
-import { NEW_DRAW_FORMATS } from '@judo/engine/draw';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../../shared/i18n/provider';
@@ -505,25 +504,11 @@ export function TournamentWorkspace({ id }: { id: string }) {
                 onChange={(e) => setCategory({ ...category, durationSeconds: +e.target.value })}
               />
             </label>
-            <label>
-              {text('Система проведения', 'Өткізу жүйесі')}
-              <select
-                value={category.format}
-                onChange={(e) => setCategory({ ...category, format: e.target.value })}
-              >
-                {NEW_DRAW_FORMATS.map((format) => (
-                  <option key={format} value={format}>
-                    {formatLabel(format, locale)}
-                    {format === 'MIXED' ? text(' · с утешением', ' · жұбанышпен') : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
             <p className="field-note">
-              {t.rulesSnapshot?.drawPolicy === 'KNOCKOUT_FROM_SIX'
+              {['KNOCKOUT_FROM_SIX', 'TWO_FORMATS'].includes(t.rulesSnapshot?.drawPolicy ?? '')
                 ? text(
-                    '2–5 участников — круговая. 6–7 — сетка с двумя бронзами. С 8 — выбранная система. Проходы без соперника не считаются схватками.',
-                    '2–5 қатысушы — айналмалы жүйе. 6–7 — екі қоласы бар тор. 8-ден бастап — таңдалған жүйе. Қарсылассыз өту белдесу болып саналмайды.',
+                    'Система определяется по составу: 2–5 участников — круговая таблица; от 6 — олимпийская сетка с утешением и двумя бронзами. Проход без соперника не считается схваткой.',
+                    'Жүйе құрам бойынша анықталады: 2–5 қатысушы — айналмалы кесте; 6-дан бастап — жұбаныш пен екі қоласы бар олимпиадалық тор. Қарсылассыз өту белдесу болып саналмайды.',
                   )
                 : text(
                     '2–7 участников — круговая автоматически. От 8 — выбранная система. Олимпийская и смешанная: утешение от четвертьфинала и два третьих места. Пользовательский регламент.',

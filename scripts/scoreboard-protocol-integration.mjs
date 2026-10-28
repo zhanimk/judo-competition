@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { PrismaClient } from '@prisma/client';
 import { scoreboardScores } from '@judo/engine/match';
 import { fixtureRequest } from './test-access.mjs';
-import { createTestUser } from './test-user.mjs';
+import { createTestUser, useLegacyV6Rules } from './test-user.mjs';
 import { pdfText } from './pdf-text.mjs';
 import { appendJournalCommand } from '../apps/web/src/features/offline/journal.ts';
 import {
@@ -72,6 +72,7 @@ try {
     endDate: '2026-10-16',
     tatamiCount: 3,
   });
+  await useLegacyV6Rules(db, tournament.id);
   for (const [format, count, durationSeconds] of [
     ['ROUND_ROBIN', 8, 120],
     ['REPECHAGE', 9, 180],

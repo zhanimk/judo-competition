@@ -408,7 +408,12 @@ export class TournamentsService {
         if (current.status !== 'DRAFT')
           throw new ConflictException('Настройки турнира заблокированы');
         const policy = profile(current.rulesSnapshot).drawPolicy;
-        const format = dto.format ?? (policy ? 'REPECHAGE' : 'SINGLE_ELIMINATION');
+        if (policy && dto.format === 'SINGLE_ELIMINATION')
+          throw new BadRequestException('FORMAT_UNSUPPORTED');
+        const format =
+          policy === 'TWO_FORMATS'
+            ? 'REPECHAGE'
+            : (dto.format ?? (policy ? 'REPECHAGE' : 'SINGLE_ELIMINATION'));
         if (policy && format === 'SINGLE_ELIMINATION')
           throw new BadRequestException('FORMAT_UNSUPPORTED');
         const { id: commandId, expectedRevision, ...fields } = dto;

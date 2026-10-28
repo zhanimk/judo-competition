@@ -1,10 +1,17 @@
 'use client';
 import { resultReasonLabel } from '../live/labels';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Draw, Slot } from '@judo/engine/draw';
 import type { Entry } from '../tournaments/types';
 import { useLanguage } from '../../shared/i18n/provider';
-import { bracketNodes, layoutBracket, CARD_WIDTH, CARD_HEIGHT, COLUMN_GAP } from './bracket-layout';
+import {
+  bracketNodes,
+  layoutBracket,
+  layoutMedalBracket,
+  CARD_WIDTH,
+  CARD_HEIGHT,
+  COLUMN_GAP,
+} from './bracket-layout';
 import './bracket.css';
 type Contest = {
   state?: import('@judo/engine/match').MatchState | null;
@@ -69,7 +76,38 @@ export function TournamentBracket({
       : section === 'medals' && pools
         ? { startRound: rounds - 1, endRound: rounds, startLeaf: 0, leafCount: size }
         : { startRound: 1, endRound: rounds, startLeaf: 0, leafCount: size };
-  const layout = layoutBracket(nodes, view);
+  const mainLayout = layoutBracket(nodes, view);
+  const medals = layoutMedalBracket(draw, mainLayout.height + 24);
+  const showMedals = section === 'all' || section === 'medals';
+  const layout = {
+    cards: [
+      ...mainLayout.cards,
+      ...(showMedals
+        ? medals.cards.map((node) => {
+            const contest = contests.find((c) => c.key === node.matchId);
+            return {
+              ...node,
+              white: contest?.whiteEntryId ? { entryId: contest.whiteEntryId } : node.white,
+              blue: contest?.blueEntryId ? { entryId: contest.blueEntryId } : node.blue,
+            };
+          })
+        : []),
+    ],
+    lines: [...mainLayout.lines, ...(showMedals ? medals.lines : [])],
+    width: Math.max(mainLayout.width, showMedals && medals.cards.length ? medals.width : 0),
+    height: mainLayout.height + (showMedals && medals.cards.length ? medals.height + 24 : 0),
+  };
+  useEffect(() => {
+    const width = viewport.current?.clientWidth;
+    if (width) setScale(width < 760 ? 1 : Math.max(0.25, Math.min(1, (width - 40) / layout.width)));
+  }, [layout.width]);
+  const stage = (matchId: string | null) => draw.matches.find((m) => m.id === matchId)?.stage;
+  const cardTitle = (card: (typeof layout.cards)[number]) =>
+    stage(card.matchId) === 'BRONZE'
+      ? text('За 3-е место', '3-орын үшін')
+      : stage(card.matchId) === 'REPECHAGE'
+        ? text('Утешение', 'Жұбаныш')
+        : roundName(card.round);
   const entryMap = new Map(entries.map((e) => [e.id, e]));
   const roundName = (r: number) =>
     r === rounds
@@ -138,7 +176,12 @@ export function TournamentBracket({
         >
           {[
             ['all', text('Вся сетка', 'Толық тор')],
-            ...(pools ? ['A', 'B', 'C', 'D'].map((v) => [v, text('Группа', 'Топ') + ' ' + v]) : []),
+            ...(pools
+              ? ['A', 'B', 'C', 'D'].map((v, i) => [
+                  v,
+                  text('Часть', 'Бөлік') + ' ' + ['A1', 'A2', 'B1', 'B2'][i],
+                ])
+              : []),
             ...(pools ? [['medals', text('Финальный этап', 'Финалдық кезең')]] : []),
           ].map(([value, label]) => (
             <button
@@ -163,8 +206,8 @@ export function TournamentBracket({
           <button
             type="button"
             aria-label={text('Уменьшить', 'Кішірейту')}
-            disabled={scale <= 0.6}
-            onClick={() => setScale((v) => Math.max(0.6, Math.round((v - 0.1) * 10) / 10))}
+            disabled={scale <= 0.25}
+            onClick={() => setScale((v) => Math.max(0.25, Math.round((v - 0.1) * 10) / 10))}
           >
             −
           </button>
@@ -182,6 +225,22 @@ export function TournamentBracket({
             onClick={() => setScale((v) => Math.min(1.2, Math.round((v + 0.1) * 10) / 10))}
           >
             +
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setScale(
+                Math.max(
+                  0.25,
+                  Math.min(
+                    1,
+                    ((viewport.current?.clientWidth ?? layout.width) - 40) / layout.width,
+                  ),
+                ),
+              )
+            }
+          >
+            {text('По ширине', 'Еніне сыйдыру')}
           </button>
         </div>
       </div>
@@ -236,10 +295,15 @@ export function TournamentBracket({
                   style={{ left: i * (CARD_WIDTH + COLUMN_GAP), width: CARD_WIDTH }}
                 >
                   <span>{roundName(r)}</span>
-                  <small>{layout.cards.filter((c) => c.round === r).length}</small>
+                  <small>{mainLayout.cards.filter((c) => c.round === r).length}</small>
                 </h3>
               );
             })}
+            {showMedals && medals.cards.length > 0 && (
+              <h3 className="bracket-medal-heading" style={{ top: mainLayout.height + 24 }}>
+                {text('Утешение · два третьих места', 'Жұбаныш · екі үшінші орын')}
+              </h3>
+            )}
             <svg
               className="bracket-lines"
               width={layout.width}
@@ -256,7 +320,7 @@ export function TournamentBracket({
               return (
                 <article
                   key={c.id}
-                  className={`bracket-match ${c.round === rounds ? 'final' : ''} ${!c.matchId ? 'bye' : ''} ${selected === c.id ? 'selected' : ''}`}
+                  className={`bracket-match ${c.round === rounds && stage(c.matchId) !== 'BRONZE' && stage(c.matchId) !== 'REPECHAGE' ? 'final' : ''} ${stage(c.matchId) === 'BRONZE' ? 'bronze' : ''} ${!c.matchId ? 'bye' : ''} ${selected === c.id ? 'selected' : ''}`}
                   style={{ left: c.x, top: c.y, width: CARD_WIDTH, height: CARD_HEIGHT }}
                 >
                   <button
@@ -264,17 +328,11 @@ export function TournamentBracket({
                     className="bracket-card-main"
                     aria-pressed={selected === c.id}
                     onClick={() => setSelected((v) => (v === c.id ? null : c.id))}
-                    aria-label={`${roundName(c.round)} · ${c.id}. ${slotLabel(c.white)} / ${slotLabel(c.blue)}`}
+                    aria-label={`${cardTitle(c)} · ${c.id}. ${slotLabel(c.white)} / ${slotLabel(c.blue)}`}
                   >
                     <span className="bracket-match-heading">
                       <b>{c.matchId ?? 'BYE'}</b>
-                      <span>
-                        {c.round === rounds
-                          ? text('Финал', 'Финал')
-                          : !c.matchId
-                            ? text('Свободный проход', 'Бос өту')
-                            : text('Схватка', 'Белдесу')}
-                      </span>
+                      <span>{!c.matchId ? text('Свободный проход', 'Бос өту') : cardTitle(c)}</span>
                     </span>
                     {athlete(c.white, 'white', !c.matchId)}
                     {athlete(c.blue, 'blue', !c.matchId)}
@@ -319,7 +377,7 @@ export function TournamentBracket({
         <section className="bracket-details" aria-live="polite">
           <div>
             <strong>
-              {roundName(detail.round)} · {detail.matchId ?? 'BYE'}
+              {cardTitle(detail)} · {detail.matchId ?? 'BYE'}
             </strong>
             <button
               type="button"
@@ -334,11 +392,7 @@ export function TournamentBracket({
             return (
               <p key={i}>
                 <b>{i === 0 ? text('Белый', 'Ақ') : text('Синий', 'Көк')}: </b>
-                {e
-                  ? `${e.lastName} ${e.firstName} · ${e.club}`
-                  : slot && 'winnerOf' in slot
-                    ? `${text('Победитель', 'Жеңімпаз')} ${slot.winnerOf}`
-                    : 'BYE'}
+                {e ? `${e.lastName} ${e.firstName} · ${e.club}` : slotLabel(slot)}
               </p>
             );
           })}
@@ -347,8 +401,8 @@ export function TournamentBracket({
       {pools && group >= 0 && (
         <p className="field-note">
           {text(
-            'A–D — части одной сетки. Их победители проходят в полуфиналы: A встречается с B, C — с D.',
-            'A–D — бір тордың бөліктері. Жеңімпаздар жартылай финалға өтеді: A — B, C — D.',
+            'A1, A2, B1, B2 — части одной сетки. В полуфиналах встречаются победители A1 и A2, B1 и B2.',
+            'A1, A2, B1, B2 — бір тордың бөліктері. Жартылай финалда A1 мен A2, B1 мен B2 жеңімпаздары кездеседі.',
           )}
         </p>
       )}

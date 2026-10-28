@@ -1,12 +1,50 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createDraw, createMixed } from '@judo/engine/draw';
+import { createDraw, createMixed, generateDraw } from '@judo/engine/draw';
 import {
   bracketNodes,
   layoutBracket,
+  layoutMedalBracket,
   CARD_HEIGHT,
   CARD_WIDTH,
 } from '../src/features/draws/bracket-layout.ts';
+test('complete medal diagram retains every real repechage/bronze dependency for 6..128 entrants', () => {
+  for (let n = 6; n <= 128; n++) {
+    for (const format of ['REPECHAGE', ...(n >= 8 ? ['MIXED'] : [])]) {
+      const draw = generateDraw(
+        format,
+        Array.from({ length: n }, (_, i) => ({ id: String(i), clubId: String(i % 3) })),
+        17,
+        'KNOCKOUT_FROM_SIX',
+      );
+      const layout = layoutMedalBracket(draw, 500);
+      const expected = draw.matches.filter((m) => m.stage === 'REPECHAGE' || m.stage === 'BRONZE');
+      assert.deepEqual(layout.cards.map((c) => c.matchId).sort(), expected.map((m) => m.id).sort());
+      assert.equal(new Set(layout.cards.map((c) => c.id)).size, expected.length);
+      for (const card of layout.cards) {
+        const match = expected.find((m) => m.id === card.matchId)!;
+        assert.deepEqual(card.white, match.white);
+        assert.deepEqual(card.blue, match.blue);
+        assert.ok(card.x >= 0 && card.x + CARD_WIDTH <= layout.width);
+        assert.ok(card.y >= 500 && card.y + CARD_HEIGHT <= 500 + layout.height);
+        for (const other of layout.cards.filter((c) => c.id !== card.id))
+          assert.ok(
+            card.x + CARD_WIDTH <= other.x ||
+              other.x + CARD_WIDTH <= card.x ||
+              card.y + CARD_HEIGHT <= other.y ||
+              other.y + CARD_HEIGHT <= card.y,
+          );
+      }
+      assert.equal(layout.lines.length, expected.filter((m) => m.stage === 'REPECHAGE').length);
+      for (const line of layout.lines) {
+        const bronze = expected.find((m) => m.id === line.to)!;
+        assert.ok(
+          [bronze.white, bronze.blue].some((s) => 'winnerOf' in s && s.winnerOf === line.from),
+        );
+      }
+    }
+  }
+});
 test('2..128: bracket preserves real contests, represents BYEs and has no overlapping cards', () => {
   for (let n = 2; n <= 128; n++) {
     const draw = createDraw(

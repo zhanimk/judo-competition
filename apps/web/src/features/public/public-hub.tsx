@@ -77,18 +77,18 @@ export function PublicCatalog() {
     [error, setError] = useState(false),
     [retry, setRetry] = useState(0);
   useEffect(() => {
-    let active = true;
     setError(false);
-    request<Summary[]>('/public/tournaments')
-      .then((r) => {
-        if (active) setRows(r);
-      })
-      .catch(() => {
-        if (active) setError(true);
-      });
-    return () => {
-      active = false;
-    };
+    const poller = pollSnapshots(
+      () => request<Summary[]>('/public/tournaments'),
+      (r) => {
+        setRows(r);
+        setError(false);
+      },
+      () => setError(true),
+      5000,
+    );
+    void poller.refresh();
+    return () => poller.stop();
   }, [retry]);
   return (
     <Frame>

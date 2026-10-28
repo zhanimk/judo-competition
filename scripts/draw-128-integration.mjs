@@ -10,7 +10,7 @@ import {
 } from '../apps/api/dist/modules/protocols/protocol-model.js';
 import { drawPlaces } from '../apps/api/dist/modules/protocols/pdf-draw-places.js';
 import { fixtureControl, fixtureRequest } from './test-access.mjs';
-import { createTestUser } from './test-user.mjs';
+import { createTestUser, useLegacyV6Rules } from './test-user.mjs';
 
 // This is a scale test of actual HTTP admission/queue/final propagation.
 // Exactly 8,127 earlier results are synthetic isolated history, not HTTP bouts.
@@ -124,6 +124,7 @@ try {
     },
     cookie,
   );
+  await useLegacyV6Rules(db, tournament.id);
   const category = await ok(
     `/tournaments/${tournament.id}/categories`,
     {

@@ -32,6 +32,7 @@ export function RoundStandings({
   const medalPlaces =
     !poolId && draw.algorithm === 'custom-round-robin-v1' ? placements(draw, winners) : null;
   const order = final?.map((r) => r.entryId) ?? members;
+  const matrix = members.length <= 8;
   return (
     <section className="round-standings">
       <div className="round-section-heading">
@@ -57,8 +58,22 @@ export function RoundStandings({
         <table>
           <thead>
             <tr>
+              {matrix && <th>№</th>}
               <th>{text('Место', 'Орын')}</th>
               <th>{text('Участник / клуб', 'Қатысушы / клуб')}</th>
+              {matrix &&
+                members.map((id, index) => (
+                  <th
+                    key={id}
+                    className="round-matrix-cell"
+                    title={entries
+                      .filter((e) => e.id === id)
+                      .map((e) => `${e.lastName} ${e.firstName}`)
+                      .join('')}
+                  >
+                    {index + 1}
+                  </th>
+                ))}
               <th>{text('Схватки', 'Белдесулер')}</th>
               <th
                 title={
@@ -97,6 +112,7 @@ export function RoundStandings({
               ).length;
               return (
                 <tr key={id}>
+                  {matrix && <td>{members.indexOf(id) + 1}</td>}
                   <td>
                     <b className="standing-place">
                       {final && !draw.withdrawnEntryIds?.includes(id)
@@ -115,6 +131,41 @@ export function RoundStandings({
                     )}
                     <small>{e?.club}</small>
                   </td>
+                  {matrix &&
+                    members.map((opponent) => {
+                      const pair = matches.find(
+                        (m) =>
+                          !m.tieBreakRound &&
+                          'entryId' in m.white &&
+                          'entryId' in m.blue &&
+                          ((m.white.entryId === id && m.blue.entryId === opponent) ||
+                            (m.blue.entryId === id && m.white.entryId === opponent)),
+                      );
+                      const result = pair && confirmed.find((c) => c.key === pair.id);
+                      const self = opponent === id;
+                      const label = self
+                        ? text('Не применяется', 'Қолданылмайды')
+                        : result?.winnerEntryId
+                          ? result.winnerEntryId === id
+                            ? text('Победа', 'Жеңіс')
+                            : text('Поражение', 'Жеңіліс')
+                          : text('Не проведено', 'Өткізілмеген');
+                      return (
+                        <td
+                          key={opponent}
+                          className={`round-matrix-cell ${self ? 'round-matrix-self' : ''}`}
+                          aria-label={label}
+                        >
+                          {self
+                            ? '×'
+                            : result?.winnerEntryId
+                              ? result.winnerEntryId === id
+                                ? '1'
+                                : '0'
+                              : '—'}
+                        </td>
+                      );
+                    })}
                   <td>
                     {played} / {total}
                   </td>
