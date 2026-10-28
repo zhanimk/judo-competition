@@ -1,13 +1,12 @@
 'use client';
-import { RepechageRounds } from './repechage-rounds';
 import { TournamentBracket } from './tournament-bracket';
-import { MatchList } from './match-list';
+import { MatchTextList } from './match-text-list';
 import { useLanguage } from '../../shared/i18n/provider';
 import { ResultPlaces } from './result-places';
 import { RoundStandings } from './round-standings';
 import { placements, bronzeMedalCount, drawProgress } from '@judo/engine/draw';
 import type { ComponentProps } from 'react';
-type Props = ComponentProps<typeof TournamentBracket> & { listView?: boolean };
+type Props = ComponentProps<typeof TournamentBracket>;
 export function CompetitionDraw(props: Props) {
   const { text } = useLanguage();
   const { draw, entries, contests } = props;
@@ -34,13 +33,6 @@ export function CompetitionDraw(props: Props) {
             {text('участников', 'қатысушы')}
           </h3>
           <RoundStandings draw={draw} entries={entries} contests={contests} poolId={pool.id} />
-          <details className="draw-bottom-section">
-            <summary>{text('Список схваток', 'Белдесулер тізімі')}</summary>
-            <MatchList
-              {...props}
-              draw={{ ...draw, matches: draw.matches.filter((m) => m.pool === pool.id) }}
-            />
-          </details>
         </section>
       ))}
     </details>
@@ -49,26 +41,10 @@ export function CompetitionDraw(props: Props) {
     <>
       {round ? (
         <RoundStandings draw={draw} entries={entries} contests={contests} />
-      ) : props.listView ? (
-        <MatchList
-          {...props}
-          draw={{ ...draw, matches: draw.matches.filter((m) => !m.stage || m.stage === 'MAIN') }}
-        />
       ) : (
         <TournamentBracket {...props} />
       )}
       {groups}
-      {props.listView && draw.matches.some((m) => m.stage === 'BRONZE') && (
-        <RepechageRounds {...props} />
-      )}
-      {(round || !props.listView) && (
-        <details className="draw-bottom-section">
-          <summary>
-            {text('Список схваток по турам', 'Айналымдар бойынша белдесулер тізімі')}
-          </summary>
-          <MatchList {...props} />
-        </details>
-      )}
       {progress.pendingReviews.length > 0 && (
         <p className="info-note" role="status">
           {text(
@@ -99,6 +75,7 @@ export function CompetitionDraw(props: Props) {
         </details>
       )}
       <ResultPlaces places={places} entries={entries} bronzeSlots={bronzeMedalCount(draw)} />
+      {!props.readOnly && <MatchTextList {...props} />}
     </>
   );
 }

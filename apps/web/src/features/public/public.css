@@ -440,22 +440,7 @@
   gap: 16px;
   margin-top: 24px;
 }
-.spectator-view-switch {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 24px 0 16px;
-}
-.spectator-view-switch button {
-  color: #294b79;
-  background: #fff;
-  border: 1px solid #b9c8dd;
-}
-.spectator-view-switch button[aria-pressed='true'] {
-  color: #fff;
-  background: #203e68;
-  border-color: #203e68;
-}
+
 .public-tournaments {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));

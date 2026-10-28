@@ -148,7 +148,6 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
         requestedTab === 'protocols'
       ? requestedTab
       : 'tatamis';
-  const [drawMode, setDrawMode] = useState('bracket');
   const [t, setT] = useState<PublicTournament | null>(null),
     [error, setError] = useState(false),
     [matId, setMatId] = useState(''),
@@ -338,28 +337,7 @@ export function PublicHub({ id, resultsOnly = false }: { id: string; resultsOnly
                   </label>
                   {category?.draw ? (
                     <>
-                      {category.draw.snapshot.algorithm !== 'custom-round-robin-v1' && (
-                        <div
-                          className="spectator-view-switch"
-                          role="group"
-                          aria-label={text('Вид жеребьёвки', 'Жеребе көрінісі')}
-                        >
-                          <button
-                            aria-pressed={drawMode === 'bracket'}
-                            onClick={() => setDrawMode('bracket')}
-                          >
-                            {text('Сетка', 'Тор')}
-                          </button>
-                          <button
-                            aria-pressed={drawMode === 'list'}
-                            onClick={() => setDrawMode('list')}
-                          >
-                            {text('Список схваток', 'Белдесулер тізімі')}
-                          </button>
-                        </div>
-                      )}
                       <DrawView
-                        listView={drawMode === 'list'}
                         key={category.id}
                         draw={category.draw.snapshot}
                         entries={category.entries}

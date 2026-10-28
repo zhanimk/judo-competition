@@ -319,6 +319,21 @@
   background: #e6ebf2;
   color: #65748b;
 }
+.draw-text-list {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #dce3ec;
+  color: #52627a;
+  overflow-wrap: anywhere;
+}
+.draw-text-list ol {
+  padding-left: 24px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.draw-text-list li + li {
+  margin-top: 6px;
+}
 @media (max-width: 760px) {
   .bracket-toolbar {
     padding: 12px;
