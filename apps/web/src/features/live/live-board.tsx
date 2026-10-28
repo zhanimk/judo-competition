@@ -72,6 +72,7 @@ export function LiveBoard({
       { id: string; key: string; category: string; revision: number; blockedByRound?: boolean }[]
     >([]),
     [projection, setProjection] = useState(0);
+  const [restBlocked, setRestBlocked] = useState<{ id: string; revision: number } | null>(null);
   const received = useRef(0),
     inflight = useRef(false),
     generation = useRef(0),
@@ -106,6 +107,7 @@ export function LiveBoard({
   useEffect(() => {
     generation.current++;
     setView(null);
+    setRestBlocked(null);
     current.current = null;
     setQueue([]);
     setConnected(false);
@@ -169,6 +171,7 @@ export function LiveBoard({
     lock.current = true;
     setBusy(true);
     setError('');
+    setRestBlocked(null);
     try {
       remember(structuredClone(p));
       generation.current++;
@@ -225,6 +228,8 @@ export function LiveBoard({
             'Ағымдағы күйде әрекет қолжетімсіз.',
           ],
         };
+        if (e.message === 'REST_REQUIRED' && p.payload.type === 'START')
+          setRestBlocked({ id: p.contestId, revision: p.payload.expectedVersion });
         const m = messages[e.message];
         setError(m ? text(...m) : authMessage(e.message, locale === 'kk'));
       } else
@@ -835,6 +840,35 @@ export function LiveBoard({
                     )
                   : text('▶ Начать следующую схватку', '▶ Келесі белдесуді бастау')}
               </button>
+              {restBlocked?.id === queue[0].id && restBlocked.revision === queue[0].revision && (
+                <button
+                  disabled={disabled || queue[0].blockedByRound}
+                  onClick={() => {
+                    const next = queue[0];
+                    if (
+                      !window.confirm(
+                        text(
+                          'Пропустить отдых и начать эту схватку? Решение будет записано в историю.',
+                          'Демалысты өткізіп, осы белдесуді бастау керек пе? Шешім тарихқа жазылады.',
+                        ),
+                      )
+                    )
+                      return;
+                    void execute({
+                      contestId: next.id,
+                      payload: {
+                        id: crypto.randomUUID(),
+                        expectedVersion: next.revision,
+                        type: 'START',
+                        skipRest: true,
+                        ...lease.grant!,
+                      },
+                    });
+                  }}
+                >
+                  {text('Пропустить отдых и начать', 'Демалысты өткізіп, бастау')}
+                </button>
+              )}
             </>
           )}
         </div>

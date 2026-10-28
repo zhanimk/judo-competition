@@ -268,6 +268,8 @@ test('both public read services check visibility before reading LIVE state or qu
 test('DTO rejects incomplete scoring, time and offline commands with a validation error', async () => {
   const base = { id: randomUUID(), expectedVersion: 0, deviceId, controlGeneration };
   const invalid = [
+    { type: 'START', skipRest: 'true' },
+    { type: 'START', skipRest: null },
     { type: 'AWARD' },
     { type: 'AWARD', side: 'WHITE' },
     { type: 'HOLD' },

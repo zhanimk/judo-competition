@@ -29,7 +29,6 @@ export function PublicResults({ tournament }: { tournament: PublicTournament }) 
     <section className="public-results">
       <div className="results-banner">
         <div>
-          <p className="kicker">{text('РЕЗУЛЬТАТЫ ТУРНИРА', 'ТУРНИР НӘТИЖЕЛЕРІ')}</p>
           <h2>
             {allFinished
               ? text('Итоги всех категорий', 'Барлық санаттардың қорытындысы')
@@ -37,8 +36,8 @@ export function PublicResults({ tournament }: { tournament: PublicTournament }) 
           </h2>
           <p>
             {text(
-              'Здесь появляются итоговые места после подтверждения всех схваток категории и публикации её сетки.',
-              'Мұнда санаттың барлық белдесулері расталып, торы жарияланғаннан кейін қорытынды орындар көрсетіледі.',
+              'Места публикуются после подтверждения категории.',
+              'Орындар санат расталғаннан кейін жарияланады.',
             )}
           </p>
         </div>

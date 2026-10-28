@@ -8,6 +8,7 @@ import {
   matchRecoveryProof,
   mayRetryMatch,
   readMatchPending,
+  restoreMatchPending,
   reviewedMatchArchive,
   saveMatchPending,
   type PendingMatchCommand,
@@ -298,4 +299,24 @@ test('manual archive requires stopped proof of the original match and an explici
   assert.equal(archive.raw, raw);
   assert.equal(archive.proof.contestId, pending.contestId);
   assert.equal(archive.proof.impactToken, proof.impactToken);
+});
+
+test('rest skip survives exact retry and reload only as an explicit START flag', () => {
+  const { pending } = fixture();
+  const command = {
+    ...pending,
+    payload: { ...pending.payload, type: 'START' as const, skipRest: true },
+  };
+  const storage = memory();
+  const mat = randomUUID();
+  saveMatchPending(storage, mat, command);
+  assert.deepEqual(readMatchPending(storage, mat), command);
+  for (const payload of [
+    { ...command.payload, type: 'STOP' },
+    { ...command.payload, skipRest: 'true' },
+  ])
+    assert.throws(
+      () => restoreMatchPending(JSON.stringify({ ...command, payload })),
+      /SAVED_MATCH_INVALID/,
+    );
 });

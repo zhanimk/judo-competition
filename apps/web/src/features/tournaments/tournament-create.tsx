@@ -51,7 +51,6 @@ export function TournamentCreate() {
       </Link>
       <div className="page-heading">
         <div>
-          <p className="kicker">{text('НОВОЕ СОРЕВНОВАНИЕ', 'ЖАҢА ЖАРЫС')}</p>
           <h1>{text('Создать турнир', 'Турнир құру')}</h1>
           <p>
             {text(

@@ -10,7 +10,7 @@ import { ApiError } from '../tournaments/api.ts';
 import { validateMatchReceipt, type CommandResponse, isMatchState } from './command-response.ts';
 export type PendingMatchCommand = {
   contestId: string;
-  payload: MatchAction & { id: string; expectedVersion: number } & ControlGrant;
+  payload: MatchAction & { id: string; expectedVersion: number; skipRest?: boolean } & ControlGrant;
 };
 type MatchStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export const matchPendingKey = (tatamiId: string) => `judo.pending.${tatamiId}`;
@@ -37,6 +37,11 @@ export function restoreMatchPending(raw: string): PendingMatchCommand {
     !['START', 'STOP', 'GOLDEN', 'TOKETA', 'CONFIRM', 'AWARD', 'HOLD', 'REVOKE'].includes(
       p?.payload?.type,
     )
+  )
+    throw new Error('SAVED_MATCH_INVALID');
+  if (
+    p.payload.skipRest !== undefined &&
+    (p.payload.skipRest !== true || p.payload.type !== 'START')
   )
     throw new Error('SAVED_MATCH_INVALID');
   if (!isGrant(p.payload)) throw new Error('LEGACY_CONTROL_METADATA');

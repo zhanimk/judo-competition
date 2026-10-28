@@ -1026,3 +1026,32 @@
 .platform:not(.public-site) button:disabled {
   cursor: not-allowed;
 }
+
+/* Supporting explanations stay available without competing with daily tasks. */
+.interface-help {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.interface-help > summary {
+  width: fit-content;
+  min-height: 44px;
+  display: list-item;
+  align-content: center;
+  cursor: pointer;
+  color: #36577f;
+  font-weight: 600;
+}
+.interface-help > summary:focus-visible {
+  outline: 3px solid #c96e00;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.interface-help[open] {
+  padding-bottom: 8px;
+}
+.interface-help p {
+  max-width: 78ch;
+  margin: 8px 0;
+}

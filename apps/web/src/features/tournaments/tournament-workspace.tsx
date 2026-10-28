@@ -171,29 +171,16 @@ export function TournamentWorkspace({ id }: { id: string }) {
       </Link>
       <div className={styles.heading}>
         <div className={styles.details}>
-          <p className="kicker">{text('РАБОЧАЯ ОБЛАСТЬ ТУРНИРА', 'ТУРНИРДІҢ ЖҰМЫС КЕҢІСТІГІ')}</p>
           <h1>{t.name}</h1>
           <p className={styles.location}>
-            {t.city} · {t.venue} · {t.startDate} — {t.endDate}
+            {[
+              t.city,
+              t.venue,
+              t.startDate === t.endDate ? t.startDate : `${t.startDate} — ${t.endDate}`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </p>
-          <details className={styles.ruleDetails}>
-            <summary>{text('Регламент турнира', 'Турнир ережесі')}</summary>
-            <p className={styles.rules}>
-              {text('Регламент', 'Ереже')}: {t.rulesSnapshot?.version ?? '—'} ·{' '}
-              {t.rulesSnapshot?.approvedAt
-                ? text('Версия зафиксирована при запуске', 'Нұсқа басталған кезде бекітілді')
-                : text('Будет зафиксирован при запуске', 'Басталған кезде бекітіледі')}{' '}
-              ·{' '}
-              {t.rulesSnapshot?.tieRanking === 'WINS_ONLY'
-                ? text(
-                    'Равенство: двое — новая схватка; трое и более — решение администратора',
-                    'Теңдік: екеуі — жаңа белдесу; үш не одан көп — әкімшінің шешімі',
-                  )
-                : t.rulesSnapshot?.tieBreak === 'REMATCH'
-                  ? text('При равенстве — дополнительные встречи', 'Тең болса — қосымша белдесулер')
-                  : text('Правила прежней версии', 'Алдыңғы нұсқа ережелері')}
-            </p>
-          </details>
         </div>
         <div className={styles.actions}>
           {t.status === 'DRAFT' ? (
@@ -221,11 +208,11 @@ export function TournamentWorkspace({ id }: { id: string }) {
       <nav className="tabs" aria-label={text('Разделы турнира', 'Турнир бөлімдері')}>
         {[
           ['overview', text('Обзор', 'Шолу')],
-          ['information', text('Информация и положение', 'Ақпарат және ереже')],
+          ['information', text('О турнире', 'Турнир туралы')],
           ['categories', text('Категории', 'Санаттар')],
           ['entries', text('Участники', 'Қатысушылар')],
           ['draw', text('Жеребьёвка', 'Жеребе')],
-          ['tatamis', text('Центр татами', 'Татами орталығы')],
+          ['tatamis', text('Татами', 'Татами')],
           ['protocols', text('Протоколы', 'Хаттамалар')],
         ].map(([value, label]) => (
           <button
@@ -248,13 +235,33 @@ export function TournamentWorkspace({ id }: { id: string }) {
         </p>
       )}
       {tab === 'information' && (
-        <TournamentInformationEditor
-          id={id}
-          saveVersion={informationSaved}
-          blocked={busy || rosterPending}
-          tournamentPublished={!!t.publishedAt}
-          onSave={(data) => administration.send('INFORMATION', data)}
-        />
+        <>
+          <details className={styles.ruleDetails}>
+            <summary>{text('Регламент турнира', 'Турнир ережесі')}</summary>
+            <p className={styles.rules}>
+              {text('Регламент', 'Ереже')}: {t.rulesSnapshot?.version ?? '—'} ·{' '}
+              {t.rulesSnapshot?.approvedAt
+                ? text('Версия зафиксирована при запуске', 'Нұсқа басталған кезде бекітілді')
+                : text('Будет зафиксирован при запуске', 'Басталған кезде бекітіледі')}{' '}
+              ·{' '}
+              {t.rulesSnapshot?.tieRanking === 'WINS_ONLY'
+                ? text(
+                    'Равенство: двое — новая схватка; трое и более — решение администратора',
+                    'Теңдік: екеуі — жаңа белдесу; үш не одан көп — әкімшінің шешімі',
+                  )
+                : t.rulesSnapshot?.tieBreak === 'REMATCH'
+                  ? text('При равенстве — дополнительные встречи', 'Тең болса — қосымша белдесулер')
+                  : text('Правила прежней версии', 'Алдыңғы нұсқа ережелері')}
+            </p>
+          </details>
+          <TournamentInformationEditor
+            id={id}
+            saveVersion={informationSaved}
+            blocked={busy || rosterPending}
+            tournamentPublished={!!t.publishedAt}
+            onSave={(data) => administration.send('INFORMATION', data)}
+          />
+        </>
       )}
       {tab === 'overview' && (
         <>
@@ -262,17 +269,14 @@ export function TournamentWorkspace({ id }: { id: string }) {
             <div>
               <span>{text('Категории', 'Санаттар')}</span>
               <strong>{t.categories.length}</strong>
-              <small>{text('Возрастные и весовые группы', 'Жас және салмақ топтары')}</small>
             </div>
             <div>
               <span>{text('Участники', 'Қатысушылар')}</span>
               <strong>{entries.length}</strong>
-              <small>{text('Заявки в базе данных', 'Дерекқордағы қатысушылар')}</small>
             </div>
             <div>
               <span>{text('Татами', 'Татами')}</span>
               <strong>{t.tatamiCount}</strong>
-              <small>{text('Задано организатором', 'Ұйымдастырушы белгілеген')}</small>
             </div>
           </div>
           <section className="panel checklist">

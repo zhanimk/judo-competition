@@ -38,11 +38,12 @@ function fixture({
   recentAgo = 1000,
   restMs = 600000,
   archivedAlias = false,
+  judge = false,
 } = {}) {
   const owner = {
     id: randomUUID(),
     name: 'Administrator',
-    role: 'ORGANIZER',
+    role: judge ? 'OPERATOR' : 'ORGANIZER',
     sessionId: randomUUID(),
     tatamiId: null,
   };
@@ -52,6 +53,7 @@ function fixture({
   const otherTournament = randomUUID();
   const mat = randomUUID();
   const otherMat = randomUUID();
+  if (judge) owner.tatamiId = mat;
   const categoryId = randomUUID();
   const otherCategoryId = randomUUID();
   const athleteIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
@@ -151,8 +153,8 @@ function fixture({
       userId: owner.id,
       user: { id: owner.id, role: owner.role, name: owner.name },
       expiresAt: new Date('2099-01-01'),
-      invitationId: null,
-      tatamiId: null,
+      invitationId: judge ? randomUUID() : null,
+      tatamiId: judge ? mat : null,
     },
   };
   const locks = [];
@@ -196,6 +198,13 @@ function fixture({
     rosterCommand: { findFirst: async () => null },
     accessCommand: { findFirst: async () => null },
     session: { findUnique: async () => structuredClone(data.session) },
+    invitation: {
+      findUnique: async () => ({
+        tatamiId: mat,
+        revokedAt: null,
+        expiresAt: new Date('2099-01-01'),
+      }),
+    },
     tournament: {
       findUnique: async () => structuredClone(data.tournament),
       findUniqueOrThrow: async () => structuredClone(data.tournament),
@@ -271,6 +280,10 @@ function fixture({
             ],
     },
     tatami: {
+      findFirst: async ({ where }) =>
+        where.id === mat && where.tournamentId === tournament
+          ? structuredClone(data.grants[mat])
+          : null,
       findUnique: async ({ where }) => structuredClone(data.grants[where.id] ?? null),
       update: async ({ where, data: changes }) => {
         data.mats[where.id] = changes.status;
@@ -694,4 +707,60 @@ test('sporting finish survives confirmation and clearing the award clears finish
   await h.send(h.command({ type: 'CONFIRM' }));
   assert.equal(h.snapshot().rows[0].endedAt.getTime(), finish.getTime());
   assert.equal(provisional.state.status, 'PROVISIONAL');
+});
+
+test('explicit rest skip starts one fresh bout, keeps sporting history and returns an idempotent audited receipt', async () => {
+  const h = fixture({ foreignStatus: 'CONFIRMED', recentAgo: 1000 });
+  const before = h.snapshot().rows[1];
+  const command = h.command({ skipRest: true });
+  const result = await h.send(command);
+  assert.equal(result.state.status, 'RUNNING');
+  assert.deepEqual(h.snapshot().rows[1], before);
+  assert.equal(h.snapshot().audits[0].payload.restSkipped, true);
+  assert.equal(h.snapshot().events[0].payload.command.skipRest, true);
+  assert.deepEqual(await h.send(command), result);
+  assert.equal(h.snapshot().events.length, 1);
+  assert.equal(h.snapshot().audits.length, 1);
+  await assert.rejects(h.send({ ...command, skipRest: false }), conflict('COMMAND_ID_REUSED'));
+});
+
+test('rest skip never bypasses busy athletes, stale versions or an existing sporting reservation', async () => {
+  const busy = fixture({ foreignStatus: 'ACTIVE' });
+  await assert.rejects(
+    busy.send(busy.command({ skipRest: true })),
+    conflict('TATAMI_OR_ATHLETE_BUSY'),
+  );
+  const stale = fixture({ foreignStatus: 'CONFIRMED' });
+  await assert.rejects(
+    stale.send(stale.command({ skipRest: true, expectedVersion: 99 })),
+    conflict('VERSION_CONFLICT'),
+  );
+  for (const phase of ['READY', 'PAUSED']) {
+    const h = fixture({ phase });
+    const before = h.snapshot();
+    const command = h.command({
+      type: phase === 'READY' ? 'OFFLINE_OPEN' : 'START',
+      skipRest: true,
+    });
+    await assert.rejects(
+      h.send(command),
+      (e) => e.getStatus() === 400 && e.message === 'INVALID_REST_OVERRIDE',
+    );
+    assert.deepEqual(h.snapshot(), before);
+  }
+});
+
+test('assigned judge may skip rest without a reason; a different mat assignment is still denied', async () => {
+  const h = fixture({ judge: true, foreignStatus: 'CONFIRMED' });
+  const command = h.command({ skipRest: true });
+  assert.equal((await h.send(command)).state.status, 'RUNNING');
+  assert.equal(h.snapshot().audits[0].actorId, h.owner.id);
+  assert.equal(h.snapshot().audits[0].payload.restSkipped, true);
+  const denied = fixture({ judge: true, foreignStatus: 'CONFIRMED' });
+  denied.mutate((s) => {
+    s.session.tatamiId = randomUUID();
+  });
+  await assert.rejects(denied.send(denied.command({ skipRest: true })), (e) =>
+    [401, 403].includes(e.getStatus()),
+  );
 });

@@ -374,7 +374,6 @@ export function DrawPanel({
     <section className="draw-workspace">
       <header className="draw-section-heading">
         <div>
-          <p className="kicker">{text('ПОДГОТОВКА И ПУБЛИКАЦИЯ', 'ДАЙЫНДАУ ЖӘНЕ ЖАРИЯЛАУ')}</p>
           <h2>{text('Жеребьёвка', 'Жеребе')}</h2>
         </div>
         <ProtocolDownload tournamentId={tournament.id} categoryId={categoryId || undefined} />
@@ -475,28 +474,6 @@ export function DrawPanel({
                   {category.entries?.length ?? 0} {text('участников', 'қатысушы')}
                 </p>
               </div>
-              {['KNOCKOUT_FROM_SIX', 'TWO_FORMATS'].includes(
-                tournament.rulesSnapshot?.drawPolicy ?? '',
-              ) && (
-                <p className="field-note">
-                  {text(
-                    tournament.rulesSnapshot?.drawPolicy === 'TWO_FORMATS'
-                      ? '2–5 — круговая таблица · от 6 — сетка с утешением и двумя бронзами'
-                      : '2–5 — круговая · 6–7 — сетка с двумя бронзами · с 8 — выбранная система',
-                    tournament.rulesSnapshot?.drawPolicy === 'TWO_FORMATS'
-                      ? '2–5 — айналмалы кесте · 6-дан — жұбаныш пен екі қоласы бар тор'
-                      : '2–5 — айналмалы · 6–7 — екі қоласы бар тор · 8-ден — таңдалған жүйе',
-                  )}
-                </p>
-              )}
-              {tournament.rulesSnapshot?.drawPolicy === 'REPECHAGE_ONLY' && (
-                <p className="field-note">
-                  {text(
-                    '2–7 участников — круговая. От 8 — выбранная система; в сетках на выбывание две бронзы через утешение.',
-                    '2–7 қатысушы — айналмалы жүйе. 8-ден бастап — таңдалған жүйе; шығару торларында жұбаныш арқылы екі қола медаль.',
-                  )}
-                </p>
-              )}
               <span className="draw-mat-label">
                 {mat
                   ? `Татами ${mat.number}`
@@ -543,7 +520,9 @@ export function DrawPanel({
                     )}
                   </p>
                 )}
-                <div className="draw-actions-grid">
+                <div
+                  className={`draw-actions-grid${draw?.status === 'CONFIRMED' ? ' draw-actions-complete' : ''}`}
+                >
                   <section>
                     <span className="draw-step">01</span>
                     <h4>{text('Создать сетку', 'Тор құру')}</h4>
@@ -667,6 +646,29 @@ export function DrawPanel({
                     </details>
                     <details className="draw-bottom-section">
                       <summary>{text('Параметры жеребьёвки', 'Жеребе параметрлері')}</summary>
+                      {['KNOCKOUT_FROM_SIX', 'TWO_FORMATS'].includes(
+                        tournament.rulesSnapshot?.drawPolicy ?? '',
+                      ) && (
+                        <p className="field-note">
+                          {text(
+                            tournament.rulesSnapshot?.drawPolicy === 'TWO_FORMATS'
+                              ? '2–5 — круговая таблица · от 6 — сетка с утешением и двумя бронзами'
+                              : '2–5 — круговая · 6–7 — сетка с двумя бронзами · с 8 — выбранная система',
+                            tournament.rulesSnapshot?.drawPolicy === 'TWO_FORMATS'
+                              ? '2–5 — айналмалы кесте · 6-дан — жұбаныш пен екі қоласы бар тор'
+                              : '2–5 — айналмалы · 6–7 — екі қоласы бар тор · 8-ден — таңдалған жүйе',
+                          )}
+                        </p>
+                      )}
+                      {tournament.rulesSnapshot?.drawPolicy === 'REPECHAGE_ONLY' && (
+                        <p className="field-note">
+                          {text(
+                            '2–7 участников — круговая. От 8 — выбранная система; в сетках на выбывание две бронзы через утешение.',
+                            '2–7 қатысушы — айналмалы жүйе. 8-ден бастап — таңдалған жүйе; шығару торларында жұбаныш арқылы екі қола медаль.',
+                          )}
+                        </p>
+                      )}
+
                       <p>
                         {text(
                           'Пользовательский регламент. Соответствие IJF не проверено.',

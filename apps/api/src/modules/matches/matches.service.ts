@@ -403,6 +403,16 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         throw new ConflictException('OFFLINE_METADATA_INCOMPLETE');
       await assertTatamiControl(tx, user, tatamiId, dto);
       if (row.revision !== dto.expectedVersion) throw new ConflictException('VERSION_CONFLICT');
+      if (
+        dto.skipRest !== undefined &&
+        (typeof dto.skipRest !== 'boolean' ||
+          dto.type !== 'START' ||
+          row.state ||
+          row.status !== 'READY')
+      )
+        throw new BadRequestException('INVALID_REST_OVERRIDE');
+      if (dto.skipRest && !['SUPER_ADMIN', 'ORGANIZER', 'OPERATOR'].includes(user.role))
+        throw new ForbiddenException('FORBIDDEN');
       if (row.status === 'CONFIRMED') throw new ConflictException('RESULT_LOCKED');
       const withdrawals = (row.draw.snapshot as unknown as Draw | null)?.withdrawnEntryIds ?? [];
       if (
@@ -462,7 +472,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         // Rest starts at the server-observed sporting finish; historical bouts
         // without a finish timestamp conservatively fall back to confirmation.
         await requireAvailableAthletes(tx, row, athletes, {
-          restMs: profile(tournament.rulesSnapshot).restMs,
+          restMs: dto.skipRest ? undefined : profile(tournament.rulesSnapshot).restMs,
         });
         state = createMatch(
           matchRules(
@@ -575,7 +585,12 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
           tournamentId: access.tournamentId,
           entityId: id,
           action: 'MATCH_' + dto.type,
-          payload: json({ commandId: dto.id, revision: updated.revision, state }),
+          payload: json({
+            commandId: dto.id,
+            revision: updated.revision,
+            state,
+            ...(dto.skipRest ? { restSkipped: true } : {}),
+          }),
         },
       });
       if (confirmed) {

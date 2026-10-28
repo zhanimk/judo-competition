@@ -421,7 +421,7 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
       <div className="panel-heading">
         <div>
           <p className="kicker">{data.name}</p>
-          <h2>{text('Центральное управление', 'Орталық басқару')}</h2>
+          <h2>{text('Татами', 'Татами')}</h2>
         </div>
         <Link className="outline-link" href={`/tournaments/${tournamentId}`}>
           ← {text('Турнир', 'Турнир')}
@@ -585,12 +585,15 @@ export function ControlCenter({ tournamentId }: { tournamentId: string }) {
           );
         })}
       </div>
-      <p className="field-note">
-        {text(
-          'Время очереди — сумма основного времени готовых схваток, без пауз, отдыха и Golden Score. Неразрешённые встречи учтены в общем числе оставшихся.',
-          'Кезек уақыты — дайын белдесулердің негізгі уақытының қосындысы; үзіліс, демалыс және Golden Score кірмейді. Қатысушылары анықталмаған белдесулер жалпы қалған санға кіреді.',
-        )}
-      </p>
+      <details className="interface-help">
+        <summary>{text('Как рассчитана очередь', 'Кезек қалай есептеледі')}</summary>
+        <p className="field-note">
+          {text(
+            'Время очереди — сумма основного времени готовых схваток, без пауз, отдыха и Golden Score. Неразрешённые встречи учтены в общем числе оставшихся.',
+            'Кезек уақыты — дайын белдесулердің негізгі уақытының қосындысы; үзіліс, демалыс және Golden Score кірмейді. Қатысушылары анықталмаған белдесулер жалпы қалған санға кіреді.',
+          )}
+        </p>
+      </details>
       {review && (
         <section
           className="panel form-panel control-review"

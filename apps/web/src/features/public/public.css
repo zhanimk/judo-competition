@@ -853,6 +853,23 @@
     flex-direction: column;
     gap: 12px;
   }
+  .public-site .results-banner h2 {
+    margin: 0;
+  }
+  .public-site .results-counter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .public-site .results-counter strong {
+    font-size: 28px;
+  }
+  .public-site .results-counter strong span {
+    font-size: 18px;
+  }
+  .public-site .results-counter small {
+    font-size: 13px;
+  }
   .public-site .round-section-heading {
     align-items: start;
     flex-direction: column;

@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsUUID,
+  IsBoolean,
   IsInt,
   Min,
   IsIn,
@@ -48,6 +49,9 @@ export class OfflineEventDto {
   awardId?: string;
 }
 export class MatchCommandDto {
+  @ValidateIf((o: MatchCommandDto) => o.skipRest !== undefined)
+  @IsBoolean()
+  skipRest?: boolean;
   @IsUUID() deviceId!: string;
   @IsInt() @Min(0) @Max(Number.MAX_SAFE_INTEGER) controlGeneration!: number;
   @ValidateIf(

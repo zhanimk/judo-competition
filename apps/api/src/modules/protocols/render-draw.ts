@@ -1,8 +1,10 @@
+import { scoreboardScores, type MatchState, type Side } from '@judo/engine/match';
 import { bracketNodes, type Slot } from '@judo/engine/draw';
 import { categoryResults, slotName, type ProtocolCategory } from './protocol-model.js';
 import { ProtocolPdf, ink } from './pdf-document.js';
 import { paintDrawCard } from './pdf-draw-card.js';
-import { paintDrawPlaces, PLACES_SIDEBAR_WIDTH, PLACES_SIDEBAR_GAP } from './pdf-draw-places.js';
+import { paintDrawPlaces } from './pdf-draw-places.js';
+import { scoreLegend } from './pdf-bout-card.js';
 /** Paginate by three rounds/eight source slots, never shrink an entire 128-person bracket onto A4. */
 export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: string) {
   const text = pdf.text,
@@ -51,6 +53,12 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         : text('Завершена', 'Аяқталған')
       : text('Ожидает', 'Күтілуде');
   };
+  const scores = (id: string, side: Side) => {
+    const record = c.draw?.contests.find((m) => m.key === id);
+    if (record?.status !== 'CONFIRMED' || !record.state) return '';
+    const value = scoreboardScores(record.state as unknown as MatchState, side);
+    return `\nI ${value.IPPON} · W ${value.WAZA_ARI} · Y ${value.YUKO} · S ${value.SHIDO}`;
+  };
   const pairTable = (matches: typeof draw.matches) =>
     pdf.table(
       [
@@ -61,10 +69,10 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
       ],
       matches.map((m) => [
         `${text('Тур', 'Айналым')} ${m.round} · ${number(m.id)}`,
-        name(m.white),
-        name(m.blue),
+        name(m.white) + scores(m.id, 'WHITE'),
+        name(m.blue) + scores(m.id, 'BLUE'),
         winners[m.id]
-          ? name({ entryId: winners[m.id] })
+          ? name({ entryId: winners[m.id] }) + `\n${resultLabel(m.id)}`
           : draw.voidMatches?.includes(m.id)
             ? text('Нет участника', 'Қатысушы жоқ')
             : text('Ожидает', 'Күтілуде'),
@@ -77,11 +85,11 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
     pdf.section(
       title,
       `${subtitle} · ${text('Финал и встречи за 3-е место', 'Финал және 3-орын үшін белдесулер')}`,
-      true,
+      false,
     );
     const d = pdf.doc,
       top = d.y + 24;
-    const chartWidth = pdf.width - PLACES_SIDEBAR_WIDTH - PLACES_SIDEBAR_GAP;
+    const chartWidth = pdf.width;
     const cardW = (chartWidth - 36) / 2,
       rightX = 36 + cardW + 36;
     const final = draw.matches.filter((m) => !m.stage || m.stage === 'MAIN').at(-1)!;
@@ -97,7 +105,7 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         x,
         y,
         width,
-        76,
+        116,
       );
     paint(final, text('ФИНАЛ · за 1-е место', 'ФИНАЛ · 1-орын үшін'), 36, top, chartWidth);
     for (const [i, bronze] of draw.matches.filter((m) => m.stage === 'BRONZE').entries()) {
@@ -106,16 +114,16 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         'winnerOf' in source
           ? draw.matches.find((m) => m.id === source.winnerOf && m.stage === 'REPECHAGE')
           : undefined;
-      const y = top + 128 + i * 118;
+      const y = top + 160 + i * 158;
       if (rep) {
         d.strokeColor('#8999ae')
           .lineWidth(1)
-          .moveTo(36 + cardW, y + 38)
-          .lineTo(rightX, y + 38)
+          .moveTo(36 + cardW, y + 58)
+          .lineTo(rightX, y + 58)
           .stroke();
-        d.moveTo(rightX - 5, y + 35)
-          .lineTo(rightX, y + 38)
-          .lineTo(rightX - 5, y + 41)
+        d.moveTo(rightX - 5, y + 55)
+          .lineTo(rightX, y + 58)
+          .lineTo(rightX - 5, y + 61)
           .stroke();
         paint(rep, text('УТЕШЕНИЕ', 'ЖҰБАНЫШ') + ' ' + (i + 1), 36, y, cardW);
         paint(bronze, text('ЗА 3-е МЕСТО', '3-ОРЫН ҮШІН') + ' · ' + (i + 1), rightX, y, cardW);
@@ -123,7 +131,8 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         paint(bronze, text('ЗА 3-е МЕСТО', '3-ОРЫН ҮШІН') + ' · ' + (i + 1), 36, y, chartWidth);
       }
     }
-    paintDrawPlaces(pdf, c, 36 + chartWidth + PLACES_SIDEBAR_GAP, top - 13, PLACES_SIDEBAR_WIDTH);
+    d.y = top + 450;
+    scoreLegend(pdf);
   }
   if (draw.algorithm === 'custom-round-robin-v1' || draw.pools) {
     for (const pool of draw.pools ?? [
@@ -142,8 +151,9 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
             ),
       );
       pairTable(draw.matches.filter((m) => (pool.id ? m.pool === pool.id : true)));
-      pdf.ensure(146);
-      paintDrawPlaces(pdf, c, 36, pdf.doc.y, pdf.width, true);
+      scoreLegend(pdf);
+      pdf.ensure(400);
+      paintDrawPlaces(pdf, c, 36, pdf.doc.y, pdf.width);
     }
   }
   if (draw.algorithm !== 'custom-round-robin-v1') {
@@ -172,15 +182,16 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
       pdf.section(
         title,
         `${subtitle} · ${text('Лист сетки', 'Тор парағы')} ${pageIndex + 1}/${pages.length}`,
-        true,
+        false,
       );
       const d = pdf.doc,
         top = d.y + 20,
-        gap = 28,
-        chartWidth = pdf.width - PLACES_SIDEBAR_WIDTH - PLACES_SIDEBAR_GAP,
-        cardW = (chartWidth - gap * 2) / 3,
-        pitch = Math.min(108, (d.page.height - 82 - top) / (v.leafCount / 2 ** v.startRound)),
-        cardH = Math.min(90, pitch - 13);
+        gap = 18,
+        chartWidth = pdf.width,
+        columns = v.endRound - v.startRound + 1,
+        cardW = (chartWidth - gap * (columns - 1)) / columns,
+        pitch = Math.min(150, (d.page.height - 82 - top) / (v.leafCount / 2 ** v.startRound)),
+        cardH = Math.min(132, pitch - 18);
       const cards = nodes
         .filter(
           (n) =>
@@ -241,7 +252,7 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
           cardH,
         );
       }
-      paintDrawPlaces(pdf, c, 36 + chartWidth + PLACES_SIDEBAR_GAP, top - 25, PLACES_SIDEBAR_WIDTH);
+
       const last = cards.filter((n) => n.round === v.endRound);
       const links = last.flatMap((n) => {
         const parent = nodes.find(
@@ -257,15 +268,22 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         .fillColor('#526176')
         .text(
           links.length
-            ? pdf.safe(links.join(' · '))
+            ? pdf.safe(links.join(' · ') + ' · I: IPPON · W: WAZA-ARI · Y: YUKO · S: SHIDO')
             : text(
-                'Золотая строка: подтверждённый победитель. BYE: проход без схватки.',
-                'Алтын жол: расталған жеңімпаз. BYE: белдесусіз өту.',
+                'I: IPPON · W: WAZA-ARI · Y: YUKO · S: SHIDO. Золотая строка: победитель. BYE: без схватки.',
+                'I: IPPON · W: WAZA-ARI · Y: YUKO · S: SHIDO. Алтын жол: жеңімпаз. BYE: белдесусіз.',
               ),
           36,
           d.page.height - 62,
           { width: pdf.width, height: 20 },
         );
+      if (pageIndex === pages.length - 1) {
+        const placesY = Math.max(...cards.map((card) => card.y + cardH)) + 22;
+        if (placesY + 400 > d.page.height - 55)
+          pdf.section(title, `${subtitle} · ${text('Итоговые места', 'Қорытынды орындар')}`);
+        else d.y = placesY;
+        paintDrawPlaces(pdf, c, 36, d.y, pdf.width);
+      }
     }
   }
 }

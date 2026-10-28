@@ -47,7 +47,6 @@ export function UsersPanel() {
     <>
       <div className="page-heading">
         <div>
-          <p className="kicker">{text('УПРАВЛЕНИЕ ДОСТУПОМ', 'РҰҚСАТТАРДЫ БАСҚАРУ')}</p>
           <h1>{text('Пользователи', 'Пайдаланушылар')}</h1>
           <p>
             {text(

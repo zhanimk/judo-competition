@@ -84,3 +84,33 @@ a.publish:hover {
   font-size: 12px;
   cursor: pointer;
 }
+
+@media (min-width: 1000px) {
+  .heading {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 24px;
+    margin-bottom: 22px;
+  }
+  .actions {
+    justify-content: flex-end;
+    max-width: 340px;
+  }
+}
+.location {
+  margin-top: 8px;
+}
+.ruleDetails {
+  padding: 14px 18px;
+  margin: 0 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.ruleDetails > summary {
+  min-height: 30px;
+  align-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}

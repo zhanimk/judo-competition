@@ -157,3 +157,64 @@ test('landscape medal cells are measured using their printed numeric font', asyn
   assert.ok(digits.every((call) => call.fontSize === 13 && call.options.height >= 2 * 13));
   await pdf.end();
 });
+
+test('portrait draw pages retain every main, repechage and bronze bout, scores and complete names', async () => {
+  const { renderDraw } = await import('../apps/api/dist/modules/protocols/render-draw.js');
+  const { portraitCategory, portraitTournament } = await import('./fixtures/portrait-protocol.mjs');
+  for (const lang of ['ru', 'kk']) {
+    for (const count of [6, 7, 16, 128]) {
+      for (const finished of [false, true]) {
+        const category = portraitCategory(count, finished);
+        const text = (ru, kk) => (lang === 'kk' ? kk : ru);
+        const pdf = new ProtocolPdf(portraitTournament([category]), text, 'DRAW', lang);
+        const pages = [],
+          calls = [],
+          violations = [];
+        pdf.doc.on('pageAdded', () =>
+          pages.push({ width: pdf.doc.page.width, height: pdf.doc.page.height }),
+        );
+        const original = pdf.doc.text;
+        pdf.doc.text = function (value, x, y, options) {
+          calls.push(String(value));
+          const height = options?.width
+            ? this.heightOfString(String(value), { width: options.width })
+            : 0;
+          if (
+            String(value).includes('ТестовыйСпортсмен') ||
+            String(value).startsWith('Тестовый клуб')
+          ) {
+            if (
+              height > options.height + 0.1 ||
+              x < 36 ||
+              x + options.width > this.page.width - 35 ||
+              y + height > this.page.height - 55
+            )
+              violations.push({ value, x, y, height, options });
+          }
+          return original.call(this, value, x, y, options);
+        };
+        renderDraw(pdf, category, 'QA');
+        await pdf.end();
+        assert.ok(
+          pages.every((p) => p.width < p.height),
+          `${count}/${lang}: portrait only`,
+        );
+        assert.deepEqual(violations, [], `${count}/${lang}: no clipped names or clubs`);
+        assert.ok(pages.length > 1);
+        for (const [i] of category.draw.snapshot.matches.entries())
+          assert.ok(
+            calls.some((label) => label.includes(`№ ${i + 1} ·`)),
+            `missing bout ${i + 1}/${count}`,
+          );
+        if (finished) {
+          assert.ok(
+            calls.filter((label) => /^I \d+\s+W \d+\s+Y \d+\s+S \d+$/.test(label)).length >=
+              category.draw.snapshot.matches.length * 2,
+          );
+          for (const entry of category.entries)
+            assert.ok(calls.some((label) => label === `${entry.lastName} ${entry.firstName}`));
+        }
+      }
+    }
+  }
+});

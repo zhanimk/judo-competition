@@ -1,4 +1,5 @@
 import { ProtocolPdf, ink } from './pdf-document.js';
+import { scoreboardScores, type MatchState } from '@judo/engine/match';
 import type { BoutCard } from './pdf-bout-card.js';
 /** Print bracket: names and clubs take priority over detailed scoreboard statistics. */
 export function paintDrawCard(
@@ -27,27 +28,42 @@ export function paintDrawCard(
     d.rect(x + 1, sy + 1, 3, height / 2 - 1).fill(i ? ink.blue : '#adbac9');
     const [name, ...club] = pdf.safe(label).split('\n');
     const textWidth = width - 18;
+    const half = height / 2;
+    const state =
+      bout.record?.status === 'CONFIRMED' && bout.record.state
+        ? (bout.record.state as unknown as MatchState)
+        : null;
+    const score = state ? scoreboardScores(state, i === 0 ? 'WHITE' : 'BLUE') : null;
+    const clubText = label === 'BYE' ? pdf.text('Без схватки', 'Белдесусіз') : club.join(' ');
+    const clubHeight = 18;
+    const nameHeight = half - clubHeight - 17;
     let size = 10;
     d.font('Bold').fontSize(size);
-    const nameHeight = height / 2 - 15;
-    while (size > 8 && d.heightOfString(name, { width: textWidth }) > nameHeight) {
+    while (size > 7 && d.heightOfString(name, { width: textWidth }) > nameHeight) {
       size -= 0.5;
       d.fontSize(size);
     }
     d.fillColor(ink.navy).text(name, x + 9, sy + 3, {
       width: textWidth,
       height: nameHeight,
-      ellipsis: true,
     });
     d.font('Regular')
-      .fontSize(8)
+      .fontSize(7)
       .fillColor(ink.muted)
-      .text(
-        label === 'BYE' ? pdf.text('Без схватки', 'Белдесусіз') : club.join(' '),
-        x + 9,
-        sy + height / 2 - 12,
-        { width: textWidth, height: 11, ellipsis: true },
-      );
+      .text(clubText, x + 9, sy + half - clubHeight - 12, {
+        width: textWidth,
+        height: clubHeight,
+      });
+    if (score)
+      d.font('Bold')
+        .fontSize(7)
+        .fillColor(ink.navy)
+        .text(
+          `I ${score.IPPON}   W ${score.WAZA_ARI}   Y ${score.YUKO}   S ${score.SHIDO}`,
+          x + 9,
+          sy + half - 11,
+          { width: textWidth, height: 10 },
+        );
   }
   d.strokeColor('#acbacb')
     .lineWidth(0.5)
