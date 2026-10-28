@@ -408,20 +408,22 @@ try {
     (await call(`/tournaments/${tournament}/control/${a}/command`, stale)).body.message,
     'IMPACT_CHANGED',
   );
+  // A running descendant ticks without a revision change and invalidates the
+  // preview token. Pause it to isolate the started-descendant barrier itself.
+  await sporting(final, 'STOP');
   const blocked = await adminPayload(a, 'REOPEN');
   assert.equal(
     (await call(`/tournaments/${tournament}/control/${a}/command`, blocked)).body.message,
     'DEPENDENT_CONTESTS_STARTED',
   );
-  assert.equal(
-    (
-      await call(
-        `/tournaments/${tournament}/control/${final}/command`,
-        await adminPayload(final, 'MOVE', { tatamiId: mats[1].id }),
-      )
-    ).body.message,
-    'PAUSE_REQUIRED',
+  await sporting(final, 'START');
+  const moving = await call(
+    `/tournaments/${tournament}/control/${final}/command`,
+    await adminPayload(final, 'MOVE', { tatamiId: mats[1].id }),
   );
+  assert.equal(moving.status, 409);
+  assert.ok(['PAUSE_REQUIRED', 'IMPACT_CHANGED'].includes(moving.body.message));
+  assert.equal((await row(final)).tatamiId, mats[0].id);
   await sporting(final, 'STOP');
   await admin(final, 'MOVE', { tatamiId: mats[1].id });
   assert.equal((await row(final)).tatamiId, mats[1].id);
