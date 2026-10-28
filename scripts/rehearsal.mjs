@@ -94,6 +94,7 @@ try {
     'public-snapshot-integration',
     'control-integration',
     'formats-integration',
+    'tournament-matrix-integration',
     'scoreboard-protocol-integration',
     'rematches-integration',
     'live-integration',
@@ -114,6 +115,7 @@ try {
     if (
       [
         'auth-safety-integration',
+        'tournament-matrix-integration',
         'live-integration',
         'scoreboard-protocol-integration',
         'protocol-integration',

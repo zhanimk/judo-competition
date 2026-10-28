@@ -728,7 +728,10 @@ test('partial offline metadata remains visibly offline in the live snapshot', as
             tournament: { name: 'QA', status: 'RUNNING' },
           }),
         },
-        contest: { findFirst: async ({ where }) => (where.status === 'ACTIVE' ? row : null) },
+        contest: {
+          count: async () => 1,
+          findFirst: async ({ where }) => (where.status === 'ACTIVE' ? row : null),
+        },
       },
       {},
       {},

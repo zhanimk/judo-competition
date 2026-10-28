@@ -18,6 +18,7 @@ import { PendingMatchReview } from './pending-match-review';
 import { resultReasonLabel } from './labels';
 import { mergeCommandResponse } from './command-response';
 import { refreshParticipantNames } from './participant-names';
+import { useBoardFullscreen } from './use-board-fullscreen';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MatchState, Side, Score } from '@judo/engine/match';
 
@@ -44,6 +45,7 @@ export type View = {
   tournamentId: string;
   tournamentName: string;
   tournamentStatus: string;
+  remainingMatches?: number;
   number: number;
   currentMatch: LiveMatch | null;
   lastResult: null | { id: string; key: string; resultReason: string; winner?: Person | null };
@@ -57,6 +59,7 @@ export function LiveBoard({
   operator?: boolean;
 }) {
   const { text, locale } = useLanguage();
+  const fullscreen = useBoardFullscreen();
   const device = useTabDevice(operator);
   const lease = useControlLease(tatamiId, device.deviceId, operator);
   const [view, setView] = useState<View | null>(null),
@@ -331,7 +334,36 @@ export function LiveBoard({
     CONFIRMED: ['Результат подтверждён', 'Нәтиже расталды'],
   };
   return (
-    <section className={`workspace live-board ${operator ? 'operator-live' : ''}`}>
+    <section
+      ref={fullscreen.ref}
+      className={`workspace live-board ${operator ? 'operator-live' : ''} ${fullscreen.active ? 'live-fullscreen' : ''} ${lease.context?.control.owned ? 'live-owned' : ''}`}
+    >
+      <div className="live-screen-toolbar">
+        <div>
+          <strong>
+            {text('Татами', 'Татами')} {effectiveView?.number ?? '—'}
+          </strong>
+          {operator && (
+            <span>
+              {text('Осталось схваток на татами', 'Татамиде қалған белдесулер')}:{' '}
+              <b>{effectiveView?.remainingMatches ?? '—'}</b>
+              {m ? text(' · включая текущую', ' · ағымдағыны қоса') : ''}
+              {offline.journal
+                ? text(' · по последнему снимку сервера', ' · сервердің соңғы күйі бойынша')
+                : ''}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => void fullscreen.toggle()}
+          aria-pressed={fullscreen.active}
+        >
+          {fullscreen.active
+            ? text('Выйти из полного экрана', 'Толық экраннан шығу')
+            : text('На весь экран', 'Толық экран')}
+        </button>
+      </div>
       {operator && (
         <ControlLeasePanel
           lease={lease}
@@ -470,7 +502,7 @@ export function LiveBoard({
         </section>
       )}
       {operator && !offline.journal && m && (
-        <section className="panel offline-tools">
+        <section className="panel offline-tools offline-prepare">
           <button
             disabled={
               !connected ||
@@ -693,6 +725,7 @@ export function LiveBoard({
                   disabled={disabled}
                   onClick={() => {
                     if (
+                      fullscreen.active ||
                       window.confirm(
                         text(
                           'Подтвердить результат? Он попадёт в протокол и сетку после синхронизации с сервером.',

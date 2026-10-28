@@ -130,6 +130,10 @@ function harness() {
       },
     },
     contest: {
+      count: async () => {
+        reads.push('view.remaining');
+        return data.rows.filter((row) => row.status !== 'CONFIRMED').length;
+      },
       findFirst: async ({ where }) => {
         reads.push('view.' + where.status);
         const row = data.rows.find((row) => row.status === where.status);
@@ -175,6 +179,7 @@ function harness() {
     // Any escape to autocommit can read a later result and breaks the snapshot.
     tatami: { findUnique: async () => assert.fail('view escaped the read transaction') },
     contest: {
+      count: async () => assert.fail('remaining count escaped the read transaction'),
       findFirst: async () => assert.fail('view escaped the read transaction'),
       findMany: async () => assert.fail('queue escaped the read transaction'),
     },

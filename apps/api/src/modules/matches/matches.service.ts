@@ -267,6 +267,12 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       include: { tournament: { select: { id: true, name: true, status: true } } },
     });
     if (!mat) throw new NotFoundException('TATAMI_NOT_FOUND');
+    const remainingMatches = await db.contest.count({
+      where: {
+        status: { not: 'CONFIRMED' },
+        OR: [{ tatamiId }, { tatamiId: null, draw: { category: { homeTatamiId: tatamiId } } }],
+      },
+    });
     const row = await db.contest.findFirst({
       where: { tatamiId, status: 'ACTIVE' },
       include: {
@@ -285,6 +291,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
         tournamentId: mat.tournamentId,
         tournamentName: mat.tournament.name,
         tournamentStatus: mat.tournament.status,
+        remainingMatches,
         number: mat.number,
         currentMatch: null,
         lastResult: recent
@@ -312,6 +319,7 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
       tournamentId: mat.tournamentId,
       tournamentName: mat.tournament.name,
       tournamentStatus: mat.tournament.status,
+      remainingMatches,
       number: mat.number,
       lastResult: recent
         ? {
@@ -341,7 +349,9 @@ export class MatchesService implements OnModuleInit, OnModuleDestroy {
   }
   async publicView(tatamiId: string, cookie?: string) {
     await this.auth.viewTatami(await this.auth.authenticate(cookie), tatamiId);
-    return this.view(tatamiId);
+    return this.db.$transaction((tx) => this.view(tatamiId, tx), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    });
   }
   async command(tatamiId: string, id: string, dto: MatchCommandDto, user: Principal) {
     const access = await this.auth.control(user, tatamiId);

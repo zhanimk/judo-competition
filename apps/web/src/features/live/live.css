@@ -13,6 +13,26 @@
 .live-board .arena {
   margin: 0;
 }
+.live-screen-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.live-screen-toolbar > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  align-items: center;
+}
+.live-screen-toolbar span {
+  font-size: 13px;
+}
+.live-screen-toolbar button {
+  min-height: 40px;
+  flex-shrink: 0;
+}
 .live-board .timer-zone {
   padding: 12px;
 }
@@ -143,5 +163,222 @@
   }
   .live-board .match-recovery button {
     width: 100%;
+  }
+}
+
+.workspace.live-board.live-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  padding: clamp(6px, 1vh, 14px);
+  border-radius: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+}
+.live-board.live-fullscreen .live-screen-toolbar {
+  margin: 0;
+  flex-shrink: 0;
+}
+.live-board.live-fullscreen .live-connection {
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.live-board.live-fullscreen.live-owned .control-lease,
+.live-board.live-fullscreen .offline-prepare,
+.live-board.live-fullscreen > .field-note,
+.live-board.live-fullscreen .history {
+  display: none;
+}
+.live-board.live-fullscreen .broadcast-board {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.live-board.live-fullscreen .broadcast-board .arena-header {
+  padding: 6px 12px;
+  flex-shrink: 0;
+}
+.live-board.live-fullscreen .broadcast-board .arena-body {
+  flex: 1;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+  padding: 0;
+  min-height: 0;
+}
+.live-board.live-fullscreen .broadcast-board .arena-body > div:not(.timer-zone) {
+  min-height: 0;
+}
+.live-board.live-fullscreen .broadcast-board .athlete {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(112px, 1fr) 24px 36px;
+  border-radius: 0;
+  box-sizing: border-box;
+}
+.live-board.live-fullscreen .broadcast-board .athlete-main {
+  grid-column: 1 / -1;
+  min-height: 0;
+}
+.live-board.live-fullscreen .broadcast-board .scores {
+  padding: 4px 10px 4px 0;
+}
+.live-board.live-fullscreen .broadcast-board .identity h2 {
+  font-size: clamp(22px, 3.5vh, 48px);
+}
+.live-board.live-fullscreen .broadcast-board .score strong {
+  font-size: clamp(36px, 7vh, 86px);
+}
+.live-board.live-fullscreen .broadcast-board .score-add {
+  min-height: clamp(66px, 11vh, 140px);
+  flex: 1;
+}
+.live-board.live-fullscreen .broadcast-board .score-remove {
+  min-height: 28px;
+}
+.live-board.live-fullscreen .broadcast-board .osaekomi,
+.live-board.live-fullscreen .broadcast-board .osaekomi.active {
+  height: 24px;
+  flex-shrink: 0;
+}
+.live-board.live-fullscreen .broadcast-board .hold-thresholds {
+  padding: 0 10px;
+  min-height: 20px;
+}
+.live-board.live-fullscreen .broadcast-board .athlete-controls {
+  padding: 2px 10px;
+}
+.live-board.live-fullscreen .broadcast-board .athlete-controls button {
+  min-height: 32px;
+}
+@media (max-width: 600px) {
+  .live-board.live-fullscreen .broadcast-board .athlete {
+    height: auto;
+    grid-template-rows: auto 24px 36px;
+  }
+  .live-board.live-fullscreen .live-screen-toolbar {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px;
+  }
+  .live-board.live-fullscreen .live-screen-toolbar span {
+    font-size: 11px;
+  }
+  .live-board.live-fullscreen .live-screen-toolbar button {
+    max-width: 120px;
+    white-space: normal;
+    font-size: 11px;
+    padding: 4px 6px;
+  }
+  .live-board.live-fullscreen .broadcast-board .hold-thresholds {
+    grid-column: 1;
+  }
+  .live-board.live-fullscreen .broadcast-board .athlete-controls {
+    grid-column: 2;
+    padding: 2px;
+  }
+  .live-board.live-fullscreen .broadcast-board .athlete-controls button {
+    font-size: 10px;
+    padding: 2px;
+  }
+  .live-board.live-fullscreen .broadcast-board .identity {
+    padding: 4px 8px;
+  }
+  .live-board.live-fullscreen .broadcast-board .identity h2 {
+    font-size: 20px;
+  }
+  .live-board.live-fullscreen .broadcast-board .identity p {
+    margin: 2px 0;
+    font-size: 10px;
+  }
+  .live-board.live-fullscreen .broadcast-board .country-mark {
+    padding: 4px;
+  }
+  .live-board.live-fullscreen .broadcast-board .scores {
+    padding: 2px 4px;
+  }
+  .live-board.live-fullscreen .broadcast-board .score-add {
+    min-height: 66px;
+    padding: 2px;
+  }
+  .live-board.live-fullscreen .broadcast-board .score strong {
+    font-size: 36px;
+  }
+  .live-board.live-fullscreen .broadcast-board .score-remove {
+    min-height: 28px;
+    padding: 2px;
+  }
+  .live-board.live-fullscreen .broadcast-board .hold-thresholds {
+    padding: 0 2px;
+    gap: 0;
+  }
+  .live-board.live-fullscreen .broadcast-board .hold-thresholds > span:first-child {
+    display: none;
+  }
+  .live-board.live-fullscreen .broadcast-board .hold-thresholds > span {
+    padding: 0 2px;
+  }
+  .live-board.live-fullscreen .broadcast-board .timer {
+    font-size: 56px;
+  }
+}
+.live-board.live-fullscreen .broadcast-board .timer-zone {
+  padding: 6px 12px;
+}
+.live-board.live-fullscreen .broadcast-board .timer {
+  font-size: clamp(56px, 10vh, 128px);
+}
+.live-board.live-fullscreen .result {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 10px 16px;
+}
+.live-board.live-fullscreen .result h2 {
+  font-size: clamp(20px, 3vh, 36px);
+}
+.live-board.live-fullscreen .result p {
+  margin: 2px 0;
+}
+.live-board.live-fullscreen .result button,
+.live-board.live-fullscreen .live-wait button {
+  min-height: 48px;
+  font-size: 18px;
+}
+.live-board.live-fullscreen .live-wait {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+@media (min-width: 760px) and (min-height: 650px) {
+  .live-board.live-fullscreen .broadcast-board {
+    flex: 1 1 0;
+  }
+}
+@media (max-width: 600px) {
+  .workspace.live-board.live-fullscreen {
+    padding: 4px;
+    gap: 4px;
+  }
+
+  .live-screen-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .live-screen-toolbar > div {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
