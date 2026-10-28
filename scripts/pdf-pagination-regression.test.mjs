@@ -218,3 +218,48 @@ test('portrait draw pages retain every main, repechage and bronze bout, scores a
     }
   }
 });
+
+test('round-robin PDF uses the website opponent matrix and withholds unfinished places', async () => {
+  const { portraitCategory, portraitTournament } = await import('./fixtures/portrait-protocol.mjs');
+  const { paintRoundMatrix } =
+    await import('../apps/api/dist/modules/protocols/pdf-round-matrix.js');
+  for (const lang of ['ru', 'kk'])
+    for (const finished of [false, true]) {
+      const category = portraitCategory(2, finished);
+      const text = (ru, kk) => (lang === 'kk' ? kk : ru);
+      const pdf = new ProtocolPdf(portraitTournament([category]), text, 'QA', lang);
+      pdf.section('QA');
+      const tables = [];
+      const original = pdf.table.bind(pdf);
+      pdf.table = (head, rows, widths, options) => {
+        tables.push({ head, rows });
+        return original(head, rows, widths, options);
+      };
+      paintRoundMatrix(pdf, category);
+      assert.equal(tables.length, 1);
+      const { head, rows } = tables[0];
+      assert.deepEqual(head.slice(3, 5), ['1', '2']);
+      assert.equal(rows.length, 2);
+      for (const row of rows) {
+        assert.ok(row[2].includes('ТестовыйСпортсмен'));
+        assert.ok(row[2].includes('Тестовый клуб'));
+        const number = Number(row[0]);
+        assert.equal(row[2 + number], '×');
+        if (!finished) {
+          assert.equal(row[1], '—');
+          assert.equal(row[number === 1 ? 4 : 3], '—');
+        }
+      }
+      if (finished) {
+        assert.deepEqual(
+          rows.map((r) => r[1]),
+          ['1', '2'],
+        );
+        assert.equal(rows[0][Number(rows[1][0]) + 2], '1');
+        assert.equal(rows[1][Number(rows[0][0]) + 2], '0');
+        assert.equal(rows[0].at(-2), '1');
+        assert.equal(rows[1].at(-1), '1');
+      }
+      await pdf.end();
+    }
+});

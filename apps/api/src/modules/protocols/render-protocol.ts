@@ -182,21 +182,7 @@ export function renderProtocol(
           `${text(...titles[k])} · ${c.name}`,
           `${c.birthYearFrom}-${c.birthYearTo} · ${t.startDate} · ${t.venue}`,
         );
-        pdf.metrics([
-          { label: text('Участников', 'Қатысушылар'), value: c.entries.length },
-          {
-            label: text('Клубов', 'Клубтар'),
-            value: new Set(
-              c.entries.map((e) =>
-                e.club.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru'),
-              ),
-            ).size,
-          },
-          {
-            label: text('Годы рождения', 'Туған жылдары'),
-            value: `${c.birthYearFrom}-${c.birthYearTo}`,
-          },
-        ]);
+        pdf.line(`${c.entries.length} ${text('участников', 'қатысушы')}`);
         pdf.table(
           [
             '№',

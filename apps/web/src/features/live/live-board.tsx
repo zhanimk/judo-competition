@@ -18,6 +18,7 @@ import { PendingMatchReview } from './pending-match-review';
 import { resultReasonLabel } from './labels';
 import { mergeCommandResponse } from './command-response';
 import { refreshParticipantNames } from './participant-names';
+import type { QueueItem } from '../tatamis/queue-view';
 import { useBoardFullscreen } from './use-board-fullscreen';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MatchState, Side, Score } from '@judo/engine/match';
@@ -66,27 +67,31 @@ export function LiveBoard({
     [connected, setConnected] = useState(false),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
+    [startingMatch, setStartingMatch] = useState<string | null>(null),
     [pending, setPending] = useState<PendingMatchCommand | null>(null),
     [pendingInvalid, setPendingInvalid] = useState(''),
-    [queue, setQueue] = useState<
-      { id: string; key: string; category: string; revision: number; blockedByRound?: boolean }[]
-    >([]),
+    [queue, setQueue] = useState<(QueueItem & { revision: number })[]>([]),
     [projection, setProjection] = useState(0);
   const [restBlocked, setRestBlocked] = useState<{ id: string; revision: number } | null>(null);
   const received = useRef(0),
     inflight = useRef(false),
+    reloadRequested = useRef(false),
     generation = useRef(0),
     lock = useRef(false),
     current = useRef<View | null>(null);
   const key = `judo.pending.${tatamiId}`;
-  const load = useCallback(async () => {
-    if (inflight.current) return;
+  const load = useCallback(async (): Promise<void> => {
+    if (inflight.current) {
+      reloadRequested.current = true;
+      return;
+    }
     inflight.current = true;
     const gen = generation.current;
     try {
       const v = await request<View>(`/tatamis/${tatamiId}/live`);
       if (gen !== generation.current) return;
       setView(v);
+      if (v.currentMatch || v.tournamentStatus === 'FINISHED') setStartingMatch(null);
       current.current = v;
       received.current = performance.now();
       setProjection(0);
@@ -102,12 +107,17 @@ export function LiveBoard({
       }
     } finally {
       inflight.current = false;
+      if (reloadRequested.current) {
+        reloadRequested.current = false;
+        void load();
+      }
     }
   }, [tatamiId, operator]);
   useEffect(() => {
     generation.current++;
     setView(null);
     setRestBlocked(null);
+    setStartingMatch(null);
     current.current = null;
     setQueue([]);
     setConnected(false);
@@ -170,6 +180,7 @@ export function LiveBoard({
     }
     lock.current = true;
     setBusy(true);
+    if (p.payload.type === 'START') setStartingMatch(p.contestId);
     setError('');
     setRestBlocked(null);
     try {
@@ -192,6 +203,7 @@ export function LiveBoard({
       await load();
     } catch (e) {
       if (e instanceof ApiError && e.status < 500) {
+        setStartingMatch(null);
         if (!isUnknownMatchFailure(e)) remember(null);
         const messages: Record<string, [string, string]> = {
           VERSION_CONFLICT: [
@@ -328,6 +340,7 @@ export function LiveBoard({
           lease.corrupt ||
           !!pendingInvalid)) ||
       busy ||
+      !!startingMatch ||
       !!pending ||
       !connected;
   const winner = s?.outcome ? (s.outcome.winner === 'WHITE' ? m?.white : m?.blue) : null;
@@ -350,9 +363,7 @@ export function LiveBoard({
           </strong>
           {operator && (
             <span>
-              {text('Осталось схваток на татами', 'Татамиде қалған белдесулер')}:{' '}
-              <b>{effectiveView?.remainingMatches ?? '—'}</b>
-              {m ? text(' · включая текущую', ' · ағымдағыны қоса') : ''}
+              {text('Осталось', 'Қалды')}: <b>{effectiveView?.remainingMatches ?? '—'}</b>
               {offline.journal
                 ? text(' · по последнему снимку сервера', ' · сервердің соңғы күйі бойынша')
                 : ''}
@@ -392,7 +403,6 @@ export function LiveBoard({
                   'Нет связи — показано последнее состояние',
                   'Байланыс жоқ — соңғы күй көрсетілген',
                 )}{' '}
-        · {text('Татами', 'Татами')} {effectiveView?.number ?? '—'}
       </div>
       {operator && !offline.journal && offline.error && (
         <p className="error" role="alert">
@@ -789,12 +799,19 @@ export function LiveBoard({
         </>
       ) : (
         <div className="live-wait">
-          <h2>{text('Ожидание следующей схватки', 'Келесі белдесуді күту')}</h2>
+          <h2>
+            {view?.tournamentStatus === 'FINISHED'
+              ? text('Турнир завершён', 'Турнир аяқталды')
+              : busy || !!startingMatch || pending?.payload.type === 'START'
+                ? text('Загружаем схватку…', 'Белдесу жүктелуде…')
+                : queue[0] && operator
+                  ? text('Следующая схватка', 'Келесі белдесу')
+                  : text('Ожидание следующей схватки', 'Келесі белдесуді күту')}
+          </h2>
           {view?.lastResult && (
             <p>
-              {text('Последняя схватка', 'Соңғы белдесу')}:{' '}
-              {operator && <>{view.lastResult.key} · </>}
-              {view.lastResult.winner?.lastName} {view.lastResult.winner?.firstName} ·{' '}
+              {text('Последняя схватка', 'Соңғы белдесу')}: {view.lastResult.winner?.lastName}{' '}
+              {view.lastResult.winner?.firstName} ·{' '}
               {resultReasonLabel(view.lastResult.resultReason, locale)}
             </p>
           )}
@@ -816,10 +833,23 @@ export function LiveBoard({
           )}
           {operator && queue[0] && view?.tournamentStatus === 'RUNNING' && (
             <>
-              <p>
-                {queue[0].category} · {queue[0].key}
-              </p>
+              <p>{queue[0].category}</p>
+              <div className="next-match-athletes">
+                <div>
+                  <span>{text('Белый', 'Ақ')}</span>
+                  <strong>
+                    {queue[0].white?.lastName} {queue[0].white?.firstName}
+                  </strong>
+                </div>
+                <div>
+                  <span>{text('Синий', 'Көк')}</span>
+                  <strong>
+                    {queue[0].blue?.lastName} {queue[0].blue?.firstName}
+                  </strong>
+                </div>
+              </div>
               <button
+                className="next-match-button"
                 disabled={disabled || queue[0].blockedByRound}
                 onClick={() =>
                   void execute({
@@ -838,7 +868,9 @@ export function LiveBoard({
                       'Ждём завершения предыдущего круга',
                       'Алдыңғы айналымның аяқталуын күтеміз',
                     )
-                  : text('▶ Начать следующую схватку', '▶ Келесі белдесуді бастау')}
+                  : busy || !!startingMatch || pending?.payload.type === 'START'
+                    ? text('Загружаем…', 'Жүктелуде…')
+                    : text('▶ Начать схватку', '▶ Белдесуді бастау')}
               </button>
               {restBlocked?.id === queue[0].id && restBlocked.revision === queue[0].revision && (
                 <button
@@ -872,14 +904,6 @@ export function LiveBoard({
             </>
           )}
         </div>
-      )}
-      {operator && (
-        <p className="field-note">
-          {text(
-            'Пользовательский профиль: 3 Shido, 2 Waza-ari, удержание 5/10/20 с; отдых 10 минут. Соответствие IJF не подтверждено. Для работы без сервера заранее подготовьте автономный режим на этом устройстве.',
-            'Бапталатын профиль: 3 Shido, 2 Waza-ari, ұстап тұру 5/10/20 с; демалыс 10 минут. IJF сәйкестігі расталмаған. Серверсіз жұмыс үшін осы құрылғыда автономды режимді алдын ала дайындаңыз.',
-          )}
-        </p>
       )}
     </section>
   );

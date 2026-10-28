@@ -16,6 +16,7 @@ export type TableStyle = {
   places?: boolean;
   strongColumn?: number;
   compact?: boolean;
+  horizontalPadding?: number;
 };
 /** Shared print design: embedded RU/KK fonts, repeated headers and explicit result hierarchy. */
 export class ProtocolPdf {
@@ -210,6 +211,7 @@ export class ProtocolPdf {
       widths = weights.map((w) => this.width * w);
     const bodySize = style.compact ? 9 : 9.5;
     const padding = style.compact ? 6 : 9;
+    const horizontalPadding = style.horizontalPadding ?? 8;
     const cellStyle = (index: number, head: boolean) => {
       const numeric = !head && style.medals && index >= 2;
       return {
@@ -224,7 +226,9 @@ export class ProtocolPdf {
         ...cells.map((cell, index) => {
           const { font, size } = cellStyle(index, head);
           d.font(font).fontSize(size);
-          return d.heightOfString(cell, { width: widths[index] - 16 }) + padding * 2;
+          return (
+            d.heightOfString(cell, { width: widths[index] - horizontalPadding * 2 }) + padding * 2
+          );
         }),
       );
     const row = (cells: string[], head = false, index = 0) => {
@@ -251,8 +255,8 @@ export class ProtocolPdf {
           d.font(font)
             .fontSize(size)
             .fillColor(head ? '#ffffff' : ink.navy)
-            .text(c, x + 8, y + padding, {
-              width: widths[i] - 16,
+            .text(c, x + horizontalPadding, y + padding, {
+              width: widths[i] - horizontalPadding * 2,
               height: h - padding * 2,
               align,
             });

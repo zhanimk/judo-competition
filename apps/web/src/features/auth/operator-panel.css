@@ -86,3 +86,22 @@
     padding: 12px 8px;
   }
 }
+.operator-account {
+  position: relative;
+}
+.operator-account summary {
+  cursor: pointer;
+  padding: 10px;
+}
+.operator-account button {
+  margin-top: 8px;
+}
+.control-lease-owned {
+  padding: 8px 12px;
+}
+.control-lease-owned .control-lease-heading > div {
+  display: none;
+}
+.control-lease-owned .control-lease-heading {
+  justify-content: flex-end;
+}

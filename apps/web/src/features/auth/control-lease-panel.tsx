@@ -37,7 +37,7 @@ export function ControlLeasePanel({
     !!deviceError;
   return (
     <section
-      className="panel control-lease"
+      className={`panel control-lease ${c?.owned && c.holderValid ? 'control-lease-owned' : ''}`}
       aria-label={text('Управление табло', 'Таблоны басқару')}
     >
       <div className="control-lease-heading">

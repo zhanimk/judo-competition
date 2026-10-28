@@ -382,3 +382,73 @@
     align-items: flex-start;
   }
 }
+
+/* Waiting/finished screens must remain readable from across the hall. */
+.live-board .next-match-button {
+  min-height: 64px;
+  padding: 14px 32px;
+  background: #2455bd;
+  color: white;
+  border-color: #2455bd;
+  font-size: clamp(20px, 2vw, 30px);
+  font-weight: 700;
+}
+.live-board.live-fullscreen .live-wait h2 {
+  margin: 0 0 24px;
+  font-size: clamp(30px, 4vw, 64px);
+  line-height: 1.15;
+}
+.live-board.live-fullscreen .live-wait p {
+  margin: 10px 0;
+  font-size: clamp(20px, 2.3vw, 36px);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.live-board.live-fullscreen .live-screen-toolbar strong {
+  font-size: clamp(20px, 2.2vw, 34px);
+}
+.live-board.live-fullscreen .live-screen-toolbar span {
+  font-size: clamp(16px, 1.5vw, 24px);
+}
+.live-board.live-fullscreen .live-connection {
+  font-size: clamp(14px, 1.2vw, 20px);
+}
+.live-board.live-fullscreen .live-wait .next-match-button {
+  min-height: 72px;
+  margin-top: 22px;
+  font-size: clamp(24px, 2.3vw, 36px);
+}
+.next-match-athletes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: min(100%, 1100px);
+  margin: 12px auto;
+  text-align: left;
+}
+.next-match-athletes > div {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #bdcbe0;
+  border-radius: 12px;
+  padding: 20px;
+  color: #1a2841;
+  background: #fff;
+}
+.next-match-athletes > div + div {
+  background: #2455bd;
+  color: white;
+}
+.next-match-athletes span {
+  font-size: 16px;
+}
+.next-match-athletes strong {
+  font-size: clamp(22px, 3vw, 46px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .next-match-athletes {
+    grid-template-columns: 1fr;
+  }
+}

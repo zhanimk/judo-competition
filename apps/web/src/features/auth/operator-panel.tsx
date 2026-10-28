@@ -71,7 +71,7 @@ export function OperatorPanel({ tatamiId }: { tatamiId: string }) {
           <LanguageSwitch />
           {data && ['SUPER_ADMIN', 'ORGANIZER'].includes(data.role) && (
             <Link className="outline-link" href={`/tournaments/${data.tournamentId}/control`}>
-              ← {text('Назад ко всем татами', 'Барлық татамиге қайту')}
+              ← {text('Все татами', 'Барлық татами')}
             </Link>
           )}
         </div>
@@ -104,7 +104,6 @@ export function OperatorPanel({ tatamiId }: { tatamiId: string }) {
             <div className="page-heading operator-heading">
               <div>
                 <p className="kicker">{data?.tournamentName}</p>
-                <h1>Татами {data?.number ?? '—'}</h1>
                 <p>
                   {data?.workRole === 'ADMIN'
                     ? text('Администратор', 'Әкімші')
@@ -114,22 +113,25 @@ export function OperatorPanel({ tatamiId }: { tatamiId: string }) {
                     text('Локальное восстановление', 'Жергілікті қалпына келтіру')}
                 </p>
               </div>
-              <button
-                disabled={local || loggingOut}
-                onClick={async () => {
-                  setLoggingOut(true);
-                  setLogoutError(false);
-                  try {
-                    await logoutSession();
-                    location.href = '/login';
-                  } catch {
-                    setLogoutError(true);
-                    setLoggingOut(false);
-                  }
-                }}
-              >
-                {text('Выйти', 'Шығу')}
-              </button>
+              <details className="operator-account">
+                <summary>{text('Аккаунт', 'Аккаунт')}</summary>
+                <button
+                  disabled={local || loggingOut}
+                  onClick={async () => {
+                    setLoggingOut(true);
+                    setLogoutError(false);
+                    try {
+                      await logoutSession();
+                      location.href = '/login';
+                    } catch {
+                      setLogoutError(true);
+                      setLoggingOut(false);
+                    }
+                  }}
+                >
+                  {text('Выйти из аккаунта', 'Аккаунттан шығу')}
+                </button>
+              </details>
             </div>
             <LiveBoard key={tatamiId} tatamiId={tatamiId} operator />
             {data && !local && <QueueView items={data.queue} />}

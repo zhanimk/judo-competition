@@ -1,8 +1,8 @@
-import { scoreboardScores, type MatchState, type Side } from '@judo/engine/match';
 import { bracketNodes, type Slot } from '@judo/engine/draw';
 import { categoryResults, slotName, type ProtocolCategory } from './protocol-model.js';
 import { ProtocolPdf, ink } from './pdf-document.js';
 import { paintDrawCard } from './pdf-draw-card.js';
+import { paintRoundMatrix } from './pdf-round-matrix.js';
 import { paintDrawPlaces } from './pdf-draw-places.js';
 import { scoreLegend } from './pdf-bout-card.js';
 /** Paginate by three rounds/eight source slots, never shrink an entire 128-person bracket onto A4. */
@@ -53,87 +53,6 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         : text('Завершена', 'Аяқталған')
       : text('Ожидает', 'Күтілуде');
   };
-  const scores = (id: string, side: Side) => {
-    const record = c.draw?.contests.find((m) => m.key === id);
-    if (record?.status !== 'CONFIRMED' || !record.state) return '';
-    const value = scoreboardScores(record.state as unknown as MatchState, side);
-    return `\nI ${value.IPPON} · W ${value.WAZA_ARI} · Y ${value.YUKO} · S ${value.SHIDO}`;
-  };
-  const pairTable = (matches: typeof draw.matches) =>
-    pdf.table(
-      [
-        text('Тур / схватка', 'Айналым / белдесу'),
-        text('Белый', 'Ақ'),
-        text('Синий', 'Көк'),
-        text('Победитель', 'Жеңімпаз'),
-      ],
-      matches.map((m) => [
-        `${text('Тур', 'Айналым')} ${m.round} · ${number(m.id)}`,
-        name(m.white) + scores(m.id, 'WHITE'),
-        name(m.blue) + scores(m.id, 'BLUE'),
-        winners[m.id]
-          ? name({ entryId: winners[m.id] }) + `\n${resultLabel(m.id)}`
-          : draw.voidMatches?.includes(m.id)
-            ? text('Нет участника', 'Қатысушы жоқ')
-            : text('Ожидает', 'Күтілуде'),
-      ]),
-      [0.14, 0.3, 0.3, 0.26],
-      { compact: true },
-    );
-  // Medal overview comes first: final above two distinct repechage -> bronze paths.
-  if (draw.matches.some((m) => m.stage === 'BRONZE')) {
-    pdf.section(
-      title,
-      `${subtitle} · ${text('Финал и встречи за 3-е место', 'Финал және 3-орын үшін белдесулер')}`,
-      false,
-    );
-    const d = pdf.doc,
-      top = d.y + 24;
-    const chartWidth = pdf.width;
-    const cardW = (chartWidth - 36) / 2,
-      rightX = 36 + cardW + 36;
-    const final = draw.matches.filter((m) => !m.stage || m.stage === 'MAIN').at(-1)!;
-    const paint = (bout: typeof final, label: string, x: number, y: number, width: number) =>
-      paintDrawCard(
-        pdf,
-        {
-          label: `${label} · ${number(bout.id)} · ${resultLabel(bout.id)}`,
-          white: name(bout.white),
-          blue: name(bout.blue),
-          record: c.draw?.contests.find((m) => m.key === bout.id),
-        },
-        x,
-        y,
-        width,
-        116,
-      );
-    paint(final, text('ФИНАЛ · за 1-е место', 'ФИНАЛ · 1-орын үшін'), 36, top, chartWidth);
-    for (const [i, bronze] of draw.matches.filter((m) => m.stage === 'BRONZE').entries()) {
-      const source = bronze.white;
-      const rep =
-        'winnerOf' in source
-          ? draw.matches.find((m) => m.id === source.winnerOf && m.stage === 'REPECHAGE')
-          : undefined;
-      const y = top + 160 + i * 158;
-      if (rep) {
-        d.strokeColor('#8999ae')
-          .lineWidth(1)
-          .moveTo(36 + cardW, y + 58)
-          .lineTo(rightX, y + 58)
-          .stroke();
-        d.moveTo(rightX - 5, y + 55)
-          .lineTo(rightX, y + 58)
-          .lineTo(rightX - 5, y + 61)
-          .stroke();
-        paint(rep, text('УТЕШЕНИЕ', 'ЖҰБАНЫШ') + ' ' + (i + 1), 36, y, cardW);
-        paint(bronze, text('ЗА 3-е МЕСТО', '3-ОРЫН ҮШІН') + ' · ' + (i + 1), rightX, y, cardW);
-      } else {
-        paint(bronze, text('ЗА 3-е МЕСТО', '3-ОРЫН ҮШІН') + ' · ' + (i + 1), 36, y, chartWidth);
-      }
-    }
-    d.y = top + 450;
-    scoreLegend(pdf);
-  }
   if (draw.algorithm === 'custom-round-robin-v1' || draw.pools) {
     for (const pool of draw.pools ?? [
       { id: '', entries: draw.positions.flatMap((e) => (e ? [e.id] : [])) },
@@ -142,18 +61,10 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         title,
         `${subtitle} · ${pool.id ? text('Группа ', 'Топ ') + pool.id : text('Каждый с каждым', 'Әрқайсысы әрқайсысымен')}`,
       );
-      pdf.line(
-        c.entries.length === 2
-          ? text('Два участника: одна финальная схватка.', 'Екі қатысушы: бір финалдық белдесу.')
-          : text(
-              'Каждая пара встречается один раз. Одноклубники также встречаются.',
-              'Әр жұп бір рет кездеседі. Клубтастар да кездеседі.',
-            ),
-      );
-      pairTable(draw.matches.filter((m) => (pool.id ? m.pool === pool.id : true)));
+      paintRoundMatrix(pdf, c, pool.id || undefined);
       scoreLegend(pdf);
-      pdf.ensure(400);
-      paintDrawPlaces(pdf, c, 36, pdf.doc.y, pdf.width);
+      pdf.ensure(160);
+      paintDrawPlaces(pdf, c, 36, pdf.doc.y, pdf.width, true);
     }
   }
   if (draw.algorithm !== 'custom-round-robin-v1') {
@@ -241,7 +152,9 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         paintDrawCard(
           pdf,
           {
-            label: card.matchId ? `${number(card.matchId)} · ${resultLabel(card.matchId)}` : 'BYE',
+            label: card.matchId
+              ? `${card.id} · ${number(card.matchId)} · ${resultLabel(card.matchId)}`
+              : 'BYE',
             white: name(card.white),
             blue: name(card.blue),
             record: c.draw?.contests.find((m) => m.key === card.matchId),
@@ -270,14 +183,14 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
           links.length
             ? pdf.safe(links.join(' · ') + ' · I: IPPON · W: WAZA-ARI · Y: YUKO · S: SHIDO')
             : text(
-                'I: IPPON · W: WAZA-ARI · Y: YUKO · S: SHIDO. Золотая строка: победитель. BYE: без схватки.',
-                'I: IPPON · W: WAZA-ARI · Y: YUKO · S: SHIDO. Алтын жол: жеңімпаз. BYE: белдесусіз.',
+                'I: IPPON · W: WAZA-ARI · Y: YUKO · S: SHIDO. Зелёная строка: победитель. BYE: без схватки.',
+                'I: IPPON · W: WAZA-ARI · Y: YUKO · S: SHIDO. Жасыл жол: жеңімпаз. BYE: белдесусіз.',
               ),
           36,
           d.page.height - 62,
           { width: pdf.width, height: 20 },
         );
-      if (pageIndex === pages.length - 1) {
+      if (pageIndex === pages.length - 1 && !draw.matches.some((m) => m.stage === 'BRONZE')) {
         const placesY = Math.max(...cards.map((card) => card.y + cardH)) + 22;
         if (placesY + 400 > d.page.height - 55)
           pdf.section(title, `${subtitle} · ${text('Итоговые места', 'Қорытынды орындар')}`);
@@ -285,5 +198,59 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         paintDrawPlaces(pdf, c, 36, d.y, pdf.width);
       }
     }
+  }
+  // Repechage follows the main tree, with final places on the same sheet.
+  if (draw.matches.some((m) => m.stage === 'BRONZE')) {
+    pdf.section(
+      title,
+      `${subtitle} · ${text('Утешение и итоговые места', 'Жұбаныш және қорытынды орындар')}`,
+      false,
+    );
+    const d = pdf.doc,
+      top = d.y + 24;
+    const chartWidth = pdf.width;
+    const cardW = (chartWidth - 36) / 2,
+      rightX = 36 + cardW + 36;
+    const final = draw.matches.filter((m) => !m.stage || m.stage === 'MAIN').at(-1)!;
+    const paint = (bout: typeof final, label: string, x: number, y: number, width: number) =>
+      paintDrawCard(
+        pdf,
+        {
+          label: `${label} · ${number(bout.id)} · ${resultLabel(bout.id)}`,
+          white: name(bout.white),
+          blue: name(bout.blue),
+          record: c.draw?.contests.find((m) => m.key === bout.id),
+        },
+        x,
+        y,
+        width,
+        116,
+      );
+    for (const [i, bronze] of draw.matches.filter((m) => m.stage === 'BRONZE').entries()) {
+      const source = bronze.white;
+      const rep =
+        'winnerOf' in source
+          ? draw.matches.find((m) => m.id === source.winnerOf && m.stage === 'REPECHAGE')
+          : undefined;
+      const y = top + i * 158;
+      if (rep) {
+        d.strokeColor('#8999ae')
+          .lineWidth(1)
+          .moveTo(36 + cardW, y + 58)
+          .lineTo(rightX, y + 58)
+          .stroke();
+        d.moveTo(rightX - 5, y + 55)
+          .lineTo(rightX, y + 58)
+          .lineTo(rightX - 5, y + 61)
+          .stroke();
+        paint(rep, text('УТЕШЕНИЕ', 'ЖҰБАНЫШ') + ' ' + (i + 1), 36, y, cardW);
+        paint(bronze, text('ЗА 3-е МЕСТО', '3-ОРЫН ҮШІН') + ' · ' + (i + 1), rightX, y, cardW);
+      } else {
+        paint(bronze, text('ЗА 3-е МЕСТО', '3-ОРЫН ҮШІН') + ' · ' + (i + 1), 36, y, chartWidth);
+      }
+    }
+    d.y = top + 300;
+    scoreLegend(pdf);
+    paintDrawPlaces(pdf, c, 36, d.y + 12, pdf.width, true);
   }
 }
