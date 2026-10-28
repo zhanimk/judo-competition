@@ -62,7 +62,6 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         `${subtitle} · ${pool.id ? text('Группа ', 'Топ ') + pool.id : text('Каждый с каждым', 'Әрқайсысы әрқайсысымен')}`,
       );
       paintRoundMatrix(pdf, c, pool.id || undefined);
-      scoreLegend(pdf);
       pdf.ensure(160);
       paintDrawPlaces(pdf, c, 36, pdf.doc.y, pdf.width, true);
     }

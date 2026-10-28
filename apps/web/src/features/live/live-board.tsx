@@ -380,7 +380,7 @@ export function LiveBoard({
             : text('На весь экран', 'Толық экран')}
         </button>
       </div>
-      {operator && (
+      {operator && effectiveView?.tournamentStatus !== 'FINISHED' && (
         <ControlLeasePanel
           lease={lease}
           view={view}
@@ -808,7 +808,7 @@ export function LiveBoard({
                   ? text('Следующая схватка', 'Келесі белдесу')
                   : text('Ожидание следующей схватки', 'Келесі белдесуді күту')}
           </h2>
-          {view?.lastResult && (
+          {view?.lastResult && !queue[0] && (
             <p>
               {text('Последняя схватка', 'Соңғы белдесу')}: {view.lastResult.winner?.lastName}{' '}
               {view.lastResult.winner?.firstName} ·{' '}
@@ -824,12 +824,7 @@ export function LiveBoard({
             </p>
           )}
           {view?.tournamentStatus === 'FINISHED' && (
-            <p>
-              {text(
-                'Все результаты подтверждены. Турнир завершён.',
-                'Барлық нәтижелер расталған. Турнир аяқталды.',
-              )}
-            </p>
+            <p>{text('Все результаты подтверждены.', 'Барлық нәтижелер расталған.')}</p>
           )}
           {operator && queue[0] && view?.tournamentStatus === 'RUNNING' && (
             <>

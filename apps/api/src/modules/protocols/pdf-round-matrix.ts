@@ -81,8 +81,8 @@ export function paintRoundMatrix(pdf: ProtocolPdf, c: ProtocolCategory, poolId?:
     }),
     [
       0.045,
-      0.065,
-      matrix ? 0.41 - members.length * 0.035 : 0.41,
+      0.085,
+      matrix ? 0.39 - members.length * 0.035 : 0.39,
       ...(matrix ? members.map(() => 0.035) : []),
       0.16,
       0.16,
