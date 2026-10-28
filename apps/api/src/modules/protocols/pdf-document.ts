@@ -25,6 +25,7 @@ export class ProtocolPdf {
   private sectionTitle = '';
   private subtitle = '';
   private landscape = false;
+  private compactHeader = false;
   private headerBottom = 0;
   private readonly generated: string;
   private readonly margins = { top: 32, bottom: 44, left: 36, right: 36 };
@@ -66,10 +67,11 @@ export class ProtocolPdf {
   get width() {
     return this.doc.page.width - 72;
   }
-  section(title: string, subtitle = '', landscape = false) {
+  section(title: string, subtitle = '', landscape = false, compactHeader = false) {
     this.sectionTitle = this.safe(title);
     this.subtitle = this.safe(subtitle);
     this.landscape = landscape;
+    this.compactHeader = compactHeader;
     this.page();
     this.doc.outline.addItem(this.sectionTitle);
   }
@@ -85,6 +87,24 @@ export class ProtocolPdf {
   private header() {
     const d = this.doc,
       compact = this.landscape;
+    if (this.compactHeader) {
+      d.font('Bold')
+        .fontSize(9)
+        .fillColor(ink.navy)
+        .text(this.safe(this.tournament.name), 36, 24, { width: this.width, height: 26 });
+      d.moveTo(36, 43)
+        .lineTo(d.page.width - 36, 43)
+        .strokeColor(ink.gold)
+        .stroke();
+      d.font('Bold').fontSize(13).text(this.sectionTitle, 36, 49, { width: this.width });
+      d.font('Regular')
+        .fontSize(7)
+        .fillColor(ink.muted)
+        .text(this.safe(this.subtitle), 36, d.y + 5, { width: this.width });
+      d.y += 12;
+      this.headerBottom = d.y;
+      return;
+    }
     d.rect(24, 22, d.page.width - 48, compact ? 50 : 64).fill(ink.navy);
     d.rect(24, compact ? 70 : 84, d.page.width - 48, 3).fill(ink.gold);
     d.image(

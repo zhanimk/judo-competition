@@ -200,7 +200,10 @@ test('portrait draw pages retain every main, repechage and bronze bout, scores a
           `${count}/${lang}: portrait only`,
         );
         assert.deepEqual(violations, [], `${count}/${lang}: no clipped names or clubs`);
-        assert.ok(pages.length > 1);
+        if (count <= 8) assert.equal(pages.length, 1, 'small complete categories fit one sheet');
+        else assert.ok(pages.length > 1);
+        if (count === 128)
+          assert.ok(pages.length <= 10, 'dense large brackets use at most ten sheets');
         for (const [i] of category.draw.snapshot.matches.entries())
           assert.ok(
             calls.some((label) => label.includes(`№ ${i + 1} ·`)),
@@ -261,5 +264,41 @@ test('round-robin PDF uses the website opponent matrix and withholds unfinished 
         assert.equal(rows[1].at(-1), '1');
       }
       await pdf.end();
+    }
+});
+
+test('sixteen-person category fits its full tree, repechage and medals on one portrait sheet when names fit', async () => {
+  const { portraitCategory, portraitTournament } = await import('./fixtures/portrait-protocol.mjs');
+  const { renderDraw } = await import('../apps/api/dist/modules/protocols/render-draw.js');
+  for (const lang of ['ru', 'kk'])
+    for (const finished of [false, true]) {
+      const c = portraitCategory(16, finished);
+      c.entries.forEach((entry, i) => {
+        entry.lastName = `Иванов${i}`;
+        entry.firstName = 'Иван';
+        entry.club = `Клуб ${i % 3}`;
+      });
+      const pdf = new ProtocolPdf(
+        portraitTournament([c]),
+        (ru, kk) => (lang === 'kk' ? kk : ru),
+        'QA',
+        lang,
+      );
+      let pages = 0;
+      const calls = [];
+      pdf.doc.on('pageAdded', () => pages++);
+      const original = pdf.doc.text;
+      pdf.doc.text = function (value, x, y, options) {
+        calls.push(String(value));
+        return original.call(this, value, x, y, options);
+      };
+      renderDraw(pdf, c, 'QA');
+      await pdf.end();
+      assert.equal(pages, 1);
+      for (const [i] of c.draw.snapshot.matches.entries())
+        assert.ok(calls.some((v) => v.startsWith(`№ ${i + 1} ·`)));
+      for (const entry of c.entries)
+        assert.ok(calls.includes(`${entry.lastName} ${entry.firstName}`));
+      assert.ok(calls.includes(lang === 'kk' ? 'Қорытынды орындар' : 'Итоговые места'));
     }
 });

@@ -1,6 +1,7 @@
 import { bracketNodes, type Slot } from '@judo/engine/draw';
 import { categoryResults, slotName, type ProtocolCategory } from './protocol-model.js';
 import { ProtocolPdf, ink } from './pdf-document.js';
+import { compactDrawPages } from './pdf-compact-draw.js';
 import { paintDrawCard } from './pdf-draw-card.js';
 import { paintRoundMatrix } from './pdf-round-matrix.js';
 import { paintDrawPlaces } from './pdf-draw-places.js';
@@ -53,6 +54,11 @@ export function renderDraw(pdf: ProtocolPdf, c: ProtocolCategory, subtitle: stri
         : text('Завершена', 'Аяқталған')
       : text('Ожидает', 'Күтілуде');
   };
+  if (
+    draw.algorithm !== 'custom-round-robin-v1' &&
+    compactDrawPages(pdf, c, title, subtitle, name, resultLabel)
+  )
+    return;
   if (draw.algorithm === 'custom-round-robin-v1' || draw.pools) {
     for (const pool of draw.pools ?? [
       { id: '', entries: draw.positions.flatMap((e) => (e ? [e.id] : [])) },
