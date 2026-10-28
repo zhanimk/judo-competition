@@ -417,3 +417,16 @@ test('polling preserves private LIVE cookie authorization and origin checks', as
     if (http.listening) await new Promise((resolve) => http.close(resolve));
   }
 });
+
+test('Redis diagnostics expose fixed failure categories without connection secrets', async () => {
+  const { redisFailureCode } = await import(
+    new URL(`${dist}/infrastructure/redis.service.js`, import.meta.url)
+  );
+  assert.equal(redisFailureCode({ code: 'ENOTFOUND', message: 'secret-host' }), 'ENOTFOUND');
+  assert.equal(redisFailureCode({ message: 'NOAUTH secret-password' }), 'AUTH_REQUIRED');
+  assert.equal(redisFailureCode({ message: 'WRONGPASS secret-password' }), 'AUTH_REJECTED');
+  assert.equal(redisFailureCode({ message: 'Command timed out: secret-host' }), 'UNKNOWN');
+  assert.equal(redisFailureCode({ message: 'connect timeout: secret-host' }), 'TIMEOUT');
+  for (const error of [null, 'secret', { code: 'secret-code', message: 'secret-url' }])
+    assert.equal(redisFailureCode(error), 'UNKNOWN');
+});

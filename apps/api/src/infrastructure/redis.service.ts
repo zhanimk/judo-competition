@@ -2,6 +2,25 @@ import { Injectable, Logger, type OnModuleInit, type OnApplicationShutdown } fro
 import { Redis } from 'ioredis';
 import { RuntimeConfig } from './runtime-config.js';
 
+/** Only fixed categories enter logs; Redis errors can contain connection secrets. */
+export function redisFailureCode(error: unknown): string {
+  if (!error || typeof error !== 'object') return 'UNKNOWN';
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  if (
+    typeof code === 'string' &&
+    ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH'].includes(
+      code,
+    )
+  )
+    return code;
+  if (typeof message === 'string') {
+    if (/^NOAUTH\b/.test(message)) return 'AUTH_REQUIRED';
+    if (/^WRONGPASS\b/.test(message)) return 'AUTH_REJECTED';
+    if (/timeout/i.test(message)) return 'TIMEOUT';
+  }
+  return 'UNKNOWN';
+}
+
 @Injectable()
 export class RedisService implements OnModuleInit, OnApplicationShutdown {
   readonly pub?: Redis;
@@ -33,10 +52,10 @@ export class RedisService implements OnModuleInit, OnApplicationShutdown {
       return pending;
     }) as Redis['publish'];
     for (const client of [this.pub, this.sub])
-      client.on('error', () => {
+      client.on('error', (error: unknown) => {
         if (Date.now() - this.lastErrorAt > 30000) {
           this.lastErrorAt = Date.now();
-          this.logger.warn('REDIS_UNAVAILABLE');
+          this.logger.warn(`REDIS_UNAVAILABLE:${redisFailureCode(error)}`);
         }
       });
   }
